@@ -6,21 +6,21 @@
 Please consider donating to support me and help me put more time into my plugins.
 You can donate, by clicking [here](https://laserhydra.com/donate).
 
-# Preview:
+## Preview:
 ![preview](https://i.gyazo.com/99f831d0d9d44c2cc4b25f8c3574270c.jpg)
 
-# Chat Commands:
+## Chat Commands:
 - **`/backpack`** -- to open your own backpack
 - **`/viewbackpack <steamid>`** -- to open another players backpack [Admin Command]
 
-# Permissions:
+## Permissions:
 - **`backpacks.admin`** -- required for /viewbackpack command
 - **`backpacks.use`** -- required for using a backpack
 - **`backpacks.use.small`** -- makes player have a small backpack (still requires backpacks.use)
 - **`backpacks.use.medium`** -- makes player have a medium backpack (still requires backpacks.use)
 - **`backpacks.use.large`** -- makes player have a large backpack (still requires backpacks.use)
 
-# Configuration:
+## Configuration:
 ```json
 {
   "Backpack Size (1-3)": 2,
@@ -36,7 +36,7 @@ You can donate, by clicking [here](https://laserhydra.com/donate).
 }
 ```
 
-# Localization:
+## Localization:
 ```json
 {
   "No Permission": "You don't have permission to use this command.",
