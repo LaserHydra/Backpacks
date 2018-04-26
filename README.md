@@ -1,26 +1,26 @@
 ﻿**Backpacks** allows players to have backpacks that provide them with extra inventory space. The backpack can be dropped on death.
 
-***To bind a key to open the backpack, use: "bind b backpack.open" in your F1 client console.***
+**Note:** To bind a key to open the backpack, use: `bind b backpack.open` in your F1 client console.
 
-**Donations:**
-Please consider donating to support me and help me put more time into my plugins.
-You can donate, by clicking [here](https://laserhydra.com/donate).
+## Donations
 
-## Preview
-![preview](https://i.gyazo.com/99f831d0d9d44c2cc4b25f8c3574270c.jpg)
+Please consider donating to support me and help me put more time into my plugins. You can donate, by clicking [here](https://laserhydra.com/donate).
 
 ## Chat Commands
-- **`/backpack`** -- to open your own backpack
-- **`/viewbackpack <steamid>`** -- to open another players backpack [Admin Command]
+
+- `/backpack` -- Open your own backpack
+- `/viewbackpack <steamid>` -- Open another players backpack [Admin Command]
 
 ## Permissions
-- **`backpacks.admin`** -- required for /viewbackpack command
-- **`backpacks.use`** -- required for using a backpack
-- **`backpacks.use.small`** -- makes player have a small backpack (still requires backpacks.use)
-- **`backpacks.use.medium`** -- makes player have a medium backpack (still requires backpacks.use)
-- **`backpacks.use.large`** -- makes player have a large backpack (still requires backpacks.use)
+
+- `backpacks.admin` -- Required for `/viewbackpack` command
+- `backpacks.use` -- Required for using a backpack
+- `backpacks.use.small` -- Makes player have a small backpack *(still requires backpacks.use)*
+- `backpacks.use.medium` -- Makes player have a medium backpack (still requires backpacks.use)*
+- `backpacks.use.large` -- Makes player have a large backpack *(still requires backpacks.use)*
 
 ## Configuration
+
 ```json
 {
   "Backpack Size (1-3)": 2,
@@ -37,10 +37,5 @@ You can donate, by clicking [here](https://laserhydra.com/donate).
 ```
 
 ## Localization
-```json
-{
-  "No Permission": "You don't have permission to use this command.",
-  "Backpack Already Open": "Somebody already has this backpack open!",
-  "May Not Open Backpack In Event": "You may not open a backpack while participating in an event!"
-}
-```
+
+The default messages are in the `Backpacks.json` file under the `oxide/lang/en` directory. To add support for another language, create a new language folder (ex. de for German) if not already created, copy the default language file to the new folder, and then customize the messages.
