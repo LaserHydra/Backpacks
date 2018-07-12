@@ -11,7 +11,7 @@ using System;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "LaserHydra", "2.1.6", ResourceId = 1408)]
+    [Info("Backpacks", "LaserHydra", "2.1.7", ResourceId = 1408)]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : RustPlugin
     {
@@ -219,8 +219,6 @@ namespace Oxide.Plugins
                 entity.name = "backpack";
 
                 _visualEntity = entity;
-
-                _instance.PrintWarning(entity.limitNetworking.ToString());
             }
 
             public void RemoveVisual()
