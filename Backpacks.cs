@@ -5,13 +5,9 @@ using System.Linq;
 using Oxide.Core;
 using System;
 
-// Changes:
-// - Saving dataint for keys
-// - Fixed error with NPC deaths
-
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "LaserHydra", "2.1.7", ResourceId = 1408)]
+    [Info("Backpacks", "LaserHydra", "2.1.8", ResourceId = 1408)]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : RustPlugin
     {
@@ -80,7 +76,7 @@ namespace Oxide.Plugins
             public StorageSize Size =>
                 _instance.permission.UserHasPermission(ownerID.ToString(), "backpacks.use.large") ? StorageSize.Large :
                     (_instance.permission.UserHasPermission(ownerID.ToString(), "backpacks.use.medium") ? StorageSize.Medium :
-                        (_instance.permission.UserHasPermission(ownerID.ToString(), "backpacks.use.medium") ? StorageSize.Small : Configuration.BackpackSize));
+                        (_instance.permission.UserHasPermission(ownerID.ToString(), "backpacks.use.small") ? StorageSize.Small : Configuration.BackpackSize));
 
             public Backpack(ulong id)
             {
