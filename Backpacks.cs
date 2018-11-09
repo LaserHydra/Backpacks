@@ -32,6 +32,7 @@ namespace Oxide.Plugins
                 set { BackpackSize = (StorageSize)value; }
             }
 
+            public static int backpackSlots = 5;
             public static bool ShowOnBack = true;
             public static bool HideOnBackIfEmpty = true;
             public static bool DropOnDeath = true;
@@ -138,11 +139,24 @@ namespace Oxide.Plugins
 
                 _boxEntity = SpawnContainer(Size, looter.transform.position - new Vector3(0, UnityEngine.Random.Range(100, 5000), 0));
 
+
                 foreach (var backpackItem in Inventory.Items)
                 {
                     var item = backpackItem.ToItem();
-                    item?.MoveToContainer(Container.inventory, item.position);
+                    if (item.position > Configuration.backpackSlots * (int) Size)
+                    {
+                        item?.MoveToContainer(
+                            !looter.inventory.containerMain.FindPosition(item)
+                                ? looter.inventory.containerMain
+                                : Container.inventory, item.position);
+                    }
+                    else
+                    {
+                        item?.MoveToContainer(Container.inventory, item.position);
+                    }
                 }
+
+                Container.inventory.capacity = (Configuration.backpackSlots * (int)Size) > Inventory.Items.Count ? Configuration.backpackSlots * (int)Size : Inventory.Items.Count;
 
                 _looter = looter;
 
@@ -378,9 +392,9 @@ namespace Oxide.Plugins
             return null;
         }
 
-        private static BaseEntity SpawnContainer(StorageSize size = StorageSize.Medium, Vector3 position = default(Vector3))
+        private static BaseEntity SpawnContainer(StorageSize size = StorageSize.Large, Vector3 position = default(Vector3))
         {
-            var ent = GameManager.server.CreateEntity(GetContainerPrefab(size), position);
+            var ent = GameManager.server.CreateEntity(GetContainerPrefab(StorageSize.Large), position);
 
             ent.UpdateNetworkGroup();
             ent.SendNetworkUpdateImmediate();
@@ -420,6 +434,8 @@ namespace Oxide.Plugins
         private new void LoadConfig()
         {
             Configuration.BackpackSizeInt = GetConfig(Configuration.BackpackSizeInt, "Backpack Size (1-3)");
+
+            GetConfig(ref Configuration.backpackSlots, "Backpack Size slots");
 
             GetConfig(ref Configuration.DropOnDeath, "Drop On Death");
             GetConfig(ref Configuration.EraseOnDeath, "Erase On Death");
