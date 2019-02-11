@@ -8,34 +8,41 @@ Please consider donating to support me and help me put more time into my plugins
 
 ## Chat Commands
 
-- `/backpack` -- Open your own backpack
-- `/viewbackpack <steamid>` -- Open another players backpack [Admin Command]
+- `/backpack` -- open your own backpack
+- `/viewbackpack <name or id>` -- open another players backpack **[Admin Command]**
 
 ## Permissions
 
-- `backpacks.admin` -- Required for `/viewbackpack` command
-- `backpacks.use` -- Required for using a backpack
-- `backpacks.use.small` -- Makes player have a small backpack *(still requires backpacks.use)*
-- `backpacks.use.medium` -- Makes player have a medium backpack (still requires backpacks.use)*
-- `backpacks.use.large` -- Makes player have a large backpack *(still requires backpacks.use)*
+- `backpacks.admin` -- required for `/viewbackpack` command
+- `backpacks.use` -- required to open your own backpack
+- `backpacks.use.1 - 7` -- gives player access to a certain amount of inventory rows overwriting the configured default size *(e.g. backpacks.use.3 gives them 3 rows of item space; still requires backpacks.use)*
 
 ## Configuration
 
 ```json
 {
-  "Backpack Size (1-3)": 2,
+  "Drop on Death (true/false)": true,
+  "Erase on Death (true/false)": false,
+  "Use Blacklist (true/false)": false,
+  "Clear Backpacks on Map-Wipe (true/false)": true,
+  "Only Save Backpacks on Server-Save (true/false)": false,
   "Blacklisted Items (Item Shortnames)": [
-    "rocket.launcher",
+    "autoturret",
     "lmg.m249"
   ],
-  "Drop On Death": true,
-  "Erase On Death": false,
-  "Hide On Back If Empty": true,
-  "Show On Back": true,
-  "Use Blacklist": false
+  "Backpack Size (1-7 Rows)": 1
 }
 ```
 
 ## Localization
 
-The default messages are in the `Backpacks.json` file under the `oxide/lang/en` directory. To add support for another language, create a new language folder (ex. de for German) if not already created, copy the default language file to the new folder, and then customize the messages.
+```json
+{
+  "No Permission": "You don't have permission to use this command.",
+  "May Not Open Backpack In Event": "You may not open a backpack while participating in an event!",
+  "View Backpack Syntax": "Syntax: /viewbackpack <name or id>",
+  "User ID not Found": "Could not find player with ID '{0}'",
+  "User Name not Found": "Could not find player with name '{0}'",
+  "Multiple Players Found": "Multiple matching players found:\n{0}"
+}
+```
