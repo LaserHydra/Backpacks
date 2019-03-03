@@ -16,7 +16,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "LaserHydra", "3.0.0")]
+    [Info("Backpacks", "LaserHydra", "3.0.1")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : RustPlugin
     {
@@ -138,8 +138,11 @@ namespace Oxide.Plugins
             if (_config.SaveBackpacksOnServerSave)
             {
                 foreach (var backpack in _backpacks.Values)
+                {
                     backpack.SaveData();
-
+                    backpack.KillContainer();
+                }
+                
                 _backpacks.Clear();
             }
         }
@@ -151,11 +154,15 @@ namespace Oxide.Plugins
 
             if (!_config.SaveBackpacksOnServerSave && _backpacks.ContainsKey(player.userID))
             {
-                _backpacks[player.userID].SaveData();
+                var backpack = _backpacks[player.userID];
+
+                backpack.SaveData();
+                backpack.KillContainer();
+
                 _backpacks.Remove(player.userID);
             }
         }
-
+        
         private object CanLootPlayer(BasePlayer looted, BasePlayer looter)
         {
             if (_openBackpacks.ContainsKey(looter)
@@ -173,7 +180,7 @@ namespace Oxide.Plugins
                 return null;
 
             // Is the Item blacklisted and the target container is a backpack?
-            if (_config.BlacklistedItems.Any(i => i.ToString() == item.info.shortname) &&
+            if (_config.BlacklistedItems.Any(shortName => shortName == item.info.shortname) &&
                 _backpacks.Values.Any(b => b.IsUnderlyingContainer(container)))
                 return ItemContainer.CanAcceptResult.CannotAccept;
 
@@ -309,7 +316,10 @@ namespace Oxide.Plugins
                 return;
 
             if (permission.UserHasPermission(player.UserIDString, UsagePermission))
-                Backpack.Get(player.userID).Open(player);
+            {
+                player.EndLooting();
+                timer.Once(0.1f, () => Backpack.Get(player.userID).Open(player));
+            }
             else
                 PrintToChat(player, lang.GetMessage("No Permission", this, player.UserIDString));
         }
@@ -567,7 +577,6 @@ namespace Oxide.Plugins
 
                 _itemContainer.capacity = GetCapacity();
                 _itemContainer.entityOwner = ownerPlayer;
-                _itemContainer.playerOwner = ownerPlayer;
 
                 if (!_initialized)
                 {
@@ -578,11 +587,25 @@ namespace Oxide.Plugins
                     foreach (var backpackItem in _itemDataCollection)
                     {
                         var item = backpackItem.ToItem();
-                        item?.MoveToContainer(_itemContainer, item.position);
+
+                        if (item != null)
+                        {
+                            item.MoveToContainer(_itemContainer, item.position);
+                        }
                     }
 
                     _initialized = true;
                 }
+            }
+
+            public void KillContainer()
+            {
+                _initialized = false;
+
+                _itemContainer.Kill();
+                _itemContainer = null;
+
+                ItemManager.DoRemoves();
             }
 
             public void Open(BasePlayer looter)
@@ -591,6 +614,11 @@ namespace Oxide.Plugins
                     return;
 
                 _instance._openBackpacks.Add(looter, this);
+
+                if (!_initialized)
+                {
+                    Initialize();
+                }
 
                 // Container can't be looted for some reason.
                 // We should cancel here and remove the looter from the open backpacks again.
@@ -649,7 +677,12 @@ namespace Oxide.Plugins
                 {
                     BaseEntity entity = GameManager.server.CreateEntity(BackpackPrefab, position, Quaternion.identity);
                     DroppedItemContainer container = entity as DroppedItemContainer;
-                    
+
+                    // This needs to be set to "genericlarge" to allow up to 7 rows to be displayed.
+                    container.lootPanelName = "genericlarge";
+
+                    // The player name is being ignore due to the panelName being "genericlarge".
+                    // TODO: Try to figure out a way to have 7 rows with custom name.
                     container.playerName = $"{FindOwnerPlayer()?.Name ?? "Somebody"}'s Backpack";
                     container.playerSteamID = _ownerId;
 
@@ -671,6 +704,8 @@ namespace Oxide.Plugins
                     container.ResetRemovalTime();
                     container.Spawn();
 
+                    ItemManager.DoRemoves();
+
                     if (!_instance._config.SaveBackpacksOnServerSave)
                     {
                         SaveData();
@@ -685,6 +720,8 @@ namespace Oxide.Plugins
                     item.Remove();
                     item.DoRemove();
                 }
+
+                ItemManager.DoRemoves();
 
                 if (!_instance._config.SaveBackpacksOnServerSave)
                 {
