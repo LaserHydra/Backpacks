@@ -16,7 +16,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "LaserHydra", "3.0.1")]
+    [Info("Backpacks", "LaserHydra", "3.0.2")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : RustPlugin
     {
@@ -512,7 +512,7 @@ namespace Oxide.Plugins
             public bool UseBlacklist = false;
 
             [JsonProperty("Clear Backpacks on Map-Wipe (true/false)")]
-            public bool ClearBackpacksOnWipe = true;
+            public bool ClearBackpacksOnWipe = false;
 
             [JsonProperty("Only Save Backpacks on Server-Save (true/false)")]
             public bool SaveBackpacksOnServerSave = false;
