@@ -4,7 +4,7 @@
 
 ## Donations
 
-Please consider donating to support me and help me put more time into my plugins. You can donate, by clicking [here](https://laserhydra.com/donate).
+Please consider donating to support me and help me put more time into my plugins. You can donate, by clicking [here](https://laserhydra.com/).
 
 ## Chat Commands
 
