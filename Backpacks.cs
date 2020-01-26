@@ -16,7 +16,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "LaserHydra", "3.0.2")]
+    [Info("Backpacks", "LaserHydra", "3.0.3")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : RustPlugin
     {
@@ -340,15 +340,18 @@ namespace Oxide.Plugins
             }
 
             string failureMessage;
-            IPlayer result = FindPlayer(args[0], out failureMessage);
+            IPlayer targetPlayer = FindPlayer(args[0], out failureMessage);
 
-            if (result == null)
+            if (targetPlayer == null)
             {
                 PrintToChat(player, failureMessage);
                 return;
             }
-            
-            Backpack backpack = Backpack.Get((result.Object as BasePlayer).userID);
+
+            BasePlayer targetBasePlayer = targetPlayer.Object as BasePlayer;
+            ulong id = targetBasePlayer?.userID ?? ulong.Parse(targetPlayer.Id);
+
+            Backpack backpack = Backpack.Get(id);
             timer.Once(0.5f, () => backpack.Open(player));
         }
 
@@ -416,7 +419,7 @@ namespace Oxide.Plugins
 
             var foundPlayers = new List<IPlayer>();
 
-            foreach (IPlayer player in covalence.Players.Connected)
+            foreach (IPlayer player in covalence.Players.All)
             {
                 if (player.Name.Equals(nameOrID, StringComparison.InvariantCultureIgnoreCase))
                     return player;
