@@ -46,3 +46,13 @@ Please consider donating to support me and help me put more time into my plugins
   "Multiple Players Found": "Multiple matching players found:\n{0}"
 }
 ```
+
+## API
+
+```cs
+void OnBackpackOpened(BasePlayer player, ItemContainer backpackContainer) // Triggered when player opens a backpack
+
+void OnBackpackClosed(BasePlayer player, ItemContainer backpackContainer) // Triggered when the backpack is closed
+
+string CanOpenBackpack(BasePlayer player, ulong backpackOwnerID) // Returning string will cancel backpack opening and display this string as chat message
+```
