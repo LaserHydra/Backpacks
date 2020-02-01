@@ -400,6 +400,8 @@ namespace Oxide.Plugins
             player.inventory.loot.SendImmediate();
 
             player.ClientRPCPlayer(null, player, "RPC_OpenLootPanel", "genericlarge");
+
+			Interface.CallHook("OnBackpackOpened", player, container);
         }
 
         private IPlayer FindPlayer(string nameOrID, out string failureMessage)
@@ -667,6 +669,8 @@ namespace Oxide.Plugins
             {
                 _looters.Remove(looter);
                 _instance._openBackpacks.Remove(looter);
+
+				Interface.CallHook("OnBackpackClosed", looter, _itemContainer);
 
                 if (!_instance._config.SaveBackpacksOnServerSave)
                 {
