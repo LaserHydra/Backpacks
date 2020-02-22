@@ -16,7 +16,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "LaserHydra", "3.0.5")]
+    [Info("Backpacks", "LaserHydra", "3.0.6")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : RustPlugin
     {
@@ -737,7 +737,7 @@ namespace Oxide.Plugins
 
             public void EraseContents()
             {
-                foreach (var item in _itemContainer.itemList)
+                foreach (var item in _itemContainer.itemList.ToList())
                 {
                     item.Remove();
                     item.DoRemove();
