@@ -139,6 +139,7 @@ namespace Oxide.Plugins
             {
                 foreach (var backpack in _backpacks.Values)
                 {
+                    backpack.ForceClose();
                     backpack.SaveData();
                     backpack.KillContainer();
                 }
@@ -150,12 +151,13 @@ namespace Oxide.Plugins
         private void OnPlayerDisconnected(BasePlayer player)
         {
             if (_openBackpacks.ContainsKey(player))
-                _openBackpacks.Remove(player);
+                _openBackpacks[player].OnClose(player);
 
             if (!_config.SaveBackpacksOnServerSave && _backpacks.ContainsKey(player.userID))
             {
                 var backpack = _backpacks[player.userID];
 
+                backpack.ForceClose();
                 backpack.SaveData();
                 backpack.KillContainer();
 
@@ -554,6 +556,12 @@ namespace Oxide.Plugins
             public Backpack(ulong ownerId) : base()
             {
                 _ownerId = ownerId;
+            }
+
+            ~Backpack()
+            {
+                ForceClose();
+                KillContainer();
             }
 
             public IPlayer FindOwnerPlayer() => _instance.covalence.Players.FindPlayerById(_ownerIdString);
