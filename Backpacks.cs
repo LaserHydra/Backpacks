@@ -16,7 +16,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "LaserHydra", "3.0.4")]
+    [Info("Backpacks", "LaserHydra", "3.0.5")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : RustPlugin
     {
@@ -202,14 +202,18 @@ namespace Oxide.Plugins
             if (victim is BasePlayer && !(victim is NPCPlayer) && !(victim is HTNPlayer))
             {
                 var player = (BasePlayer) victim;
-                var backpack = Backpack.Get(player.userID);
 
-                backpack.ForceClose();
+                if (_backpacks.ContainsKey(player.userID))
+                {
+                    var backpack = Backpack.Get(player.userID);
 
-                if (_config.EraseOnDeath)
-                    backpack.EraseContents();
-                else if (_config.DropOnDeath)
-                    backpack.Drop(player.transform.position);
+                    backpack.ForceClose();
+
+                    if (_config.EraseOnDeath)
+                        backpack.EraseContents();
+                    else if (_config.DropOnDeath)
+                        backpack.Drop(player.transform.position);
+                }
             }
         }
 
@@ -249,8 +253,11 @@ namespace Oxide.Plugins
 
         private void OnUsagePermissionChanged(string userIdString)
         {
-            var userId = ulong.Parse(userIdString);
-            Backpack.Get(userId).Initialize();
+            if (permission.UserHasPermission(userIdString, UsagePermission))
+            {
+                var userId = ulong.Parse(userIdString);
+                Backpack.Get(userId).Initialize();
+            }
         }
 
         #endregion
@@ -574,7 +581,7 @@ namespace Oxide.Plugins
                 }
                 else
                 {
-                    // Force-close since we may are re-initializing
+                    // Force-close since we are re-initializing
                     ForceClose();
                 }
 
@@ -682,7 +689,7 @@ namespace Oxide.Plugins
             {
                 if (_itemContainer.itemList.Count > 0)
                 {
-                    BaseEntity entity = GameManager.server.CreateEntity(BackpackPrefab, position, Quaternion.identity);
+                    BaseEntity entity = GameManager.server.CreateEntity(BackpackPrefab, position + Vector3.up * 0.5f, Quaternion.identity);
                     DroppedItemContainer container = entity as DroppedItemContainer;
 
                     // This needs to be set to "genericlarge" to allow up to 7 rows to be displayed.
@@ -747,6 +754,9 @@ namespace Oxide.Plugins
 
             public static Backpack Get(ulong id)
             {
+                if (id == 0)
+                    _instance.PrintWarning("Accessing backpack for ID 0! Please report this to the author with as many details as possible.");
+
                 if (_instance._backpacks.ContainsKey(id))
                     return _instance._backpacks[id];
                 
