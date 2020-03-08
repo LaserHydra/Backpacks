@@ -16,7 +16,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "LaserHydra", "3.0.6")]
+    [Info("Backpacks", "LaserHydra", "3.1.0")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : RustPlugin
     {
@@ -28,11 +28,6 @@ namespace Oxide.Plugins
 
         private const string UsagePermission = "backpacks.use";
         private const string AdminPermission = "backpacks.admin";
-
-        // v2.x.x permissions used for migration
-        private const string UsagePermissionSmall = "backpacks.use.small";
-        private const string UsagePermissionMedium = "backpacks.use.medium";
-        private const string UsagePermissionLarge = "backpacks.use.large";
 
         private const string BackpackPrefab = "assets/prefabs/misc/item drop/item_drop_backpack.prefab";
 
@@ -58,11 +53,6 @@ namespace Oxide.Plugins
             permission.RegisterPermission(UsagePermission, this);
             permission.RegisterPermission(AdminPermission, this);
 
-            // Register v2.x.x permissions for migration
-            permission.RegisterPermission(UsagePermissionSmall, this);
-            permission.RegisterPermission(UsagePermissionMedium, this);
-            permission.RegisterPermission(UsagePermissionLarge, this);
-
             for (ushort size = MinSize; size <= MaxSize; size++)
             {
                 var sizePermission = $"{UsagePermission}.{size}";
@@ -73,25 +63,6 @@ namespace Oxide.Plugins
             _backpackSizePermissions = _backpackSizePermissions
                 .OrderByDescending(kvp => kvp.Value)
                 .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
-
-            // Migrate permissions from v2.x.x to v3.x.x
-            foreach (string group in permission.GetPermissionGroups(UsagePermissionSmall))
-            {
-                permission.GrantGroupPermission(group, $"{UsagePermission}.1", this);
-                permission.RevokeGroupPermission(group, UsagePermissionSmall);
-            }
-
-            foreach (string group in permission.GetPermissionGroups(UsagePermissionMedium))
-            {
-                permission.GrantGroupPermission(group, $"{UsagePermission}.2", this);
-                permission.RevokeGroupPermission(group, UsagePermissionMedium);
-            }
-
-            foreach (string group in permission.GetPermissionGroups(UsagePermissionLarge))
-            {
-                permission.GrantGroupPermission(group, $"{UsagePermission}.5", this);
-                permission.RevokeGroupPermission(group, UsagePermissionLarge);
-            }
         }
 
         private void Unload()
@@ -181,10 +152,19 @@ namespace Oxide.Plugins
             if (!_config.UseBlacklist)
                 return null;
 
-            // Is the Item blacklisted and the target container is a backpack?
-            if (_config.BlacklistedItems.Any(shortName => shortName == item.info.shortname) &&
-                _backpacks.Values.Any(b => b.IsUnderlyingContainer(container)))
-                return ItemContainer.CanAcceptResult.CannotAccept;
+            Backpack backpack = _backpacks.Values.FirstOrDefault(b => b.IsUnderlyingContainer(container));
+
+            if (backpack != null)
+            {
+                // Is the Item blacklisted
+                if (_config.BlacklistedItems.Any(shortName => shortName == item.info.shortname))
+                    return ItemContainer.CanAcceptResult.CannotAccept;
+
+                object hookResult = Interface.CallHook("CanBackpackAcceptItem", backpack.OwnerId, container, item);
+
+                if (hookResult is bool && (bool)hookResult == false)
+                    return ItemContainer.CanAcceptResult.CannotAccept;
+            }
 
             return null;
         }
@@ -205,7 +185,7 @@ namespace Oxide.Plugins
             {
                 var player = (BasePlayer) victim;
 
-                if (_backpacks.ContainsKey(player.userID))
+                if (Backpack.HasBackpackFile(player.userID))
                 {
                     var backpack = Backpack.Get(player.userID);
 
@@ -214,7 +194,7 @@ namespace Oxide.Plugins
                     if (_config.EraseOnDeath)
                         backpack.EraseContents();
                     else if (_config.DropOnDeath)
-                        backpack.Drop(player.transform.position);
+                        backpack.Drop(player.transform.position + Vector3.up * 0.5f);
                 }
             }
         }
@@ -409,8 +389,6 @@ namespace Oxide.Plugins
             player.inventory.loot.SendImmediate();
 
             player.ClientRPCPlayer(null, player, "RPC_OpenLootPanel", "genericlarge");
-
-			Interface.CallHook("OnBackpackOpened", player, container);
         }
 
         private IPlayer FindPlayer(string nameOrID, out string failureMessage)
@@ -548,14 +526,14 @@ namespace Oxide.Plugins
             private List<BasePlayer> _looters = new List<BasePlayer>();
 
             [JsonProperty("OwnerID")]
-            private ulong _ownerId;
+            public ulong OwnerId { get; private set; }
 
             [JsonProperty("Items")]
             private List<ItemData> _itemDataCollection = new List<ItemData>();
 
             public Backpack(ulong ownerId) : base()
             {
-                _ownerId = ownerId;
+                OwnerId = ownerId;
             }
 
             ~Backpack()
@@ -585,7 +563,7 @@ namespace Oxide.Plugins
             {
                 if (!_initialized)
                 {
-                    _ownerIdString = _ownerId.ToString();
+                    _ownerIdString = OwnerId.ToString();
                 }
                 else
                 {
@@ -658,7 +636,7 @@ namespace Oxide.Plugins
                     return;
                 }
 
-                var hookResult = Interface.Oxide.CallHook("CanOpenBackpack", looter, _ownerId);
+                var hookResult = Interface.Oxide.CallHook("CanOpenBackpack", looter, OwnerId);
                 if (hookResult != null && hookResult is string)
                 {
                     _instance.PrintToChat(looter, hookResult as string);
@@ -666,6 +644,8 @@ namespace Oxide.Plugins
                 }
 
                 PlayerLootContainer(looter, _itemContainer);
+
+                Interface.CallHook("OnBackpackOpened", looter, OwnerId, _itemContainer);
             }
 
             public void ForceClose()
@@ -685,7 +665,7 @@ namespace Oxide.Plugins
                 _looters.Remove(looter);
                 _instance._openBackpacks.Remove(looter);
 
-				Interface.CallHook("OnBackpackClosed", looter, _itemContainer);
+				Interface.CallHook("OnBackpackClosed", looter, OwnerId, _itemContainer);
 
                 if (!_instance._config.SaveBackpacksOnServerSave)
                 {
@@ -695,9 +675,14 @@ namespace Oxide.Plugins
 
             public void Drop(Vector3 position)
             {
+                object hookResult = Interface.CallHook("CanDropBackpack", OwnerId, position);
+
+                if (hookResult is bool && (bool)hookResult == false)
+                    return;
+
                 if (_itemContainer.itemList.Count > 0)
                 {
-                    BaseEntity entity = GameManager.server.CreateEntity(BackpackPrefab, position + Vector3.up * 0.5f, Quaternion.identity);
+                    BaseEntity entity = GameManager.server.CreateEntity(BackpackPrefab, position, Quaternion.identity);
                     DroppedItemContainer container = entity as DroppedItemContainer;
 
                     // This needs to be set to "genericlarge" to allow up to 7 rows to be displayed.
@@ -706,10 +691,10 @@ namespace Oxide.Plugins
                     // The player name is being ignore due to the panelName being "genericlarge".
                     // TODO: Try to figure out a way to have 7 rows with custom name.
                     container.playerName = $"{FindOwnerPlayer()?.Name ?? "Somebody"}'s Backpack";
-                    container.playerSteamID = _ownerId;
+                    container.playerSteamID = OwnerId;
 
                     container.inventory = new ItemContainer();
-                    container.inventory.ServerInitialize(null, _itemDataCollection.Count);
+                    container.inventory.ServerInitialize(null, _itemContainer.itemList.Count);
                     container.inventory.GiveUID();
                     container.inventory.entityOwner = container;
                     container.inventory.SetFlag(ItemContainer.Flag.NoItemInput, true);
@@ -737,6 +722,11 @@ namespace Oxide.Plugins
 
             public void EraseContents()
             {
+                object hookResult = Interface.CallHook("CanEraseBackpack", OwnerId);
+
+                if (hookResult is bool && (bool)hookResult == false)
+                    return;
+
                 foreach (var item in _itemContainer.itemList.ToList())
                 {
                     item.Remove();
@@ -757,7 +747,14 @@ namespace Oxide.Plugins
                     .Select(ItemData.FromItem)
                     .ToList();
 
-                Backpacks.SaveData(this, $"{_instance.Name}/{_ownerId}");
+                Backpacks.SaveData(this, $"{_instance.Name}/{OwnerId}");
+            }
+
+            public static bool HasBackpackFile(ulong id)
+            {
+                var fileName = $"{_instance.Name}/{id}";
+
+                return Interface.Oxide.DataFileSystem.ExistsDatafile(fileName);
             }
 
             public static Backpack Get(ulong id)

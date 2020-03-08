@@ -49,10 +49,56 @@ Please consider donating to support me and help me put more time into my plugins
 
 ## API
 
-```cs
-void OnBackpackOpened(BasePlayer player, ItemContainer backpackContainer) // Triggered when player opens a backpack
+### CanOpenBackpack
 
-void OnBackpackClosed(BasePlayer player, ItemContainer backpackContainer) // Triggered when the backpack is closed
+Called when a player tries to open a backpack.  
+Returning a string will cancel backpack opening and send the string as a chat message to the player trying to open the backpack.  
 
-string CanOpenBackpack(BasePlayer player, ulong backpackOwnerID) // Returning string will cancel backpack opening and display this string as chat message
+```csharp
+string CanOpenBackpack(BasePlayer player, ulong backpackOwnerID)
+```
+  
+### OnBackpackOpened
+
+Called when a player successfully opened a backpack.  
+No return behaviour.  
+
+```csharp
+void OnBackpackOpened(BasePlayer player, ulong backpackOwnerID, ItemContainer backpackContainer)
+```
+  
+### OnBackpackClosed
+
+Called when a player closed a backpack.  
+No return behaviour.  
+
+```csharp
+void OnBackpackClosed(BasePlayer player, ulong backpackOwnerID, ItemContainer backpackContainer)
+```
+
+### CanBackpackAcceptItem
+
+Called when a player tries to move an item into a backpack.  
+Returning false prevents the item being moved.    
+
+```csharp
+bool CanBackpackAcceptItem(ulong backpackOwnerID, ItemContainer backpackContainer, Item item)
+```
+
+### CanDropBackpack
+
+Called when a player dies and the "Drop on Death" option is set to true.  
+Returning false prevents the backpack dropping.  
+
+```csharp
+bool CanDropBackpack(ulong backpackOwnerID, Vector3 position)
+```
+
+### CanEraseBackpack
+
+Called when a player dies and the "Erase on Death" option is set to true.  
+Returning false prevents the backpack being erased.  
+
+```csharp
+bool CanEraseBackpack(ulong backpackOwnerID)
 ```
