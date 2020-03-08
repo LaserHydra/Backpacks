@@ -47,7 +47,7 @@ Please consider donating to support me and help me put more time into my plugins
 }
 ```
 
-## API
+## Hooks
 
 ### CanOpenBackpack
 
