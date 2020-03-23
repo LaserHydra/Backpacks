@@ -609,7 +609,12 @@ namespace Oxide.Plugins
             public void Open(BasePlayer looter)
             {
                 if (_instance._openBackpacks.ContainsKey(looter))
-                    return;
+				{
+					looter.inventory.loot.Clear();
+                    looter.inventory.loot.MarkDirty();
+                    looter.inventory.loot.SendImmediate();
+					OnClose(looter);
+				}
 
                 _instance._openBackpacks.Add(looter, this);
 
