@@ -808,6 +808,7 @@ namespace Oxide.Plugins
             public int Ammo;
             public int AmmoType;
             public int DataInt;
+            public string Name;
             public string Text;
 
             public List<ItemData> Contents = new List<ItemData>();
@@ -851,10 +852,19 @@ namespace Oxide.Plugins
                 if (flameThrower != null)
                     flameThrower.ammo = FlameFuel;
 
-                if (item.instanceData != null)
-                    item.instanceData.dataInt = DataInt;
+                if (DataInt > 0)
+                {
+                    item.instanceData = new ProtoBuf.Item.InstanceData
+                    {
+                        ShouldPool = false,
+                        dataInt = DataInt
+                    };
+                }
 
                 item.text = Text;
+
+                if (Name != null)
+                    item.name = Name;
 
                 return item;
             }
@@ -875,6 +885,7 @@ namespace Oxide.Plugins
                 IsBlueprint = item.IsBlueprint(),
                 BlueprintTarget = item.blueprintTarget,
                 DataInt = item.instanceData?.dataInt ?? 0,
+                Name = item.name,
                 Text = item.text
             };
         }
