@@ -27,6 +27,7 @@ namespace Oxide.Plugins
         private const ushort SlotsPerRow = 6;
 
         private const string UsagePermission = "backpacks.use";
+        private const string FetchPermission = "backpacks.fetch";
         private const string AdminPermission = "backpacks.admin";
         private const string KeepOnDeathPermission = "backpacks.keepondeath";
 
@@ -53,6 +54,7 @@ namespace Oxide.Plugins
             _instance = this;
 
             permission.RegisterPermission(UsagePermission, this);
+            permission.RegisterPermission(FetchPermission, this);
             permission.RegisterPermission(AdminPermission, this);
             permission.RegisterPermission(KeepOnDeathPermission, this);
 
@@ -353,6 +355,94 @@ namespace Oxide.Plugins
                 PrintToChat(player, lang.GetMessage("No Permission", this, player.UserIDString));
         }
 
+        [ConsoleCommand("backpack.fetch")]
+        private void FetchBackpackItemConsoleCommand(ConsoleSystem.Arg arg)
+        {
+            BasePlayer player = arg.Player();
+
+            if (player == null)
+                return;
+
+            if (!permission.UserHasPermission(player.UserIDString, FetchPermission))
+            {
+                PrintToChat(player, lang.GetMessage("No Permission", this, player.UserIDString));
+                return;
+            }
+
+            if (!arg.HasArgs(2))
+            {
+                PrintToConsole(player, lang.GetMessage("Backpack Fetch Syntax", this, player.UserIDString));
+                return;
+            }
+
+            if (!VerifyCanOpenBackpack(player, player.userID))
+                return;
+
+            string[] args = arg.Args;
+            string itemArg = args[0];
+            int itemID;
+
+            ItemDefinition itemDefinition = ItemManager.FindItemDefinition(itemArg);
+            if (itemDefinition != null)
+            {
+                itemID = itemDefinition.itemid;
+            }
+            else
+            {
+                // User may have provided an itemID instead of item short name
+                if (!int.TryParse(itemArg, out itemID))
+                {
+                    PrintToChat(player, lang.GetMessage("Invalid Item", this, player.UserIDString));
+                    return;
+                }
+
+                itemDefinition = ItemManager.FindItemDefinition(itemID);
+
+                if (itemDefinition == null)
+                {
+                    PrintToChat(player, lang.GetMessage("Invalid Item", this, player.UserIDString));
+                    return;
+                }
+            }
+
+            int desiredAmount;
+            if (!int.TryParse(args[1], out desiredAmount))
+            {
+                PrintToChat(player, lang.GetMessage("Invalid Item Amount", this, player.UserIDString));
+                return;
+            }
+
+            if (desiredAmount < 1)
+            {
+                PrintToChat(player, lang.GetMessage("Invalid Item Amount", this, player.UserIDString));
+                return;
+            }
+
+            string itemLocalizedName = itemDefinition.displayName.translated;
+            Backpack backpack = Backpack.Get(player.userID);
+            int quantityInBackpack = backpack.GetItemQuantity(itemID);
+
+            if (quantityInBackpack == 0)
+            {
+                PrintToChat(player, lang.GetMessage("Item Not In Backpack", this, player.UserIDString), itemLocalizedName);
+                return;
+            }
+
+            if (desiredAmount > quantityInBackpack)
+                desiredAmount = quantityInBackpack;
+
+            int amountTransferred = backpack.MoveItemsToPlayerInventory(player, itemID, desiredAmount);
+
+            if (amountTransferred > 0)
+            {
+                PrintToChat(player, lang.GetMessage("Items Fetched", this, player.UserIDString), amountTransferred, itemLocalizedName);
+            }
+            else
+            {
+                PrintToChat(player, lang.GetMessage("Fetch Failed", this, player.UserIDString), itemLocalizedName);
+            }
+        }
+
         [ChatCommand("viewbackpack")]
         private void ViewBackpack(BasePlayer player, string cmd, string[] args)
         {
@@ -473,6 +563,24 @@ namespace Oxide.Plugins
             }
         }
 
+        private bool VerifyCanOpenBackpack(BasePlayer looter, ulong ownerId)
+        {
+            if (EventManager?.Call<bool>("isPlaying", looter) ?? false)
+            {
+                PrintToChat(looter, lang.GetMessage("May Not Open Backpack In Event", this, looter.UserIDString));
+                return false;
+            }
+
+            var hookResult = Interface.Oxide.CallHook("CanOpenBackpack", looter, ownerId);
+            if (hookResult != null && hookResult is string)
+            {
+                _instance.PrintToChat(looter, hookResult as string);
+                return false;
+            }
+
+            return true;
+        }
+
         private static void LoadData<T>(out T data, string filename = null) => 
             data = Interface.Oxide.DataFileSystem.ReadObject<T>(filename ?? _instance.Name);
 
@@ -492,7 +600,13 @@ namespace Oxide.Plugins
                 ["View Backpack Syntax"] = "Syntax: /viewbackpack <name or id>",
                 ["User ID not Found"] = "Could not find player with ID '{0}'",
                 ["User Name not Found"] = "Could not find player with name '{0}'",
-                ["Multiple Players Found"] = "Multiple matching players found:\n{0}"
+                ["Multiple Players Found"] = "Multiple matching players found:\n{0}",
+                ["Backpack Fetch Syntax"] = "Syntax: backpack.fetch <item short name or id> <amount>",
+                ["Invalid Item"] = "Invalid Item Name or ID.",
+                ["Invalid Item Amount"] = "Item amount must be an integer greater than 0.",
+                ["Item Not In Backpack"] = "Item \"{0}\" not found in backpack.",
+                ["Items Fetched"] = "Fetched {0} \"{1}\" from backpack.",
+                ["Fetch Failed"] = "Couldn't fetch \"{0}\" from backpack. Inventory may be full."
             }, this);
         }
 
@@ -678,18 +792,8 @@ namespace Oxide.Plugins
                 if (!_looters.Contains(looter))
                     _looters.Add(looter);
 
-                if (_instance.EventManager?.Call<bool>("isPlaying", looter) ?? false)
-                {
-                    _instance.PrintToChat(looter, _instance.lang.GetMessage("May Not Open Backpack In Event", _instance, looter.UserIDString));
+                if (!_instance.VerifyCanOpenBackpack(looter, OwnerId))
                     return;
-                }
-
-                var hookResult = Interface.Oxide.CallHook("CanOpenBackpack", looter, OwnerId);
-                if (hookResult != null && hookResult is string)
-                {
-                    _instance.PrintToChat(looter, hookResult as string);
-                    return;
-                }
 
                 PlayerLootContainer(looter, _itemContainer);
 
@@ -798,6 +902,49 @@ namespace Oxide.Plugins
                     .ToList();
 
                 Backpacks.SaveData(this, $"{_instance.Name}/{OwnerId}");
+            }
+
+            public int GetItemQuantity(int itemID) => _itemContainer.FindItemsByItemID(itemID).Sum(item => item.amount);
+
+            public int MoveItemsToPlayerInventory(BasePlayer player, int itemID, int desiredAmount)
+            {
+                List<Item> matchingItemStacks = _itemContainer.FindItemsByItemID(itemID);
+                int amountTransferred = 0;
+
+                foreach (Item itemStack in matchingItemStacks)
+                {
+                    int remainingDesiredAmount = desiredAmount - amountTransferred;
+                    Item itemToTransfer = (itemStack.amount > remainingDesiredAmount) ? itemStack.SplitItem(remainingDesiredAmount) : itemStack;
+                    int initialStackAmount = itemToTransfer.amount;
+
+                    bool transferFullySucceeded = player.inventory.GiveItem(itemToTransfer);
+                    amountTransferred += initialStackAmount;
+
+                    if (!transferFullySucceeded)
+                    {
+                        int amountRemainingInStack = itemToTransfer.amount;
+
+                        // Decrement the amountTransferred by the amount remaining in the stack
+                        // Since earlier we incremented it by the full stack amount
+                        amountTransferred -= amountRemainingInStack;
+
+                        if (itemToTransfer != itemStack)
+                        {
+                            // Add the remaining items from the split stack back to the original stack
+                            itemStack.amount += amountRemainingInStack;
+                            itemStack.MarkDirty();
+                        }
+                        break;
+                    }
+
+                    if (amountTransferred >= desiredAmount)
+                        break;
+                }
+
+                if (amountTransferred > 0 && !_instance._config.SaveBackpacksOnServerSave)
+                    SaveData();
+
+                return amountTransferred;
             }
 
             public static bool HasBackpackFile(ulong id)
