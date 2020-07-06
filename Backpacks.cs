@@ -618,6 +618,14 @@ namespace Oxide.Plugins
                     Initialize();
                 }
 
+                // The entityOwner may no longer be valid if it was instantiated while the player was offline (due to player death)
+                if (_itemContainer.entityOwner == null)
+                {
+                    var ownerPlayer = FindOwnerPlayer()?.Object as BasePlayer;
+                    if (ownerPlayer != null)
+                        _itemContainer.entityOwner = ownerPlayer;
+                }
+
                 // Container can't be looted for some reason.
                 // We should cancel here and remove the looter from the open backpacks again.
                 if (looter.inventory.loot.IsLooting()
