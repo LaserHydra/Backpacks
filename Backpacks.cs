@@ -492,7 +492,8 @@ namespace Oxide.Plugins
                 ["View Backpack Syntax"] = "Syntax: /viewbackpack <name or id>",
                 ["User ID not Found"] = "Could not find player with ID '{0}'",
                 ["User Name not Found"] = "Could not find player with name '{0}'",
-                ["Multiple Players Found"] = "Multiple matching players found:\n{0}"
+                ["Multiple Players Found"] = "Multiple matching players found:\n{0}",
+                ["Backpack Over Capacity"] = "Your backpack was over capacity. Extra items were added to your inventory or dropped."
             }, this);
         }
 
@@ -622,6 +623,14 @@ namespace Oxide.Plugins
                     _itemContainer.allowedContents = ItemContainer.ContentsType.Generic;
                     _itemContainer.GiveUID();
 
+                    var allowedCapacity = _itemContainer.capacity;
+                    if (_itemDataCollection.Count() > allowedCapacity)
+                    {
+                        // Temporarily increase the capacity to allow all items to fit
+                        // Extra items will be addressed when the backpack is opened by the owner
+                        _itemContainer.capacity = MaxSize * SlotsPerRow;
+                    }
+
                     foreach (var backpackItem in _itemDataCollection)
                     {
                         var item = backpackItem.ToItem();
@@ -632,6 +641,7 @@ namespace Oxide.Plugins
                         }
                     }
 
+                    _itemContainer.capacity = allowedCapacity;
                     _initialized = true;
                 }
             }
@@ -689,6 +699,37 @@ namespace Oxide.Plugins
                 {
                     _instance.PrintToChat(looter, hookResult as string);
                     return;
+                }
+
+                if (looter.userID == OwnerId)
+                {
+                    // Check for items beyond the backpack's capacity
+                    var allowedCapacity = GetCapacity();
+
+                    var extraItems = _itemContainer.itemList
+                        .OrderBy(item => item.position)
+                        .Where(item => item.position >= allowedCapacity)
+                        .ToList();
+
+                    var itemsDroppedOrGivenToPlayer = 0;
+                    foreach (var item in extraItems)
+                    {
+                        // Try to add to a vacant slot or an existing stack in the backpack or player inventory, else drop
+                        item.RemoveFromContainer();
+                        if (!item.MoveToContainer(_itemContainer))
+                        {
+                            itemsDroppedOrGivenToPlayer++;
+                            if (!looter.inventory.GiveItem(item))
+                            {
+                                item.Drop(looter.GetDropPosition(), looter.GetDropVelocity(), looter.GetNetworkRotation());
+                            }
+                        }
+                    }
+
+                    if (itemsDroppedOrGivenToPlayer > 0)
+                    {
+                        _instance.PrintToChat(looter, _instance.lang.GetMessage("Backpack Over Capacity", _instance, looter.UserIDString));
+                    }
                 }
 
                 PlayerLootContainer(looter, _itemContainer);
