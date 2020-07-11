@@ -68,10 +68,11 @@ namespace Oxide.Plugins
         private void Unload()
         {
             foreach (var backpack in _backpacks.Values)
+            {
                 backpack.ForceClose();
-
-            foreach (var basePlayer in BasePlayer.activePlayerList)
-                OnPlayerDisconnected(basePlayer);
+                backpack.SaveData();
+                backpack.KillContainer();
+            }
         }
 
         private void OnNewSave(string filename)
