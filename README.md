@@ -44,7 +44,8 @@ Please consider donating to support me and help me put more time into my plugins
   "View Backpack Syntax": "Syntax: /viewbackpack <name or id>",
   "User ID not Found": "Could not find player with ID '{0}'",
   "User Name not Found": "Could not find player with name '{0}'",
-  "Multiple Players Found": "Multiple matching players found:\n{0}"
+  "Multiple Players Found": "Multiple matching players found:\n{0}",
+  "Backpack Over Capacity": "Your backpack was over capacity. Overflowing items were added to your inventory or dropped."
 }
 ```
 
