@@ -28,6 +28,7 @@ namespace Oxide.Plugins
 
         private const string UsagePermission = "backpacks.use";
         private const string AdminPermission = "backpacks.admin";
+        private const string KeepOnDeathPermission = "backpacks.keepondeath";
 
         private const string BackpackPrefab = "assets/prefabs/misc/item drop/item_drop_backpack.prefab";
 
@@ -52,6 +53,7 @@ namespace Oxide.Plugins
 
             permission.RegisterPermission(UsagePermission, this);
             permission.RegisterPermission(AdminPermission, this);
+            permission.RegisterPermission(KeepOnDeathPermission, this);
 
             for (ushort size = MinSize; size <= MaxSize; size++)
             {
@@ -191,6 +193,9 @@ namespace Oxide.Plugins
                     var backpack = Backpack.Get(player.userID);
 
                     backpack.ForceClose();
+
+                    if (permission.UserHasPermission(player.UserIDString, KeepOnDeathPermission))
+                        return;
 
                     if (_config.EraseOnDeath)
                         backpack.EraseContents();

@@ -16,6 +16,7 @@ Please consider donating to support me and help me put more time into my plugins
 - `backpacks.admin` -- required for `/viewbackpack` command
 - `backpacks.use` -- required to open your own backpack
 - `backpacks.use.1 - 7` -- gives player access to a certain amount of inventory rows overwriting the configured default size *(e.g. backpacks.use.3 gives them 3 rows of item space; still requires backpacks.use)*
+- `backpacks.keepondeath` -- exempts player from having their backpack erased or dropped on death
 
 ## Configuration
 
