@@ -562,11 +562,10 @@ namespace Oxide.Plugins
         {
             private bool _initialized = false;
             private string _ownerIdString;
+            private bool _hasPossibleOverflow = false;
 
             private ItemContainer _itemContainer = new ItemContainer();
             private List<BasePlayer> _looters = new List<BasePlayer>();
-
-            public bool hasOverflowingItems = false;
 
             [JsonProperty("OwnerID")]
             public ulong OwnerId { get; private set; }
@@ -625,13 +624,13 @@ namespace Oxide.Plugins
                     _itemContainer.GiveUID();
                     _itemContainer.capacity = allowedCapacity;
 
-                    if (_itemDataCollection.Count > allowedCapacity)
+                    if (_itemDataCollection.Max(item => item.Position) >= allowedCapacity)
                     {
                         // Temporarily increase the capacity to allow all items to fit
                         // Extra items will be addressed when the backpack is opened by the owner
                         // If an admin views the backpack in the meantime, it will appear as max capacity
                         _itemContainer.capacity = MaxSize * SlotsPerRow;
-                        hasOverflowingItems = true;
+                        _hasPossibleOverflow = true;
                     }
 
                     foreach (var backpackItem in _itemDataCollection)
@@ -649,7 +648,7 @@ namespace Oxide.Plugins
                 else if (_itemContainer.capacity > allowedCapacity)
                 {
                     // The capacity will be reduced later when the backpack is opened by the owner
-                    hasOverflowingItems = true;
+                    _hasPossibleOverflow = true;
                 }
                 else if (_itemContainer.capacity < allowedCapacity)
                 {
@@ -713,9 +712,9 @@ namespace Oxide.Plugins
                     return;
                 }
 
-                if (hasOverflowingItems && looter.userID == OwnerId)
+                if (_hasPossibleOverflow && looter.userID == OwnerId)
                 {
-                    HandleOverflowingItems(looter);
+                    HandlePossiblyOverflowingItems(looter);
                 }
 
                 PlayerLootContainer(looter, _itemContainer);
@@ -723,7 +722,7 @@ namespace Oxide.Plugins
                 Interface.CallHook("OnBackpackOpened", looter, OwnerId, _itemContainer);
             }
 
-            private void HandleOverflowingItems(BasePlayer receiver)
+            private void HandlePossiblyOverflowingItems(BasePlayer receiver)
             {
                 // Close for other looters since we are going to alter the capacity
                 foreach (var looter in _looters.ToArray())
@@ -755,16 +754,13 @@ namespace Oxide.Plugins
                 var itemsDroppedOrGivenToPlayer = 0;
                 foreach (var item in extraItems)
                 {
-                    // Try to move to a vacant slot or add to an existing stack in the backpack or player inventory, else drop
-                    // Note: Depending on stack sizes, partial stacks may compacted into the backpack or given to the player
-                    // When that happens, the item stack is automatically adjusted and the remaining amount is dropped
+                    // Try to move the item to a vacant backpack slot or add to an existing stack in the backpack
+                    // If the item cannot be completely compacted into the backpack, the remainder is given to the player
+                    // If the item does not completely fit in the player inventory, the remainder is automatically dropped
                     if (!item.MoveToContainer(_itemContainer))
                     {
                         itemsDroppedOrGivenToPlayer++;
-                        if (!receiver.inventory.GiveItem(item))
-                        {
-                            item.Drop(receiver.GetDropPosition(), receiver.GetDropVelocity(), receiver.GetNetworkRotation());
-                        }
+                        receiver.GiveItem(item);
                     }
                 }
 
@@ -773,7 +769,7 @@ namespace Oxide.Plugins
                     _instance.PrintToChat(receiver, _instance.lang.GetMessage("Backpack Over Capacity", _instance, receiver.UserIDString));
                 }
 
-                hasOverflowingItems = false;
+                _hasPossibleOverflow = false;
             }
 
             public void ForceCloseAllLooters()
