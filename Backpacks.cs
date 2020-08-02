@@ -33,6 +33,7 @@ namespace Oxide.Plugins
 
         private readonly Dictionary<ulong, Backpack> _backpacks = new Dictionary<ulong, Backpack>();
         private readonly Dictionary<BasePlayer, Backpack> _openBackpacks = new Dictionary<BasePlayer, Backpack>();
+        private readonly Dictionary<ulong, DroppedItemContainer> _lastDroppedBackpacks = new Dictionary<ulong, DroppedItemContainer>();
         private Dictionary<string, ushort> _backpackSizePermissions = new Dictionary<string, ushort>();
 
         private static Backpacks _instance;
@@ -63,6 +64,11 @@ namespace Oxide.Plugins
             _backpackSizePermissions = _backpackSizePermissions
                 .OrderByDescending(kvp => kvp.Value)
                 .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+
+            if (!_config.DropOnDeath || !ConVar.Server.corpses)
+            {
+                Unsubscribe("OnPlayerCorpse");
+            }
         }
 
         private void Unload()
@@ -195,9 +201,37 @@ namespace Oxide.Plugins
                     if (_config.EraseOnDeath)
                         backpack.EraseContents();
                     else if (_config.DropOnDeath)
-                        backpack.Drop(player.transform.position + Vector3.up * 0.5f);
+                    {
+                        var droppedContainer = backpack.Drop(player.transform.position);
+                        
+                        if (droppedContainer != null && ConVar.Server.corpses)
+                        {
+                            if (_lastDroppedBackpacks.ContainsKey(player.userID))
+                                _lastDroppedBackpacks[player.userID] = droppedContainer;
+                            else
+                                _lastDroppedBackpacks.Add(player.userID, droppedContainer);
+                        }
+                    }
                 }
             }
+        }
+
+        private void OnPlayerCorpse(BasePlayer player, BaseCorpse corpse)
+        {
+            if (!_lastDroppedBackpacks.ContainsKey(player.userID))
+                return;
+
+            var container = _lastDroppedBackpacks[player.userID];
+            if (container == null)
+                return;
+
+            var corpseCollider = corpse.GetComponent<Collider>();
+            var containerCollider = _lastDroppedBackpacks[player.userID].GetComponent<Collider>();
+            
+            if (corpseCollider != null && containerCollider != null)
+                Physics.IgnoreCollision(corpseCollider, containerCollider);
+
+            _lastDroppedBackpacks.Remove(player.userID);
         }
 
         private void OnGroupPermissionGranted(string group, string perm)
@@ -682,51 +716,53 @@ namespace Oxide.Plugins
                 }
             }
 
-            public void Drop(Vector3 position)
+            public DroppedItemContainer Drop(Vector3 position)
             {
                 object hookResult = Interface.CallHook("CanDropBackpack", OwnerId, position);
 
                 if (hookResult is bool && (bool)hookResult == false)
-                    return;
+                    return null;
 
-                if (_itemContainer.itemList.Count > 0)
+                if (_itemContainer.itemList.Count == 0)
+                    return null;
+                
+                BaseEntity entity = GameManager.server.CreateEntity(BackpackPrefab, position, Quaternion.identity);
+                DroppedItemContainer container = entity as DroppedItemContainer;
+
+                // This needs to be set to "genericlarge" to allow up to 7 rows to be displayed.
+                container.lootPanelName = "genericlarge";
+
+                // The player name is being ignore due to the panelName being "genericlarge".
+                // TODO: Try to figure out a way to have 7 rows with custom name.
+                container.playerName = $"{FindOwnerPlayer()?.Name ?? "Somebody"}'s Backpack";
+                container.playerSteamID = OwnerId;
+
+                container.inventory = new ItemContainer();
+                container.inventory.ServerInitialize(null, _itemContainer.itemList.Count);
+                container.inventory.GiveUID();
+                container.inventory.entityOwner = container;
+                container.inventory.SetFlag(ItemContainer.Flag.NoItemInput, true);
+
+                foreach (Item item in _itemContainer.itemList.ToArray())
                 {
-                    BaseEntity entity = GameManager.server.CreateEntity(BackpackPrefab, position, Quaternion.identity);
-                    DroppedItemContainer container = entity as DroppedItemContainer;
-
-                    // This needs to be set to "genericlarge" to allow up to 7 rows to be displayed.
-                    container.lootPanelName = "genericlarge";
-
-                    // The player name is being ignore due to the panelName being "genericlarge".
-                    // TODO: Try to figure out a way to have 7 rows with custom name.
-                    container.playerName = $"{FindOwnerPlayer()?.Name ?? "Somebody"}'s Backpack";
-                    container.playerSteamID = OwnerId;
-
-                    container.inventory = new ItemContainer();
-                    container.inventory.ServerInitialize(null, _itemContainer.itemList.Count);
-                    container.inventory.GiveUID();
-                    container.inventory.entityOwner = container;
-                    container.inventory.SetFlag(ItemContainer.Flag.NoItemInput, true);
-
-                    foreach (Item item in _itemContainer.itemList.ToArray())
+                    if (!item.MoveToContainer(container.inventory))
                     {
-                        if (!item.MoveToContainer(container.inventory))
-                        {
-                            item.Remove();
-                            item.DoRemove();
-                        }
-                    }
-
-                    container.ResetRemovalTime();
-                    container.Spawn();
-
-                    ItemManager.DoRemoves();
-
-                    if (!_instance._config.SaveBackpacksOnServerSave)
-                    {
-                        SaveData();
+                        item.Remove();
+                        item.DoRemove();
                     }
                 }
+
+                container.ResetRemovalTime();
+                container.Spawn();
+
+                ItemManager.DoRemoves();
+
+                if (!_instance._config.SaveBackpacksOnServerSave)
+                {
+                    SaveData();
+                }
+
+                return container;
             }
 
             public void EraseContents()
