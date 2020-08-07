@@ -16,7 +16,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "LaserHydra", "3.2.0")]
+    [Info("Backpacks", "LaserHydra", "3.2.1")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : RustPlugin
     {
@@ -738,7 +738,7 @@ namespace Oxide.Plugins
                     _itemContainer.GiveUID();
                     _itemContainer.capacity = allowedCapacity;
 
-                    if (_itemDataCollection.Max(item => item.Position) >= allowedCapacity)
+                    if (_itemDataCollection.Count != 0 && _itemDataCollection.Max(item => item.Position) >= allowedCapacity)
                     {
                         // Temporarily increase the capacity to allow all items to fit
                         // Extra items will be addressed when the backpack is opened by the owner
