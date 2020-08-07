@@ -50,6 +50,7 @@ Please consider donating to support me and help me put more time into my plugins
   "User ID not Found": "Could not find player with ID '{0}'",
   "User Name not Found": "Could not find player with name '{0}'",
   "Multiple Players Found": "Multiple matching players found:\n{0}",
+  "Backpack Over Capacity": "Your backpack was over capacity. Overflowing items were added to your inventory or dropped.",
   "Backpack Fetch Syntax": "Syntax: backpack.fetch <item short name or id> <amount>",
   "Invalid Item": "Invalid Item Name or ID.",
   "Invalid Item Amount": "Item amount must be an integer greater than 0.",

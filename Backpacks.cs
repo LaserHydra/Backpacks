@@ -79,7 +79,7 @@ namespace Oxide.Plugins
         {
             foreach (var backpack in _backpacks.Values)
             {
-                backpack.ForceClose();
+                backpack.ForceCloseAllLooters();
                 backpack.SaveData();
                 backpack.KillContainer();
             }
@@ -121,7 +121,7 @@ namespace Oxide.Plugins
             {
                 foreach (var backpack in _backpacks.Values)
                 {
-                    backpack.ForceClose();
+                    backpack.ForceCloseAllLooters();
                     backpack.SaveData();
                     backpack.KillContainer();
                 }
@@ -139,7 +139,7 @@ namespace Oxide.Plugins
             {
                 var backpack = _backpacks[player.userID];
 
-                backpack.ForceClose();
+                backpack.ForceCloseAllLooters();
                 backpack.SaveData();
                 backpack.KillContainer();
 
@@ -200,7 +200,7 @@ namespace Oxide.Plugins
                 {
                     var backpack = Backpack.Get(player.userID);
 
-                    backpack.ForceClose();
+                    backpack.ForceCloseAllLooters();
 
                     if (permission.UserHasPermission(player.UserIDString, KeepOnDeathPermission))
                         return;
@@ -601,6 +601,7 @@ namespace Oxide.Plugins
                 ["User ID not Found"] = "Could not find player with ID '{0}'",
                 ["User Name not Found"] = "Could not find player with name '{0}'",
                 ["Multiple Players Found"] = "Multiple matching players found:\n{0}",
+                ["Backpack Over Capacity"] = "Your backpack was over capacity. Overflowing items were added to your inventory or dropped.",
                 ["Backpack Fetch Syntax"] = "Syntax: backpack.fetch <item short name or id> <amount>",
                 ["Invalid Item"] = "Invalid Item Name or ID.",
                 ["Invalid Item Amount"] = "Item amount must be an integer greater than 0.",
@@ -675,6 +676,7 @@ namespace Oxide.Plugins
         {
             private bool _initialized = false;
             private string _ownerIdString;
+            private bool _hasPossibleOverflow = false;
 
             private ItemContainer _itemContainer = new ItemContainer();
             private List<BasePlayer> _looters = new List<BasePlayer>();
@@ -692,7 +694,7 @@ namespace Oxide.Plugins
 
             ~Backpack()
             {
-                ForceClose();
+                ForceCloseAllLooters();
                 KillContainer();
             }
 
@@ -700,7 +702,7 @@ namespace Oxide.Plugins
 
             public bool IsUnderlyingContainer(ItemContainer itemContainer) => _itemContainer == itemContainer;
 
-            public ushort GetSize()
+            public ushort GetAllowedSize()
             {
                 foreach(var kvp in _instance._backpackSizePermissions)
                 {
@@ -711,7 +713,7 @@ namespace Oxide.Plugins
                 return _instance._config.BackpackSize;
             }
 
-            private int GetCapacity() => GetSize() * SlotsPerRow;
+            private int GetAllowedCapacity() => GetAllowedSize() * SlotsPerRow;
 
             public void Initialize()
             {
@@ -722,19 +724,28 @@ namespace Oxide.Plugins
                 else
                 {
                     // Force-close since we are re-initializing
-                    ForceClose();
+                    ForceCloseAllLooters();
                 }
 
                 var ownerPlayer = FindOwnerPlayer()?.Object as BasePlayer;
-
-                _itemContainer.capacity = GetCapacity();
                 _itemContainer.entityOwner = ownerPlayer;
 
+                var allowedCapacity = GetAllowedCapacity();
                 if (!_initialized)
                 {
                     _itemContainer.isServer = true;
                     _itemContainer.allowedContents = ItemContainer.ContentsType.Generic;
                     _itemContainer.GiveUID();
+                    _itemContainer.capacity = allowedCapacity;
+
+                    if (_itemDataCollection.Max(item => item.Position) >= allowedCapacity)
+                    {
+                        // Temporarily increase the capacity to allow all items to fit
+                        // Extra items will be addressed when the backpack is opened by the owner
+                        // If an admin views the backpack in the meantime, it will appear as max capacity
+                        _itemContainer.capacity = MaxSize * SlotsPerRow;
+                        _hasPossibleOverflow = true;
+                    }
 
                     foreach (var backpackItem in _itemDataCollection)
                     {
@@ -747,6 +758,16 @@ namespace Oxide.Plugins
                     }
 
                     _initialized = true;
+                }
+                else if (_itemContainer.capacity > allowedCapacity)
+                {
+                    // The capacity will be reduced later when the backpack is opened by the owner
+                    _hasPossibleOverflow = true;
+                }
+                else if (_itemContainer.capacity < allowedCapacity)
+                {
+                    // Allowed capacity was increased since last initialized
+                    _itemContainer.capacity = allowedCapacity;
                 }
             }
 
@@ -795,21 +816,81 @@ namespace Oxide.Plugins
                 if (!_instance.VerifyCanOpenBackpack(looter, OwnerId))
                     return;
 
+                if (_hasPossibleOverflow && looter.userID == OwnerId)
+                {
+                    HandlePossiblyOverflowingItems(looter);
+                }
+
                 PlayerLootContainer(looter, _itemContainer);
 
                 Interface.CallHook("OnBackpackOpened", looter, OwnerId, _itemContainer);
             }
 
-            public void ForceClose()
+            private void HandlePossiblyOverflowingItems(BasePlayer receiver)
+            {
+                // Close for other looters since we are going to alter the capacity
+                foreach (var looter in _looters.ToArray())
+                {
+                    if (looter != receiver)
+                    {
+                        ForceCloseLooter(looter);
+                    }
+                }
+
+                var allowedCapacity = GetAllowedCapacity();
+
+                // Item order is preserved so that compaction is more deterministic
+                // Basically, items earlier in the backpack are more likely to stay in the backpack
+                var extraItems = _itemContainer.itemList
+                    .OrderBy(item => item.position)
+                    .Where(item => item.position >= allowedCapacity)
+                    .ToArray();
+
+                // Remove the extra items from the container so the capacity can be reduced
+                foreach (var item in extraItems)
+                {
+                    item.RemoveFromContainer();
+                }
+
+                // Capacity must be reduced before attempting to move overflowing items or they will be placed in the extra slots
+                _itemContainer.capacity = allowedCapacity;
+
+                var itemsDroppedOrGivenToPlayer = 0;
+                foreach (var item in extraItems)
+                {
+                    // Try to move the item to a vacant backpack slot or add to an existing stack in the backpack
+                    // If the item cannot be completely compacted into the backpack, the remainder is given to the player
+                    // If the item does not completely fit in the player inventory, the remainder is automatically dropped
+                    if (!item.MoveToContainer(_itemContainer))
+                    {
+                        itemsDroppedOrGivenToPlayer++;
+                        receiver.GiveItem(item);
+                    }
+                }
+
+                if (itemsDroppedOrGivenToPlayer > 0)
+                {
+                    _instance.PrintToChat(receiver, _instance.lang.GetMessage("Backpack Over Capacity", _instance, receiver.UserIDString));
+                }
+
+                _hasPossibleOverflow = false;
+            }
+
+            public void ForceCloseAllLooters()
             {
                 foreach (BasePlayer looter in _looters.ToArray())
                 {
-                    looter.inventory.loot.Clear();
-                    looter.inventory.loot.MarkDirty();
-                    looter.inventory.loot.SendImmediate();
-
-                    OnClose(looter);
+                    ForceCloseLooter(looter);
                 }
+            }
+
+            private void ForceCloseLooter(BasePlayer looter)
+            {
+                looter.inventory.loot.Clear();
+                looter.inventory.loot.MarkDirty();
+                looter.inventory.loot.SendImmediate();
+
+                OnClose(looter);
             }
 
             public void OnClose(BasePlayer looter)
