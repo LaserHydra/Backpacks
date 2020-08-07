@@ -16,7 +16,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "LaserHydra", "3.1.0")]
+    [Info("Backpacks", "LaserHydra", "3.2.0")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : RustPlugin
     {
@@ -27,12 +27,15 @@ namespace Oxide.Plugins
         private const ushort SlotsPerRow = 6;
 
         private const string UsagePermission = "backpacks.use";
+        private const string FetchPermission = "backpacks.fetch";
         private const string AdminPermission = "backpacks.admin";
+        private const string KeepOnDeathPermission = "backpacks.keepondeath";
 
         private const string BackpackPrefab = "assets/prefabs/misc/item drop/item_drop_backpack.prefab";
 
         private readonly Dictionary<ulong, Backpack> _backpacks = new Dictionary<ulong, Backpack>();
         private readonly Dictionary<BasePlayer, Backpack> _openBackpacks = new Dictionary<BasePlayer, Backpack>();
+        private readonly Dictionary<ulong, DroppedItemContainer> _lastDroppedBackpacks = new Dictionary<ulong, DroppedItemContainer>();
         private Dictionary<string, ushort> _backpackSizePermissions = new Dictionary<string, ushort>();
 
         private static Backpacks _instance;
@@ -51,7 +54,9 @@ namespace Oxide.Plugins
             _instance = this;
 
             permission.RegisterPermission(UsagePermission, this);
+            permission.RegisterPermission(FetchPermission, this);
             permission.RegisterPermission(AdminPermission, this);
+            permission.RegisterPermission(KeepOnDeathPermission, this);
 
             for (ushort size = MinSize; size <= MaxSize; size++)
             {
@@ -63,15 +68,21 @@ namespace Oxide.Plugins
             _backpackSizePermissions = _backpackSizePermissions
                 .OrderByDescending(kvp => kvp.Value)
                 .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+
+            if (!_config.DropOnDeath || !ConVar.Server.corpses)
+            {
+                Unsubscribe("OnPlayerCorpse");
+            }
         }
 
         private void Unload()
         {
             foreach (var backpack in _backpacks.Values)
-                backpack.ForceClose();
-
-            foreach (var basePlayer in BasePlayer.activePlayerList)
-                OnPlayerDisconnected(basePlayer);
+            {
+                backpack.ForceCloseAllLooters();
+                backpack.SaveData();
+                backpack.KillContainer();
+            }
         }
 
         private void OnNewSave(string filename)
@@ -110,7 +121,7 @@ namespace Oxide.Plugins
             {
                 foreach (var backpack in _backpacks.Values)
                 {
-                    backpack.ForceClose();
+                    backpack.ForceCloseAllLooters();
                     backpack.SaveData();
                     backpack.KillContainer();
                 }
@@ -128,7 +139,7 @@ namespace Oxide.Plugins
             {
                 var backpack = _backpacks[player.userID];
 
-                backpack.ForceClose();
+                backpack.ForceCloseAllLooters();
                 backpack.SaveData();
                 backpack.KillContainer();
 
@@ -189,14 +200,45 @@ namespace Oxide.Plugins
                 {
                     var backpack = Backpack.Get(player.userID);
 
-                    backpack.ForceClose();
+                    backpack.ForceCloseAllLooters();
+
+                    if (permission.UserHasPermission(player.UserIDString, KeepOnDeathPermission))
+                        return;
 
                     if (_config.EraseOnDeath)
                         backpack.EraseContents();
                     else if (_config.DropOnDeath)
-                        backpack.Drop(player.transform.position + Vector3.up * 0.5f);
+                    {
+                        var droppedContainer = backpack.Drop(player.transform.position);
+                        
+                        if (droppedContainer != null && ConVar.Server.corpses)
+                        {
+                            if (_lastDroppedBackpacks.ContainsKey(player.userID))
+                                _lastDroppedBackpacks[player.userID] = droppedContainer;
+                            else
+                                _lastDroppedBackpacks.Add(player.userID, droppedContainer);
+                        }
+                    }
                 }
             }
+        }
+
+        private void OnPlayerCorpse(BasePlayer player, BaseCorpse corpse)
+        {
+            if (!_lastDroppedBackpacks.ContainsKey(player.userID))
+                return;
+
+            var container = _lastDroppedBackpacks[player.userID];
+            if (container == null)
+                return;
+
+            var corpseCollider = corpse.GetComponent<Collider>();
+            var containerCollider = _lastDroppedBackpacks[player.userID].GetComponent<Collider>();
+            
+            if (corpseCollider != null && containerCollider != null)
+                Physics.IgnoreCollision(corpseCollider, containerCollider);
+
+            _lastDroppedBackpacks.Remove(player.userID);
         }
 
         private void OnGroupPermissionGranted(string group, string perm)
@@ -311,6 +353,94 @@ namespace Oxide.Plugins
             }
             else
                 PrintToChat(player, lang.GetMessage("No Permission", this, player.UserIDString));
+        }
+
+        [ConsoleCommand("backpack.fetch")]
+        private void FetchBackpackItemConsoleCommand(ConsoleSystem.Arg arg)
+        {
+            BasePlayer player = arg.Player();
+
+            if (player == null)
+                return;
+
+            if (!permission.UserHasPermission(player.UserIDString, FetchPermission))
+            {
+                PrintToChat(player, lang.GetMessage("No Permission", this, player.UserIDString));
+                return;
+            }
+
+            if (!arg.HasArgs(2))
+            {
+                PrintToConsole(player, lang.GetMessage("Backpack Fetch Syntax", this, player.UserIDString));
+                return;
+            }
+
+            if (!VerifyCanOpenBackpack(player, player.userID))
+                return;
+
+            string[] args = arg.Args;
+            string itemArg = args[0];
+            int itemID;
+
+            ItemDefinition itemDefinition = ItemManager.FindItemDefinition(itemArg);
+            if (itemDefinition != null)
+            {
+                itemID = itemDefinition.itemid;
+            }
+            else
+            {
+                // User may have provided an itemID instead of item short name
+                if (!int.TryParse(itemArg, out itemID))
+                {
+                    PrintToChat(player, lang.GetMessage("Invalid Item", this, player.UserIDString));
+                    return;
+                }
+
+                itemDefinition = ItemManager.FindItemDefinition(itemID);
+
+                if (itemDefinition == null)
+                {
+                    PrintToChat(player, lang.GetMessage("Invalid Item", this, player.UserIDString));
+                    return;
+                }
+            }
+
+            int desiredAmount;
+            if (!int.TryParse(args[1], out desiredAmount))
+            {
+                PrintToChat(player, lang.GetMessage("Invalid Item Amount", this, player.UserIDString));
+                return;
+            }
+
+            if (desiredAmount < 1)
+            {
+                PrintToChat(player, lang.GetMessage("Invalid Item Amount", this, player.UserIDString));
+                return;
+            }
+
+            string itemLocalizedName = itemDefinition.displayName.translated;
+            Backpack backpack = Backpack.Get(player.userID);
+            int quantityInBackpack = backpack.GetItemQuantity(itemID);
+
+            if (quantityInBackpack == 0)
+            {
+                PrintToChat(player, lang.GetMessage("Item Not In Backpack", this, player.UserIDString), itemLocalizedName);
+                return;
+            }
+
+            if (desiredAmount > quantityInBackpack)
+                desiredAmount = quantityInBackpack;
+
+            int amountTransferred = backpack.MoveItemsToPlayerInventory(player, itemID, desiredAmount);
+
+            if (amountTransferred > 0)
+            {
+                PrintToChat(player, lang.GetMessage("Items Fetched", this, player.UserIDString), amountTransferred, itemLocalizedName);
+            }
+            else
+            {
+                PrintToChat(player, lang.GetMessage("Fetch Failed", this, player.UserIDString), itemLocalizedName);
+            }
         }
 
         [ChatCommand("viewbackpack")]
@@ -433,6 +563,24 @@ namespace Oxide.Plugins
             }
         }
 
+        private bool VerifyCanOpenBackpack(BasePlayer looter, ulong ownerId)
+        {
+            if (EventManager?.Call<bool>("isPlaying", looter) ?? false)
+            {
+                PrintToChat(looter, lang.GetMessage("May Not Open Backpack In Event", this, looter.UserIDString));
+                return false;
+            }
+
+            var hookResult = Interface.Oxide.CallHook("CanOpenBackpack", looter, ownerId);
+            if (hookResult != null && hookResult is string)
+            {
+                _instance.PrintToChat(looter, hookResult as string);
+                return false;
+            }
+
+            return true;
+        }
+
         private static void LoadData<T>(out T data, string filename = null) => 
             data = Interface.Oxide.DataFileSystem.ReadObject<T>(filename ?? _instance.Name);
 
@@ -452,7 +600,14 @@ namespace Oxide.Plugins
                 ["View Backpack Syntax"] = "Syntax: /viewbackpack <name or id>",
                 ["User ID not Found"] = "Could not find player with ID '{0}'",
                 ["User Name not Found"] = "Could not find player with name '{0}'",
-                ["Multiple Players Found"] = "Multiple matching players found:\n{0}"
+                ["Multiple Players Found"] = "Multiple matching players found:\n{0}",
+                ["Backpack Over Capacity"] = "Your backpack was over capacity. Overflowing items were added to your inventory or dropped.",
+                ["Backpack Fetch Syntax"] = "Syntax: backpack.fetch <item short name or id> <amount>",
+                ["Invalid Item"] = "Invalid Item Name or ID.",
+                ["Invalid Item Amount"] = "Item amount must be an integer greater than 0.",
+                ["Item Not In Backpack"] = "Item \"{0}\" not found in backpack.",
+                ["Items Fetched"] = "Fetched {0} \"{1}\" from backpack.",
+                ["Fetch Failed"] = "Couldn't fetch \"{0}\" from backpack. Inventory may be full."
             }, this);
         }
 
@@ -521,6 +676,7 @@ namespace Oxide.Plugins
         {
             private bool _initialized = false;
             private string _ownerIdString;
+            private bool _hasPossibleOverflow = false;
 
             private ItemContainer _itemContainer = new ItemContainer();
             private List<BasePlayer> _looters = new List<BasePlayer>();
@@ -538,7 +694,7 @@ namespace Oxide.Plugins
 
             ~Backpack()
             {
-                ForceClose();
+                ForceCloseAllLooters();
                 KillContainer();
             }
 
@@ -546,7 +702,7 @@ namespace Oxide.Plugins
 
             public bool IsUnderlyingContainer(ItemContainer itemContainer) => _itemContainer == itemContainer;
 
-            public ushort GetSize()
+            public ushort GetAllowedSize()
             {
                 foreach(var kvp in _instance._backpackSizePermissions)
                 {
@@ -557,7 +713,7 @@ namespace Oxide.Plugins
                 return _instance._config.BackpackSize;
             }
 
-            private int GetCapacity() => GetSize() * SlotsPerRow;
+            private int GetAllowedCapacity() => GetAllowedSize() * SlotsPerRow;
 
             public void Initialize()
             {
@@ -568,19 +724,28 @@ namespace Oxide.Plugins
                 else
                 {
                     // Force-close since we are re-initializing
-                    ForceClose();
+                    ForceCloseAllLooters();
                 }
 
                 var ownerPlayer = FindOwnerPlayer()?.Object as BasePlayer;
-
-                _itemContainer.capacity = GetCapacity();
                 _itemContainer.entityOwner = ownerPlayer;
 
+                var allowedCapacity = GetAllowedCapacity();
                 if (!_initialized)
                 {
                     _itemContainer.isServer = true;
                     _itemContainer.allowedContents = ItemContainer.ContentsType.Generic;
                     _itemContainer.GiveUID();
+                    _itemContainer.capacity = allowedCapacity;
+
+                    if (_itemDataCollection.Max(item => item.Position) >= allowedCapacity)
+                    {
+                        // Temporarily increase the capacity to allow all items to fit
+                        // Extra items will be addressed when the backpack is opened by the owner
+                        // If an admin views the backpack in the meantime, it will appear as max capacity
+                        _itemContainer.capacity = MaxSize * SlotsPerRow;
+                        _hasPossibleOverflow = true;
+                    }
 
                     foreach (var backpackItem in _itemDataCollection)
                     {
@@ -593,6 +758,16 @@ namespace Oxide.Plugins
                     }
 
                     _initialized = true;
+                }
+                else if (_itemContainer.capacity > allowedCapacity)
+                {
+                    // The capacity will be reduced later when the backpack is opened by the owner
+                    _hasPossibleOverflow = true;
+                }
+                else if (_itemContainer.capacity < allowedCapacity)
+                {
+                    // Allowed capacity was increased since last initialized
+                    _itemContainer.capacity = allowedCapacity;
                 }
             }
 
@@ -618,6 +793,14 @@ namespace Oxide.Plugins
                     Initialize();
                 }
 
+                // The entityOwner may no longer be valid if it was instantiated while the player was offline (due to player death)
+                if (_itemContainer.entityOwner == null)
+                {
+                    var ownerPlayer = FindOwnerPlayer()?.Object as BasePlayer;
+                    if (ownerPlayer != null)
+                        _itemContainer.entityOwner = ownerPlayer;
+                }
+
                 // Container can't be looted for some reason.
                 // We should cancel here and remove the looter from the open backpacks again.
                 if (looter.inventory.loot.IsLooting()
@@ -630,17 +813,12 @@ namespace Oxide.Plugins
                 if (!_looters.Contains(looter))
                     _looters.Add(looter);
 
-                if (_instance.EventManager?.Call<bool>("isPlaying", looter) ?? false)
-                {
-                    _instance.PrintToChat(looter, _instance.lang.GetMessage("May Not Open Backpack In Event", _instance, looter.UserIDString));
+                if (!_instance.VerifyCanOpenBackpack(looter, OwnerId))
                     return;
-                }
 
-                var hookResult = Interface.Oxide.CallHook("CanOpenBackpack", looter, OwnerId);
-                if (hookResult != null && hookResult is string)
+                if (_hasPossibleOverflow && looter.userID == OwnerId)
                 {
-                    _instance.PrintToChat(looter, hookResult as string);
-                    return;
+                    HandlePossiblyOverflowingItems(looter);
                 }
 
                 PlayerLootContainer(looter, _itemContainer);
@@ -648,16 +826,71 @@ namespace Oxide.Plugins
                 Interface.CallHook("OnBackpackOpened", looter, OwnerId, _itemContainer);
             }
 
-            public void ForceClose()
+            private void HandlePossiblyOverflowingItems(BasePlayer receiver)
+            {
+                // Close for other looters since we are going to alter the capacity
+                foreach (var looter in _looters.ToArray())
+                {
+                    if (looter != receiver)
+                    {
+                        ForceCloseLooter(looter);
+                    }
+                }
+
+                var allowedCapacity = GetAllowedCapacity();
+
+                // Item order is preserved so that compaction is more deterministic
+                // Basically, items earlier in the backpack are more likely to stay in the backpack
+                var extraItems = _itemContainer.itemList
+                    .OrderBy(item => item.position)
+                    .Where(item => item.position >= allowedCapacity)
+                    .ToArray();
+
+                // Remove the extra items from the container so the capacity can be reduced
+                foreach (var item in extraItems)
+                {
+                    item.RemoveFromContainer();
+                }
+
+                // Capacity must be reduced before attempting to move overflowing items or they will be placed in the extra slots
+                _itemContainer.capacity = allowedCapacity;
+
+                var itemsDroppedOrGivenToPlayer = 0;
+                foreach (var item in extraItems)
+                {
+                    // Try to move the item to a vacant backpack slot or add to an existing stack in the backpack
+                    // If the item cannot be completely compacted into the backpack, the remainder is given to the player
+                    // If the item does not completely fit in the player inventory, the remainder is automatically dropped
+                    if (!item.MoveToContainer(_itemContainer))
+                    {
+                        itemsDroppedOrGivenToPlayer++;
+                        receiver.GiveItem(item);
+                    }
+                }
+
+                if (itemsDroppedOrGivenToPlayer > 0)
+                {
+                    _instance.PrintToChat(receiver, _instance.lang.GetMessage("Backpack Over Capacity", _instance, receiver.UserIDString));
+                }
+
+                _hasPossibleOverflow = false;
+            }
+
+            public void ForceCloseAllLooters()
             {
                 foreach (BasePlayer looter in _looters.ToArray())
                 {
-                    looter.inventory.loot.Clear();
-                    looter.inventory.loot.MarkDirty();
-                    looter.inventory.loot.SendImmediate();
-
-                    OnClose(looter);
+                    ForceCloseLooter(looter);
                 }
+            }
+
+            private void ForceCloseLooter(BasePlayer looter)
+            {
+                looter.inventory.loot.Clear();
+                looter.inventory.loot.MarkDirty();
+                looter.inventory.loot.SendImmediate();
+
+                OnClose(looter);
             }
 
             public void OnClose(BasePlayer looter)
@@ -673,51 +906,53 @@ namespace Oxide.Plugins
                 }
             }
 
-            public void Drop(Vector3 position)
+            public DroppedItemContainer Drop(Vector3 position)
             {
                 object hookResult = Interface.CallHook("CanDropBackpack", OwnerId, position);
 
                 if (hookResult is bool && (bool)hookResult == false)
-                    return;
+                    return null;
 
-                if (_itemContainer.itemList.Count > 0)
+                if (_itemContainer.itemList.Count == 0)
+                    return null;
+                
+                BaseEntity entity = GameManager.server.CreateEntity(BackpackPrefab, position, Quaternion.identity);
+                DroppedItemContainer container = entity as DroppedItemContainer;
+
+                // This needs to be set to "genericlarge" to allow up to 7 rows to be displayed.
+                container.lootPanelName = "genericlarge";
+
+                // The player name is being ignore due to the panelName being "genericlarge".
+                // TODO: Try to figure out a way to have 7 rows with custom name.
+                container.playerName = $"{FindOwnerPlayer()?.Name ?? "Somebody"}'s Backpack";
+                container.playerSteamID = OwnerId;
+
+                container.inventory = new ItemContainer();
+                container.inventory.ServerInitialize(null, _itemContainer.itemList.Count);
+                container.inventory.GiveUID();
+                container.inventory.entityOwner = container;
+                container.inventory.SetFlag(ItemContainer.Flag.NoItemInput, true);
+
+                foreach (Item item in _itemContainer.itemList.ToArray())
                 {
-                    BaseEntity entity = GameManager.server.CreateEntity(BackpackPrefab, position, Quaternion.identity);
-                    DroppedItemContainer container = entity as DroppedItemContainer;
-
-                    // This needs to be set to "genericlarge" to allow up to 7 rows to be displayed.
-                    container.lootPanelName = "genericlarge";
-
-                    // The player name is being ignore due to the panelName being "genericlarge".
-                    // TODO: Try to figure out a way to have 7 rows with custom name.
-                    container.playerName = $"{FindOwnerPlayer()?.Name ?? "Somebody"}'s Backpack";
-                    container.playerSteamID = OwnerId;
-
-                    container.inventory = new ItemContainer();
-                    container.inventory.ServerInitialize(null, _itemContainer.itemList.Count);
-                    container.inventory.GiveUID();
-                    container.inventory.entityOwner = container;
-                    container.inventory.SetFlag(ItemContainer.Flag.NoItemInput, true);
-
-                    foreach (Item item in _itemContainer.itemList.ToArray())
+                    if (!item.MoveToContainer(container.inventory))
                     {
-                        if (!item.MoveToContainer(container.inventory))
-                        {
-                            item.Remove();
-                            item.DoRemove();
-                        }
-                    }
-
-                    container.ResetRemovalTime();
-                    container.Spawn();
-
-                    ItemManager.DoRemoves();
-
-                    if (!_instance._config.SaveBackpacksOnServerSave)
-                    {
-                        SaveData();
+                        item.Remove();
+                        item.DoRemove();
                     }
                 }
+
+                container.ResetRemovalTime();
+                container.Spawn();
+
+                ItemManager.DoRemoves();
+
+                if (!_instance._config.SaveBackpacksOnServerSave)
+                {
+                    SaveData();
+                }
+
+                return container;
             }
 
             public void EraseContents()
@@ -748,6 +983,49 @@ namespace Oxide.Plugins
                     .ToList();
 
                 Backpacks.SaveData(this, $"{_instance.Name}/{OwnerId}");
+            }
+
+            public int GetItemQuantity(int itemID) => _itemContainer.FindItemsByItemID(itemID).Sum(item => item.amount);
+
+            public int MoveItemsToPlayerInventory(BasePlayer player, int itemID, int desiredAmount)
+            {
+                List<Item> matchingItemStacks = _itemContainer.FindItemsByItemID(itemID);
+                int amountTransferred = 0;
+
+                foreach (Item itemStack in matchingItemStacks)
+                {
+                    int remainingDesiredAmount = desiredAmount - amountTransferred;
+                    Item itemToTransfer = (itemStack.amount > remainingDesiredAmount) ? itemStack.SplitItem(remainingDesiredAmount) : itemStack;
+                    int initialStackAmount = itemToTransfer.amount;
+
+                    bool transferFullySucceeded = player.inventory.GiveItem(itemToTransfer);
+                    amountTransferred += initialStackAmount;
+
+                    if (!transferFullySucceeded)
+                    {
+                        int amountRemainingInStack = itemToTransfer.amount;
+
+                        // Decrement the amountTransferred by the amount remaining in the stack
+                        // Since earlier we incremented it by the full stack amount
+                        amountTransferred -= amountRemainingInStack;
+
+                        if (itemToTransfer != itemStack)
+                        {
+                            // Add the remaining items from the split stack back to the original stack
+                            itemStack.amount += amountRemainingInStack;
+                            itemStack.MarkDirty();
+                        }
+                        break;
+                    }
+
+                    if (amountTransferred >= desiredAmount)
+                        break;
+                }
+
+                if (amountTransferred > 0 && !_instance._config.SaveBackpacksOnServerSave)
+                    SaveData();
+
+                return amountTransferred;
             }
 
             public static bool HasBackpackFile(ulong id)
@@ -808,6 +1086,7 @@ namespace Oxide.Plugins
             public int Ammo;
             public int AmmoType;
             public int DataInt;
+            public string Name;
             public string Text;
 
             public List<ItemData> Contents = new List<ItemData>();
@@ -851,10 +1130,19 @@ namespace Oxide.Plugins
                 if (flameThrower != null)
                     flameThrower.ammo = FlameFuel;
 
-                if (item.instanceData != null)
-                    item.instanceData.dataInt = DataInt;
+                if (DataInt > 0)
+                {
+                    item.instanceData = new ProtoBuf.Item.InstanceData
+                    {
+                        ShouldPool = false,
+                        dataInt = DataInt
+                    };
+                }
 
                 item.text = Text;
+
+                if (Name != null)
+                    item.name = Name;
 
                 return item;
             }
@@ -875,6 +1163,7 @@ namespace Oxide.Plugins
                 IsBlueprint = item.IsBlueprint(),
                 BlueprintTarget = item.blueprintTarget,
                 DataInt = item.instanceData?.dataInt ?? 0,
+                Name = item.name,
                 Text = item.text
             };
         }
