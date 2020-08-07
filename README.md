@@ -11,11 +11,16 @@ Please consider donating to support me and help me put more time into my plugins
 - `/backpack` -- open your own backpack
 - `/viewbackpack <name or id>` -- open another players backpack **[Admin Command]**
 
+## Console Commands
+
+- `backpack.fetch <item short name or id> <amount>` -- Fetch an item from your backpack
+
 ## Permissions
 
 - `backpacks.admin` -- required for `/viewbackpack` command
 - `backpacks.use` -- required to open your own backpack
 - `backpacks.use.1 - 7` -- gives player access to a certain amount of inventory rows overwriting the configured default size *(e.g. backpacks.use.3 gives them 3 rows of item space; still requires backpacks.use)*
+- `backpacks.fetch` -- required to use the `backpack.fetch` command
 - `backpacks.keepondeath` -- exempts player from having their backpack erased or dropped on death
 
 ## Configuration
@@ -45,7 +50,13 @@ Please consider donating to support me and help me put more time into my plugins
   "User ID not Found": "Could not find player with ID '{0}'",
   "User Name not Found": "Could not find player with name '{0}'",
   "Multiple Players Found": "Multiple matching players found:\n{0}",
-  "Backpack Over Capacity": "Your backpack was over capacity. Overflowing items were added to your inventory or dropped."
+  "Backpack Over Capacity": "Your backpack was over capacity. Overflowing items were added to your inventory or dropped.",
+  "Backpack Fetch Syntax": "Syntax: backpack.fetch <item short name or id> <amount>",
+  "Invalid Item": "Invalid Item Name or ID.",
+  "Invalid Item Amount": "Item amount must be an integer greater than 0.",
+  "Item Not In Backpack": "Item \"{0}\" not found in backpack.",
+  "Items Fetched": "Fetched {0} \"{1}\" from backpack.",
+  "Fetch Failed": "Couldn't fetch \"{0}\" from backpack. Inventory may be full."
 }
 ```
 
