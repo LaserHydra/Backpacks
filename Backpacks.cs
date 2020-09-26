@@ -17,7 +17,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "LaserHydra", "3.2.2")]
+    [Info("Backpacks", "LaserHydra", "3.3.0")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : RustPlugin
     {
@@ -26,8 +26,10 @@ namespace Oxide.Plugins
         private const ushort MinSize = 1;
         private const ushort MaxSize = 7;
         private const ushort SlotsPerRow = 6;
+        private const string GUIPanelName = "BackpacksUI";
 
         private const string UsagePermission = "backpacks.use";
+        private const string GUIPermission = "backpacks.gui";
         private const string FetchPermission = "backpacks.fetch";
         private const string AdminPermission = "backpacks.admin";
         private const string KeepOnDeathPermission = "backpacks.keepondeath";
@@ -55,6 +57,7 @@ namespace Oxide.Plugins
             _instance = this;
 
             permission.RegisterPermission(UsagePermission, this);
+            permission.RegisterPermission(GUIPermission, this);
             permission.RegisterPermission(FetchPermission, this);
             permission.RegisterPermission(AdminPermission, this);
             permission.RegisterPermission(KeepOnDeathPermission, this);
@@ -75,11 +78,8 @@ namespace Oxide.Plugins
                 Unsubscribe("OnPlayerCorpse");
             }
 
-            if (_config.GUI.Enabled)
-            {
-                foreach (var player in BasePlayer.activePlayerList)
-                    CreateGUI(player);
-            }
+            foreach (var player in BasePlayer.activePlayerList)
+                CreateGUI(player);
         }
 
         private void Unload()
@@ -603,24 +603,47 @@ namespace Oxide.Plugins
 
         void CreateGUI(BasePlayer player)
         {
-            if (player == null || player is NPCPlayer || player is HTNPlayer)
+            if (player == null || player.isNpc)
                 return;
 
-            if (!_instance._config.GUI.Enabled || !permission.UserHasPermission(player.UserIDString, UsagePermission))
+            if (!permission.UserHasPermission(player.UserIDString, GUIPermission))
                 return;
 
-            var panelName = "BackpacksUI";
-            CuiHelper.DestroyUi(player, panelName);
+            CuiHelper.DestroyUi(player, GUIPanelName);
             var elements = new CuiElementContainer();
-            var BackpacksUIPanel = elements.Add(new CuiPanel { Image = { Color = $"{_instance._config.GUI.Color}" }, RectTransform = { AnchorMin = $"{_instance._config.GUI.AnchorMin}", AnchorMax = $"{_instance._config.GUI.AnchorMax}" }, CursorEnabled = false }, "Overlay", "BackpacksUI");
-            elements.Add(new CuiElement { Parent = "BackpacksUI", Components = { new CuiRawImageComponent { Url = $"{_instance._config.GUI.Image}" }, new CuiRectTransformComponent { AnchorMin = "0 0", AnchorMax = "1 1" } } });
-            elements.Add(new CuiButton { Button = { Command = "backpack.open", Color = "0 0 0 0" }, RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" }, Text = { Text = "" } }, BackpacksUIPanel);
+            var BackpacksUIPanel = elements.Add(new CuiPanel
+            {
+                Image = { Color = _instance._config.GUI.Color },
+                RectTransform = {
+                    AnchorMin = _instance._config.GUI.AnchorMin,
+                    AnchorMax = _instance._config.GUI.AnchorMax
+                    },
+                CursorEnabled = false
+            }, "Overlay", GUIPanelName);
+
+            elements.Add(new CuiElement
+            {
+                Parent = GUIPanelName,
+                Components = {
+                    new CuiRawImageComponent { Url = _instance._config.GUI.Image },
+                    new CuiRectTransformComponent { AnchorMin = "0 0", AnchorMax = "1 1" }
+                    }
+            });
+
+            elements.Add(new CuiButton
+            {
+                Button = {
+                    Command = "backpack.open", Color = "0 0 0 0" },
+                    RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
+                    Text = { Text = "" }
+            }, BackpacksUIPanel);
+
             CuiHelper.AddUi(player, elements);
         }		
 
         void DestroyGUI(BasePlayer player)
         {
-            CuiHelper.DestroyUi(player, "BackpacksUI");
+            CuiHelper.DestroyUi(player, GUIPanelName);
         }
 
         private static void LoadData<T>(out T data, string filename = null) => 
@@ -714,22 +737,17 @@ namespace Oxide.Plugins
 
             public class GUIButton
             {
-                [JsonProperty(PropertyName = "Enabled?")]
-                public bool Enabled = true;
-
                 [JsonProperty(PropertyName = "Image")]
                 public string Image = "https://i.imgur.com/CyF0QNV.png";
 
                 [JsonProperty(PropertyName = "Background color (RGBA format)")]
-                public string Color = "1 1 1 0.15";
+                public string Color = "1 0.96 0.88 0.15";
 
                 [JsonProperty(PropertyName = "AnchorMin")]
                 public string AnchorMin = "0.6445 0.025";
-                //Left side button = "0.2945 0.025"
 
                 [JsonProperty(PropertyName = "AnchorMax")]
                 public string AnchorMax = "0.6905 0.107";
-                //Left side button = "0.3405 0.107"
             }
         }
 
