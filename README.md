@@ -51,13 +51,13 @@ Please consider donating to support me and help me put more time into my plugins
 Alternative backpacks buttons:
 ```json
 //button left side
-    "Image": "https://i.imgur.com/h1HQEAB.png",
+    "Image": "https://i.imgur.com/wLR9Z6V.png",
     "AnchorMin": "0.2945 0.025",
     "AnchorMax": "0.3405 0.107"
 ```
 ```json
 //button right side
-    "Image": "https://i.imgur.com/wLR9Z6V.png",
+    "Image": "https://i.imgur.com/h1HQEAB.png",
     "AnchorMin": "0.6445 0.025",
     "AnchorMax": "0.6905 0.107"
 ```
