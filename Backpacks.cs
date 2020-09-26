@@ -603,7 +603,7 @@ namespace Oxide.Plugins
 
         void CreateGUI(BasePlayer player)
         {
-            if (player == null || player.isNpc)
+            if (player == null || (player is NPCPlayer) || (player is HTNPlayer))
                 return;
 
             if (!permission.UserHasPermission(player.UserIDString, GUIPermission))
