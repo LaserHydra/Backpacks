@@ -60,7 +60,8 @@ Please consider donating to support me and help me put more time into my plugins
 
 Alternative backpacks buttons:
 ```json
-  "GUI button": {//button left side
+//button left side
+  "GUI button": {
     "Image": "https://i.imgur.com/wLR9Z6V.png",
     "Background color (RGBA format)": "1 0.96 0.88 0.15",
     "GUI Button Position": {
@@ -79,7 +80,8 @@ Alternative backpacks buttons:
     }
 ```
 ```json
-  "GUI button": {//button right side
+//button right side
+  "GUI button": {
     "Image": "https://i.imgur.com/h1HQEAB.png",
     "Background color (RGBA format)": "1 0.96 0.88 0.15",
     "GUI Button Position": {
