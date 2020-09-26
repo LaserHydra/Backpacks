@@ -1,4 +1,4 @@
-﻿**Backpacks** allows players to have backpacks that provide them with extra inventory space. The backpack can be dropped on death.
+﻿**Backpacks** allows players to have backpacks that provide them with extra inventory space. The backpack can be dropped on death. Supports GUI button.
 
 **Note:** To bind a key to open the backpack, use: `bind b backpack.open` in your F1 client console.
 
@@ -39,13 +39,31 @@ Please consider donating to support me and help me put more time into my plugins
   "GUI button": {
     "Enabled?": true,
     "Image": "https://i.imgur.com/CyF0QNV.png",
-    "Background color (RGBA format)": "1 1 1 0.15",
+    "Background color (RGBA format)": "1 0.96 0.88 0.15",
     "AnchorMin": "0.6445 0.025",
     "AnchorMax": "0.6905 0.107"
   },
 
   "Backpack Size (1-7 Rows)": 1
 }
+```
+
+Alternative backpacks buttons:
+```json
+//button left side
+    "Image": "https://i.imgur.com/h1HQEAB.png",
+    "AnchorMin": "0.2945 0.025",
+    "AnchorMax": "0.3405 0.107"
+```
+```json
+//button right side
+    "Image": "https://i.imgur.com/wLR9Z6V.png",
+    "AnchorMin": "0.6445 0.025",
+    "AnchorMax": "0.6905 0.107"
+```
+```json
+//Universal image
+    "Image": "https://i.imgur.com/5RE9II5.png",
 ```
 
 ## Localization
