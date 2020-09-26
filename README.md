@@ -30,36 +30,72 @@ Please consider donating to support me and help me put more time into my plugins
   "Drop on Death (true/false)": true,
   "Erase on Death (true/false)": false,
   "Use Blacklist (true/false)": false,
-  "Clear Backpacks on Map-Wipe (true/false)": true,
+  "Clear Backpacks on Map-Wipe (true/false)": false,
   "Only Save Backpacks on Server-Save (true/false)": false,
   "Blacklisted Items (Item Shortnames)": [
     "autoturret",
     "lmg.m249"
   ],
-  "GUI button": {
-    "Enabled?": true,
+  "GUI Button": {
     "Image": "https://i.imgur.com/CyF0QNV.png",
     "Background color (RGBA format)": "1 0.96 0.88 0.15",
-    "AnchorMin": "0.6445 0.025",
-    "AnchorMax": "0.6905 0.107"
+    "GUI Button Position": {
+      "Anchors": {
+        "Anchor Min X": 0.5,
+        "Anchor Min Y": 0.0,
+        "Anchor Max X": 1.0,
+        "Anchor Max Y": 0.5
+      },
+      "Offsets": {
+        "Offset Min X": 184,
+        "Offset Min Y": 18,
+        "Offset Max X": -396,
+        "Offset Max Y": -282
+      }
+    }
   },
-
   "Backpack Size (1-7 Rows)": 1
 }
 ```
 
 Alternative backpacks buttons:
 ```json
-//button left side
+  "GUI button": {//button left side
     "Image": "https://i.imgur.com/wLR9Z6V.png",
-    "AnchorMin": "0.2945 0.025",
-    "AnchorMax": "0.3405 0.107"
+    "Background color (RGBA format)": "1 0.96 0.88 0.15",
+    "GUI Button Position": {
+      "Anchors": {
+        "Anchor Min X": 0.0,
+        "Anchor Min Y": 0.0,
+        "Anchor Max X": 0.5,
+        "Anchor Max Y": 0.5
+      },
+      "Offsets": {
+        "Offset Min X": 376,
+        "Offset Min Y": 18,
+        "Offset Max X": -204,
+        "Offset Max Y": -282
+      }
+    }
 ```
 ```json
-//button right side
+  "GUI button": {//button right side
     "Image": "https://i.imgur.com/h1HQEAB.png",
-    "AnchorMin": "0.6445 0.025",
-    "AnchorMax": "0.6905 0.107"
+    "Background color (RGBA format)": "1 0.96 0.88 0.15",
+    "GUI Button Position": {
+      "Anchors": {
+        "Anchor Min X": 0.5,
+        "Anchor Min Y": 0.0,
+        "Anchor Max X": 1.0,
+        "Anchor Max Y": 0.5
+      },
+      "Offsets": {
+        "Offset Min X": 184,
+        "Offset Min Y": 18,
+        "Offset Max X": -396,
+        "Offset Max Y": -282
+      }
+    }
 ```
 ```json
 //Universal image
