@@ -5,6 +5,7 @@ using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
 using Oxide.Core;
 using Oxide.Core.Libraries.Covalence;
+using Oxide.Game.Rust.Cui;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -16,7 +17,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "LaserHydra", "3.2.1")]
+    [Info("Backpacks", "LaserHydra", "3.2.2")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : RustPlugin
     {
@@ -73,6 +74,12 @@ namespace Oxide.Plugins
             {
                 Unsubscribe("OnPlayerCorpse");
             }
+
+            if (_config.GUI.Enabled)
+            {
+                foreach (var player in BasePlayer.activePlayerList)
+                    CreateGUI(player);
+            }
         }
 
         private void Unload()
@@ -83,6 +90,8 @@ namespace Oxide.Plugins
                 backpack.SaveData();
                 backpack.KillContainer();
             }
+            foreach (var player in BasePlayer.activePlayerList)
+                DestroyGUI(player);
         }
 
         private void OnNewSave(string filename)
@@ -195,6 +204,7 @@ namespace Oxide.Plugins
             if (victim is BasePlayer && !(victim is NPCPlayer) && !(victim is HTNPlayer))
             {
                 var player = (BasePlayer) victim;
+                DestroyGUI(player);
 
                 if (Backpack.HasBackpackFile(player.userID))
                 {
@@ -581,6 +591,38 @@ namespace Oxide.Plugins
             return true;
         }
 
+        void OnPlayerConnected(BasePlayer player)
+        {
+            CreateGUI(player);
+        }
+
+        void OnPlayerSleepEnded(BasePlayer player)
+        {
+            CreateGUI(player);
+        }
+
+        void CreateGUI(BasePlayer player)
+        {
+            if (player == null || player is NPCPlayer || player is HTNPlayer)
+                return;
+
+            if (!_instance._config.GUI.Enabled || !permission.UserHasPermission(player.UserIDString, UsagePermission))
+                return;
+
+            var panelName = "BackpacksUI";
+            CuiHelper.DestroyUi(player, panelName);
+            var elements = new CuiElementContainer();
+            var BackpacksUIPanel = elements.Add(new CuiPanel { Image = { Color = $"{_instance._config.GUI.Color}" }, RectTransform = { AnchorMin = $"{_instance._config.GUI.AnchorMin}", AnchorMax = $"{_instance._config.GUI.AnchorMax}" }, CursorEnabled = false }, "Overlay", "BackpacksUI");
+            elements.Add(new CuiElement { Parent = "BackpacksUI", Components = { new CuiRawImageComponent { Url = $"{_instance._config.GUI.Image}" }, new CuiRectTransformComponent { AnchorMin = "0 0", AnchorMax = "1 1" } } });
+            elements.Add(new CuiButton { Button = { Command = "backpack.open", Color = "0 0 0 0" }, RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" }, Text = { Text = "" } }, BackpacksUIPanel);
+            CuiHelper.AddUi(player, elements);
+        }		
+
+        void DestroyGUI(BasePlayer player)
+        {
+            CuiHelper.DestroyUi(player, "BackpacksUI");
+        }
+
         private static void LoadData<T>(out T data, string filename = null) => 
             data = Interface.Oxide.DataFileSystem.ReadObject<T>(filename ?? _instance.Name);
 
@@ -666,6 +708,29 @@ namespace Oxide.Plugins
 
             [JsonProperty("Blacklisted Items (Item Shortnames)")]
             public HashSet<string> BlacklistedItems;
+
+            [JsonProperty(PropertyName = "GUI button")]
+            public GUIButton GUI = new GUIButton();
+
+            public class GUIButton
+            {
+                [JsonProperty(PropertyName = "Enabled?")]
+                public bool Enabled = true;
+
+                [JsonProperty(PropertyName = "Image")]
+                public string Image = "https://i.imgur.com/CyF0QNV.png";
+
+                [JsonProperty(PropertyName = "Background color (RGBA format)")]
+                public string Color = "1 1 1 0.15";
+
+                [JsonProperty(PropertyName = "AnchorMin")]
+                public string AnchorMin = "0.6445 0.025";
+                //Left side button = "0.2945 0.025"
+
+                [JsonProperty(PropertyName = "AnchorMax")]
+                public string AnchorMax = "0.6905 0.107";
+                //Left side button = "0.3405 0.107"
+            }
         }
 
         #endregion

@@ -36,6 +36,14 @@ Please consider donating to support me and help me put more time into my plugins
     "autoturret",
     "lmg.m249"
   ],
+  "GUI button": {
+    "Enabled?": true,
+    "Image": "https://i.imgur.com/CyF0QNV.png",
+    "Background color (RGBA format)": "1 1 1 0.15",
+    "AnchorMin": "0.6445 0.025",
+    "AnchorMax": "0.6905 0.107"
+  },
+
   "Backpack Size (1-7 Rows)": 1
 }
 ```
