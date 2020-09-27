@@ -67,7 +67,7 @@ Alternative backpacks buttons:
 ```
 ```json
 //button right side
-  "GUI button": {
+  "GUI Button": {
     "Image": "https://i.imgur.com/h1HQEAB.png",
     "Background color (RGBA format)": "1 0.96 0.88 0.15",
     "GUI Button Position": {
