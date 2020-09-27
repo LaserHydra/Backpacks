@@ -1,24 +1,26 @@
 ﻿// #define DEBUG
 
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
 using Oxide.Core;
 using Oxide.Core.Libraries.Covalence;
 using Oxide.Game.Rust.Cui;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using UnityEngine;
 
 // TODO: Re-implement visual backpack
 // TODO: Try to simulate a dropped item container as item container sourceEntity to customize the loot text.
 
-namespace Oxide.Plugins {
-    [Info ("Backpacks", "LaserHydra", "3.3.0")]
-    [Description ("Allows players to have a Backpack which provides them extra inventory space.")]
-    internal class Backpacks : RustPlugin {
+namespace Oxide.Plugins
+{
+    [Info("Backpacks", "LaserHydra", "3.3.0")]
+    [Description("Allows players to have a Backpack which provides them extra inventory space.")]
+    internal class Backpacks : RustPlugin
+    {
         #region Fields
 
         private const ushort MinSize = 1;
@@ -34,10 +36,10 @@ namespace Oxide.Plugins {
 
         private const string BackpackPrefab = "assets/prefabs/misc/item drop/item_drop_backpack.prefab";
 
-        private readonly Dictionary<ulong, Backpack> _backpacks = new Dictionary<ulong, Backpack> ();
-        private readonly Dictionary<BasePlayer, Backpack> _openBackpacks = new Dictionary<BasePlayer, Backpack> ();
-        private readonly Dictionary<ulong, DroppedItemContainer> _lastDroppedBackpacks = new Dictionary<ulong, DroppedItemContainer> ();
-        private Dictionary<string, ushort> _backpackSizePermissions = new Dictionary<string, ushort> ();
+        private readonly Dictionary<ulong, Backpack> _backpacks = new Dictionary<ulong, Backpack>();
+        private readonly Dictionary<BasePlayer, Backpack> _openBackpacks = new Dictionary<BasePlayer, Backpack>();
+        private readonly Dictionary<ulong, DroppedItemContainer> _lastDroppedBackpacks = new Dictionary<ulong, DroppedItemContainer>();
+        private Dictionary<string, ushort> _backpackSizePermissions = new Dictionary<string, ushort>();
 
         private static Backpacks _instance;
 
@@ -50,229 +52,267 @@ namespace Oxide.Plugins {
 
         #region Hooks
 
-        private void Loaded () {
+        private void Loaded()
+        {
             _instance = this;
 
-            permission.RegisterPermission (UsagePermission, this);
-            permission.RegisterPermission (GUIPermission, this);
-            permission.RegisterPermission (FetchPermission, this);
-            permission.RegisterPermission (AdminPermission, this);
-            permission.RegisterPermission (KeepOnDeathPermission, this);
+            permission.RegisterPermission(UsagePermission, this);
+            permission.RegisterPermission(GUIPermission, this);
+            permission.RegisterPermission(FetchPermission, this);
+            permission.RegisterPermission(AdminPermission, this);
+            permission.RegisterPermission(KeepOnDeathPermission, this);
 
-            for (ushort size = MinSize; size <= MaxSize; size++) {
+            for (ushort size = MinSize; size <= MaxSize; size++)
+            {
                 var sizePermission = $"{UsagePermission}.{size}";
-                permission.RegisterPermission (sizePermission, this);
-                _backpackSizePermissions.Add (sizePermission, size);
+                permission.RegisterPermission(sizePermission, this);
+                _backpackSizePermissions.Add(sizePermission, size);
             }
 
             _backpackSizePermissions = _backpackSizePermissions
-                .OrderByDescending (kvp => kvp.Value)
-                .ToDictionary (kvp => kvp.Key, kvp => kvp.Value);
+                .OrderByDescending(kvp => kvp.Value)
+                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
 
-            if (!_config.DropOnDeath || !ConVar.Server.corpses) {
-                Unsubscribe ("OnPlayerCorpse");
+            if (!_config.DropOnDeath || !ConVar.Server.corpses)
+            {
+                Unsubscribe("OnPlayerCorpse");
             }
 
             foreach (var player in BasePlayer.activePlayerList)
-                CreateGUI (player);
+                CreateGUI(player);
         }
 
-        private void Unload () {
-            foreach (var backpack in _backpacks.Values) {
-                backpack.ForceCloseAllLooters ();
-                backpack.SaveData ();
-                backpack.KillContainer ();
+        private void Unload()
+        {
+            foreach (var backpack in _backpacks.Values)
+            {
+                backpack.ForceCloseAllLooters();
+                backpack.SaveData();
+                backpack.KillContainer();
             }
             foreach (var player in BasePlayer.activePlayerList)
-                DestroyGUI (player);
+                DestroyGUI(player);
         }
 
-        private void OnNewSave (string filename) {
+        private void OnNewSave(string filename)
+        {
             // Ensure config is loaded
-            LoadConfig ();
+            LoadConfig();
 
             if (!_config.ClearBackpacksOnWipe)
                 return;
 
-            _backpacks.Clear ();
+            _backpacks.Clear();
 
-            IEnumerable<string> fileNames = Interface.Oxide.DataFileSystem.GetFiles (Name)
-                .Select (fn => {
-                    return fn.Split (Path.DirectorySeparatorChar).Last ()
-                        .Replace (".json", string.Empty);
+            IEnumerable<string> fileNames = Interface.Oxide.DataFileSystem.GetFiles(Name)
+                .Select(fn => {
+                    return fn.Split(Path.DirectorySeparatorChar).Last()
+                        .Replace(".json", string.Empty);
                 });
 
-            foreach (var fileName in fileNames) {
+            foreach (var fileName in fileNames)
+            {
                 ulong userId;
 
-                if (!ulong.TryParse (fileName, out userId))
+                if (!ulong.TryParse(fileName, out userId))
                     continue;
 
-                var backpack = new Backpack (userId);
-                backpack.SaveData ();
+                var backpack = new Backpack(userId);
+                backpack.SaveData();
             }
 
-            PrintWarning ("New save created. All backpacks were cleared. This can be disabled in the configuration file.");
+            PrintWarning("New save created. All backpacks were cleared. This can be disabled in the configuration file.");
         }
 
-        private void OnServerSave () {
-            if (_config.SaveBackpacksOnServerSave) {
-                foreach (var backpack in _backpacks.Values) {
-                    backpack.ForceCloseAllLooters ();
-                    backpack.SaveData ();
-                    backpack.KillContainer ();
+        private void OnServerSave()
+        {
+            if (_config.SaveBackpacksOnServerSave)
+            {
+                foreach (var backpack in _backpacks.Values)
+                {
+                    backpack.ForceCloseAllLooters();
+                    backpack.SaveData();
+                    backpack.KillContainer();
                 }
-
-                _backpacks.Clear ();
+                
+                _backpacks.Clear();
             }
         }
 
-        private void OnPlayerDisconnected (BasePlayer player) {
-            if (_openBackpacks.ContainsKey (player))
-                _openBackpacks[player].OnClose (player);
+        private void OnPlayerDisconnected(BasePlayer player)
+        {
+            if (_openBackpacks.ContainsKey(player))
+                _openBackpacks[player].OnClose(player);
 
-            if (!_config.SaveBackpacksOnServerSave && _backpacks.ContainsKey (player.userID)) {
+            if (!_config.SaveBackpacksOnServerSave && _backpacks.ContainsKey(player.userID))
+            {
                 var backpack = _backpacks[player.userID];
 
-                backpack.ForceCloseAllLooters ();
-                backpack.SaveData ();
-                backpack.KillContainer ();
+                backpack.ForceCloseAllLooters();
+                backpack.SaveData();
+                backpack.KillContainer();
 
-                _backpacks.Remove (player.userID);
+                _backpacks.Remove(player.userID);
             }
         }
-
-        private object CanLootPlayer (BasePlayer looted, BasePlayer looter) {
-            if (_openBackpacks.ContainsKey (looter) &&
-                (looter == looted || permission.UserHasPermission (looter.UserIDString, AdminPermission))) {
+        
+        private object CanLootPlayer(BasePlayer looted, BasePlayer looter)
+        {
+            if (_openBackpacks.ContainsKey(looter)
+                && (looter == looted || permission.UserHasPermission(looter.UserIDString, AdminPermission)))
+            {
                 return true;
             }
 
             return null;
         }
 
-        private object CanAcceptItem (ItemContainer container, Item item) {
+        private object CanAcceptItem(ItemContainer container, Item item)
+        {
             if (!_config.UseBlacklist)
                 return null;
 
-            Backpack backpack = _backpacks.Values.FirstOrDefault (b => b.IsUnderlyingContainer (container));
+            Backpack backpack = _backpacks.Values.FirstOrDefault(b => b.IsUnderlyingContainer(container));
 
-            if (backpack != null) {
+            if (backpack != null)
+            {
                 // Is the Item blacklisted
-                if (_config.BlacklistedItems.Any (shortName => shortName == item.info.shortname))
+                if (_config.BlacklistedItems.Any(shortName => shortName == item.info.shortname))
                     return ItemContainer.CanAcceptResult.CannotAccept;
 
-                object hookResult = Interface.CallHook ("CanBackpackAcceptItem", backpack.OwnerId, container, item);
+                object hookResult = Interface.CallHook("CanBackpackAcceptItem", backpack.OwnerId, container, item);
 
-                if (hookResult is bool && (bool) hookResult == false)
+                if (hookResult is bool && (bool)hookResult == false)
                     return ItemContainer.CanAcceptResult.CannotAccept;
             }
 
             return null;
         }
 
-        private void OnPlayerLootEnd (PlayerLoot playerLoot) {
-            var player = (BasePlayer) playerLoot.gameObject.ToBaseEntity ();
+        private void OnPlayerLootEnd(PlayerLoot playerLoot)
+        {
+            var player = (BasePlayer) playerLoot.gameObject.ToBaseEntity();
 
-            if (_openBackpacks.ContainsKey (player)) {
-                _openBackpacks[player].OnClose (player);
+            if (_openBackpacks.ContainsKey(player))
+            {
+                _openBackpacks[player].OnClose(player);
             }
         }
 
-        private void OnEntityDeath (BaseCombatEntity victim, HitInfo info) {
-            if (victim is BasePlayer && !victim.IsNpc) {
+        private void OnEntityDeath(BaseCombatEntity victim, HitInfo info)
+        {
+            if (victim is BasePlayer && !victim.IsNpc)
+            {
                 var player = (BasePlayer) victim;
-                DestroyGUI (player);
+                DestroyGUI(player);
 
-                if (Backpack.HasBackpackFile (player.userID)) {
-                    var backpack = Backpack.Get (player.userID);
+                if (Backpack.HasBackpackFile(player.userID))
+                {
+                    var backpack = Backpack.Get(player.userID);
 
-                    backpack.ForceCloseAllLooters ();
+                    backpack.ForceCloseAllLooters();
 
-                    if (permission.UserHasPermission (player.UserIDString, KeepOnDeathPermission))
+                    if (permission.UserHasPermission(player.UserIDString, KeepOnDeathPermission))
                         return;
 
                     if (_config.EraseOnDeath)
-                        backpack.EraseContents ();
-                    else if (_config.DropOnDeath) {
-                        var droppedContainer = backpack.Drop (player.transform.position);
-
-                        if (droppedContainer != null && ConVar.Server.corpses) {
-                            if (_lastDroppedBackpacks.ContainsKey (player.userID))
+                        backpack.EraseContents();
+                    else if (_config.DropOnDeath)
+                    {
+                        var droppedContainer = backpack.Drop(player.transform.position);
+                        
+                        if (droppedContainer != null && ConVar.Server.corpses)
+                        {
+                            if (_lastDroppedBackpacks.ContainsKey(player.userID))
                                 _lastDroppedBackpacks[player.userID] = droppedContainer;
                             else
-                                _lastDroppedBackpacks.Add (player.userID, droppedContainer);
+                                _lastDroppedBackpacks.Add(player.userID, droppedContainer);
                         }
                     }
                 }
             }
         }
 
-        private void OnPlayerCorpse (BasePlayer player, BaseCorpse corpse) {
-            if (!_lastDroppedBackpacks.ContainsKey (player.userID))
+        private void OnPlayerCorpse(BasePlayer player, BaseCorpse corpse)
+        {
+            if (!_lastDroppedBackpacks.ContainsKey(player.userID))
                 return;
 
             var container = _lastDroppedBackpacks[player.userID];
             if (container == null)
                 return;
 
-            var corpseCollider = corpse.GetComponent<Collider> ();
-            var containerCollider = _lastDroppedBackpacks[player.userID].GetComponent<Collider> ();
-
+            var corpseCollider = corpse.GetComponent<Collider>();
+            var containerCollider = _lastDroppedBackpacks[player.userID].GetComponent<Collider>();
+            
             if (corpseCollider != null && containerCollider != null)
-                Physics.IgnoreCollision (corpseCollider, containerCollider);
+                Physics.IgnoreCollision(corpseCollider, containerCollider);
 
-            _lastDroppedBackpacks.Remove (player.userID);
+            _lastDroppedBackpacks.Remove(player.userID);
         }
 
-        private void OnGroupPermissionGranted (string group, string perm) {
-            if (perm.StartsWith (UsagePermission)) {
-                foreach (IPlayer player in covalence.Players.Connected.Where (p => permission.UserHasGroup (p.Id, group))) {
-                    OnUsagePermissionChanged (player.Id);
+        private void OnGroupPermissionGranted(string group, string perm)
+        {
+            if (perm.StartsWith(UsagePermission))
+            {
+                foreach (IPlayer player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
+                {
+                    OnUsagePermissionChanged(player.Id);
                 }
             }
 
-            if (perm.StartsWith (GUIPermission)) {
-                foreach (IPlayer player in covalence.Players.Connected.Where (p => permission.UserHasGroup (p.Id, group))) {
-                    CreateGUI (player.Object as BasePlayer);
-                }
-            }
-        }
-
-        private void OnGroupPermissionRevoked (string group, string perm) {
-            if (perm.StartsWith (UsagePermission)) {
-                foreach (IPlayer player in covalence.Players.Connected.Where (p => permission.UserHasGroup (p.Id, group))) {
-                    OnUsagePermissionChanged (player.Id);
-                }
-            }
-
-            if (perm.StartsWith (GUIPermission)) {
-                foreach (IPlayer player in covalence.Players.Connected.Where (p => permission.UserHasGroup (p.Id, group))) {
-                    DestroyGUI (player.Object as BasePlayer);
+            if (perm.StartsWith(GUIPermission))
+            {
+                foreach (IPlayer player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
+                {
+                    CreateGUI(player.Object as BasePlayer);
                 }
             }
         }
 
-        private void OnUserPermissionGranted (string userId, string perm) {
-            if (perm.StartsWith (UsagePermission))
-                OnUsagePermissionChanged (userId);
+        private void OnGroupPermissionRevoked(string group, string perm)
+        {
+            if (perm.StartsWith(UsagePermission))
+            {
+                foreach (IPlayer player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
+                {
+                    OnUsagePermissionChanged(player.Id);
+                }
+            }
 
-            if (perm.StartsWith (GUIPermission))
-                CreateGUI (BasePlayer.Find (userId));
+            if (perm.StartsWith(GUIPermission))
+            {
+                foreach (IPlayer player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
+                {
+                    DestroyGUI(player.Object as BasePlayer);
+                }
+            }
         }
 
-        private void OnUserPermissionRevoked (string userId, string perm) {
-            if (perm.StartsWith (UsagePermission))
-                OnUsagePermissionChanged (userId);
+        private void OnUserPermissionGranted(string userId, string perm)
+        {
+            if (perm.StartsWith(UsagePermission))
+                OnUsagePermissionChanged(userId);
 
-            if (perm.StartsWith (GUIPermission))
-                DestroyGUI (BasePlayer.Find (userId));
+            if (perm.StartsWith(GUIPermission))
+                CreateGUI(BasePlayer.Find(userId));
         }
 
-        private void OnUsagePermissionChanged (string userIdString) {
-            if (permission.UserHasPermission (userIdString, UsagePermission)) {
-                var userId = ulong.Parse (userIdString);
-                Backpack.Get (userId).Initialize ();
+        private void OnUserPermissionRevoked(string userId, string perm)
+        {
+            if (perm.StartsWith(UsagePermission))
+                OnUsagePermissionChanged(userId);
+
+            if (perm.StartsWith(GUIPermission))
+                DestroyGUI(BasePlayer.Find(userId));
+        }
+
+        private void OnUsagePermissionChanged(string userIdString)
+        {
+            if (permission.UserHasPermission(userIdString, UsagePermission))
+            {
+                var userId = ulong.Parse(userIdString);
+                Backpack.Get(userId).Initialize();
             }
         }
 
@@ -281,160 +321,189 @@ namespace Oxide.Plugins {
         #region Commands
 
 #if DEBUG
-        [ChatCommand ("c")]
-        private void RunContainerDebugCommand (BasePlayer player) {
+        [ChatCommand("c")]
+        private void RunContainerDebugCommand(BasePlayer player)
+        {
             RaycastHit hit;
-            if (Physics.Raycast (player.eyes.HeadRay (), out hit)) {
-                var entity = hit.GetEntity ();
+            if (Physics.Raycast(player.eyes.HeadRay(), out hit))
+            {
+                var entity = hit.GetEntity();
 
-                if (entity != null) {
-                    var storageContainer = entity.GetComponent<StorageContainer> ();
+                if (entity != null)
+                {
+                    var storageContainer = entity.GetComponent<StorageContainer>();
 
-                    if (storageContainer != null) {
-                        var data = new Dictionary<string, object> {
-                        ["panelName"] = storageContainer.panelName,
-                        ["uid"] = storageContainer.inventory.uid,
-                        ["isServer"] = storageContainer.inventory.isServer,
-                        ["capacity"] = storageContainer.inventory.capacity,
-                        ["maxStackSize"] = storageContainer.inventory.maxStackSize,
-                        ["entityOwner"] = storageContainer.inventory.entityOwner,
-                        ["playerOwner"] = storageContainer.inventory.playerOwner,
-                        ["flags"] = storageContainer.inventory.flags,
-                        ["allowedContents"] = storageContainer.inventory.allowedContents,
-                        ["availableSlots"] = storageContainer.inventory.availableSlots.Count
-                            };
+                    if (storageContainer != null)
+                    {
+                        var data = new Dictionary<string, object>
+                        {
+                            ["panelName"] = storageContainer.panelName,
+                            ["uid"] = storageContainer.inventory.uid,
+                            ["isServer"] = storageContainer.inventory.isServer,
+                            ["capacity"] = storageContainer.inventory.capacity,
+                            ["maxStackSize"] = storageContainer.inventory.maxStackSize,
+                            ["entityOwner"] = storageContainer.inventory.entityOwner,
+                            ["playerOwner"] = storageContainer.inventory.playerOwner,
+                            ["flags"] = storageContainer.inventory.flags,
+                            ["allowedContents"] = storageContainer.inventory.allowedContents,
+                            ["availableSlots"] = storageContainer.inventory.availableSlots.Count
+                        };
+                        
+                        PrintToChat(string.Join(Environment.NewLine, data.Select(kvp => $"[{kvp.Key}] : {kvp.Value}").ToArray()));
 
-                        PrintToChat (string.Join (Environment.NewLine, data.Select (kvp => $"[{kvp.Key}] : {kvp.Value}").ToArray ()));
-
-                        timer.In (0.5f, () => PlayerLootContainer (player, storageContainer.inventory));
-                    } else
-                        PrintToChat ("not a storage container");
+                        timer.In(0.5f, () => PlayerLootContainer(player, storageContainer.inventory));
+                    }
+                        
+                    else
+                        PrintToChat("not a storage container");
                 }
             }
         }
 #endif
 
-        [ChatCommand ("backpack")]
-        private void OpenBackpackChatCommand (BasePlayer player, string cmd, string[] args) {
-            if (permission.UserHasPermission (player.UserIDString, UsagePermission))
-                timer.Once (0.5f, () => Backpack.Get (player.userID).Open (player));
+        [ChatCommand("backpack")]
+        private void OpenBackpackChatCommand(BasePlayer player, string cmd, string[] args)
+        {
+            if (permission.UserHasPermission(player.UserIDString, UsagePermission))
+                timer.Once(0.5f, () => Backpack.Get(player.userID).Open(player));
             else
-                PrintToChat (player, lang.GetMessage ("No Permission", this, player.UserIDString));
+                PrintToChat(player, lang.GetMessage("No Permission", this, player.UserIDString));
         }
 
-        [ConsoleCommand ("backpack.open")]
-        private void OpenBackpackConsoleCommand (ConsoleSystem.Arg arg) {
-            BasePlayer player = arg.Player ();
+        [ConsoleCommand("backpack.open")]
+        private void OpenBackpackConsoleCommand(ConsoleSystem.Arg arg)
+        {
+            BasePlayer player = arg.Player();
 
             if (player == null)
                 return;
 
-            if (permission.UserHasPermission (player.UserIDString, UsagePermission)) {
-                player.EndLooting ();
-                timer.Once (0.1f, () => Backpack.Get (player.userID).Open (player));
-            } else
-                PrintToChat (player, lang.GetMessage ("No Permission", this, player.UserIDString));
+            if (permission.UserHasPermission(player.UserIDString, UsagePermission))
+            {
+                player.EndLooting();
+                timer.Once(0.1f, () => Backpack.Get(player.userID).Open(player));
+            }
+            else
+                PrintToChat(player, lang.GetMessage("No Permission", this, player.UserIDString));
         }
 
-        [ConsoleCommand ("backpack.fetch")]
-        private void FetchBackpackItemConsoleCommand (ConsoleSystem.Arg arg) {
-            BasePlayer player = arg.Player ();
+        [ConsoleCommand("backpack.fetch")]
+        private void FetchBackpackItemConsoleCommand(ConsoleSystem.Arg arg)
+        {
+            BasePlayer player = arg.Player();
 
             if (player == null)
                 return;
 
-            if (!permission.UserHasPermission (player.UserIDString, FetchPermission)) {
-                PrintToChat (player, lang.GetMessage ("No Permission", this, player.UserIDString));
+            if (!permission.UserHasPermission(player.UserIDString, FetchPermission))
+            {
+                PrintToChat(player, lang.GetMessage("No Permission", this, player.UserIDString));
                 return;
             }
 
-            if (!arg.HasArgs (2)) {
-                PrintToConsole (player, lang.GetMessage ("Backpack Fetch Syntax", this, player.UserIDString));
+            if (!arg.HasArgs(2))
+            {
+                PrintToConsole(player, lang.GetMessage("Backpack Fetch Syntax", this, player.UserIDString));
                 return;
             }
 
-            if (!VerifyCanOpenBackpack (player, player.userID))
+            if (!VerifyCanOpenBackpack(player, player.userID))
                 return;
 
             string[] args = arg.Args;
             string itemArg = args[0];
             int itemID;
 
-            ItemDefinition itemDefinition = ItemManager.FindItemDefinition (itemArg);
-            if (itemDefinition != null) {
+            ItemDefinition itemDefinition = ItemManager.FindItemDefinition(itemArg);
+            if (itemDefinition != null)
+            {
                 itemID = itemDefinition.itemid;
-            } else {
+            }
+            else
+            {
                 // User may have provided an itemID instead of item short name
-                if (!int.TryParse (itemArg, out itemID)) {
-                    PrintToChat (player, lang.GetMessage ("Invalid Item", this, player.UserIDString));
+                if (!int.TryParse(itemArg, out itemID))
+                {
+                    PrintToChat(player, lang.GetMessage("Invalid Item", this, player.UserIDString));
                     return;
                 }
 
-                itemDefinition = ItemManager.FindItemDefinition (itemID);
+                itemDefinition = ItemManager.FindItemDefinition(itemID);
 
-                if (itemDefinition == null) {
-                    PrintToChat (player, lang.GetMessage ("Invalid Item", this, player.UserIDString));
+                if (itemDefinition == null)
+                {
+                    PrintToChat(player, lang.GetMessage("Invalid Item", this, player.UserIDString));
                     return;
                 }
             }
 
             int desiredAmount;
-            if (!int.TryParse (args[1], out desiredAmount)) {
-                PrintToChat (player, lang.GetMessage ("Invalid Item Amount", this, player.UserIDString));
+            if (!int.TryParse(args[1], out desiredAmount))
+            {
+                PrintToChat(player, lang.GetMessage("Invalid Item Amount", this, player.UserIDString));
                 return;
             }
 
-            if (desiredAmount < 1) {
-                PrintToChat (player, lang.GetMessage ("Invalid Item Amount", this, player.UserIDString));
+            if (desiredAmount < 1)
+            {
+                PrintToChat(player, lang.GetMessage("Invalid Item Amount", this, player.UserIDString));
                 return;
             }
 
             string itemLocalizedName = itemDefinition.displayName.translated;
-            Backpack backpack = Backpack.Get (player.userID);
-            int quantityInBackpack = backpack.GetItemQuantity (itemID);
+            Backpack backpack = Backpack.Get(player.userID);
+            int quantityInBackpack = backpack.GetItemQuantity(itemID);
 
-            if (quantityInBackpack == 0) {
-                PrintToChat (player, lang.GetMessage ("Item Not In Backpack", this, player.UserIDString), itemLocalizedName);
+            if (quantityInBackpack == 0)
+            {
+                PrintToChat(player, lang.GetMessage("Item Not In Backpack", this, player.UserIDString), itemLocalizedName);
                 return;
             }
 
             if (desiredAmount > quantityInBackpack)
                 desiredAmount = quantityInBackpack;
 
-            int amountTransferred = backpack.MoveItemsToPlayerInventory (player, itemID, desiredAmount);
+            int amountTransferred = backpack.MoveItemsToPlayerInventory(player, itemID, desiredAmount);
 
-            if (amountTransferred > 0) {
-                PrintToChat (player, lang.GetMessage ("Items Fetched", this, player.UserIDString), amountTransferred, itemLocalizedName);
-            } else {
-                PrintToChat (player, lang.GetMessage ("Fetch Failed", this, player.UserIDString), itemLocalizedName);
+            if (amountTransferred > 0)
+            {
+                PrintToChat(player, lang.GetMessage("Items Fetched", this, player.UserIDString), amountTransferred, itemLocalizedName);
+            }
+            else
+            {
+                PrintToChat(player, lang.GetMessage("Fetch Failed", this, player.UserIDString), itemLocalizedName);
             }
         }
 
-        [ChatCommand ("viewbackpack")]
-        private void ViewBackpack (BasePlayer player, string cmd, string[] args) {
-            if (!permission.UserHasPermission (player.UserIDString, AdminPermission)) {
-                PrintToChat (player, lang.GetMessage ("No Permission", this, player.UserIDString));
+        [ChatCommand("viewbackpack")]
+        private void ViewBackpack(BasePlayer player, string cmd, string[] args)
+        {
+            if (!permission.UserHasPermission(player.UserIDString, AdminPermission))
+            {
+                PrintToChat(player, lang.GetMessage("No Permission", this, player.UserIDString));
                 return;
             }
 
-            if (args.Length != 1) {
-                PrintToChat (player, lang.GetMessage ("View Backpack Syntax", this, player.UserIDString));
+            if (args.Length != 1)
+            {
+                PrintToChat(player, lang.GetMessage("View Backpack Syntax", this, player.UserIDString));
                 return;
             }
 
             string failureMessage;
-            IPlayer targetPlayer = FindPlayer (args[0], out failureMessage);
+            IPlayer targetPlayer = FindPlayer(args[0], out failureMessage);
 
-            if (targetPlayer == null) {
-                PrintToChat (player, failureMessage);
+            if (targetPlayer == null)
+            {
+                PrintToChat(player, failureMessage);
                 return;
             }
 
             BasePlayer targetBasePlayer = targetPlayer.Object as BasePlayer;
-            ulong id = targetBasePlayer?.userID ?? ulong.Parse (targetPlayer.Id);
+            ulong id = targetBasePlayer?.userID ?? ulong.Parse(targetPlayer.Id);
 
-            Backpack backpack = Backpack.Get (id);
-            timer.Once (0.5f, () => backpack.Open (player));
+            Backpack backpack = Backpack.Get(id);
+            timer.Once(0.5f, () => backpack.Open(player));
         }
 
         #endregion
@@ -442,25 +511,28 @@ namespace Oxide.Plugins {
         #region Helper Methods
 
         // Data migration from v2.x.x to v3.x.x
-        private static bool TryMigrateData (string fileName) {
-            if (!Interface.Oxide.DataFileSystem.ExistsDatafile (fileName)) {
+        private static bool TryMigrateData(string fileName)
+        {
+            if (!Interface.Oxide.DataFileSystem.ExistsDatafile(fileName))
+            {
                 return false;
             }
 
             Dictionary<string, object> data;
-            LoadData (out data, fileName);
-
-            if (data.ContainsKey ("ownerID") && data.ContainsKey ("Inventory")) {
+            LoadData(out data, fileName);
+            
+            if (data.ContainsKey("ownerID") && data.ContainsKey("Inventory"))
+            {
                 var inventory = (JObject) data["Inventory"];
 
                 data["OwnerID"] = data["ownerID"];
-                data["Items"] = inventory.Value<object> ("Items");
+                data["Items"] = inventory.Value<object>("Items");
 
-                data.Remove ("ownerID");
-                data.Remove ("Inventory");
-                data.Remove ("Size");
+                data.Remove("ownerID");
+                data.Remove("Inventory");
+                data.Remove("Size");
 
-                SaveData (data, fileName);
+                SaveData(data, fileName);
 
                 return true;
             }
@@ -468,97 +540,108 @@ namespace Oxide.Plugins {
             return false;
         }
 
-        private static void PlayerLootContainer (BasePlayer player, ItemContainer container) {
-            player.inventory.loot.Clear ();
+        private static void PlayerLootContainer(BasePlayer player, ItemContainer container)
+        {
+            player.inventory.loot.Clear();
             player.inventory.loot.PositionChecks = false;
             player.inventory.loot.entitySource = container.entityOwner ?? player;
             player.inventory.loot.itemSource = null;
-            player.inventory.loot.MarkDirty ();
-            player.inventory.loot.AddContainer (container);
-            player.inventory.loot.SendImmediate ();
+            player.inventory.loot.MarkDirty();
+            player.inventory.loot.AddContainer(container);
+            player.inventory.loot.SendImmediate();
 
-            player.ClientRPCPlayer (null, player, "RPC_OpenLootPanel", "genericlarge");
+            player.ClientRPCPlayer(null, player, "RPC_OpenLootPanel", "genericlarge");
         }
 
-        private IPlayer FindPlayer (string nameOrID, out string failureMessage) {
+        private IPlayer FindPlayer(string nameOrID, out string failureMessage)
+        {
             failureMessage = string.Empty;
 
             ulong userId;
-            if (nameOrID.StartsWith ("7656119") && nameOrID.Length == 17 && ulong.TryParse (nameOrID, out userId)) {
-                IPlayer player = covalence.Players.All.FirstOrDefault (p => p.Id == nameOrID);
+            if (nameOrID.StartsWith("7656119") && nameOrID.Length == 17 && ulong.TryParse(nameOrID, out userId))
+            {
+                IPlayer player = covalence.Players.All.FirstOrDefault(p => p.Id == nameOrID);
 
                 if (player == null)
-                    failureMessage = string.Format (lang.GetMessage ("User ID not Found", this), nameOrID);
+                    failureMessage = string.Format(lang.GetMessage("User ID not Found", this), nameOrID);
 
                 return player;
             }
 
-            var foundPlayers = new List<IPlayer> ();
+            var foundPlayers = new List<IPlayer>();
 
-            foreach (IPlayer player in covalence.Players.All) {
-                if (player.Name.Equals (nameOrID, StringComparison.InvariantCultureIgnoreCase))
+            foreach (IPlayer player in covalence.Players.All)
+            {
+                if (player.Name.Equals(nameOrID, StringComparison.InvariantCultureIgnoreCase))
                     return player;
 
-                if (player.Name.ToLower ().Contains (nameOrID.ToLower ()))
-                    foundPlayers.Add (player);
+                if (player.Name.ToLower().Contains(nameOrID.ToLower()))
+                    foundPlayers.Add(player);
             }
 
-            switch (foundPlayers.Count) {
+            switch (foundPlayers.Count)
+            {
                 case 0:
-                    failureMessage = string.Format (lang.GetMessage ("User Name not Found", this), nameOrID);
+                    failureMessage = string.Format(lang.GetMessage("User Name not Found", this), nameOrID);
                     return null;
 
                 case 1:
                     return foundPlayers[0];
 
                 default:
-                    string names = string.Join (", ", foundPlayers.Select (p => p.Name).ToArray ());
-                    failureMessage = string.Format (lang.GetMessage ("Multiple Players Found", this), names);
+                    string names = string.Join(", ", foundPlayers.Select(p => p.Name).ToArray());
+                    failureMessage = string.Format(lang.GetMessage("Multiple Players Found", this), names);
                     return null;
             }
         }
 
-        private bool VerifyCanOpenBackpack (BasePlayer looter, ulong ownerId) {
-            if (EventManager?.Call<bool> ("isPlaying", looter) ?? false) {
-                PrintToChat (looter, lang.GetMessage ("May Not Open Backpack In Event", this, looter.UserIDString));
+        private bool VerifyCanOpenBackpack(BasePlayer looter, ulong ownerId)
+        {
+            if (EventManager?.Call<bool>("isPlaying", looter) ?? false)
+            {
+                PrintToChat(looter, lang.GetMessage("May Not Open Backpack In Event", this, looter.UserIDString));
                 return false;
             }
 
-            var hookResult = Interface.Oxide.CallHook ("CanOpenBackpack", looter, ownerId);
-            if (hookResult != null && hookResult is string) {
-                _instance.PrintToChat (looter, hookResult as string);
+            var hookResult = Interface.Oxide.CallHook("CanOpenBackpack", looter, ownerId);
+            if (hookResult != null && hookResult is string)
+            {
+                _instance.PrintToChat(looter, hookResult as string);
                 return false;
             }
 
             return true;
         }
 
-        void OnPlayerConnected (BasePlayer player) {
-            CreateGUI (player);
+        void OnPlayerConnected(BasePlayer player)
+        {
+            CreateGUI(player);
         }
 
-        void OnPlayerSleepEnded (BasePlayer player) {
-            CreateGUI (player);
+        void OnPlayerSleepEnded(BasePlayer player)
+        {
+            CreateGUI(player);
         }
 
-        void CreateGUI (BasePlayer player) {
+        void CreateGUI(BasePlayer player)
+        {
             if (player == null || player.IsNpc)
                 return;
 
-            if (!permission.UserHasPermission (player.UserIDString, GUIPermission))
+            if (!permission.UserHasPermission(player.UserIDString, GUIPermission))
                 return;
 
-            CuiHelper.DestroyUi (player, GUIPanelName);
-            var elements = new CuiElementContainer ();
+            CuiHelper.DestroyUi(player, GUIPanelName);
+            var elements = new CuiElementContainer();
             var BackpacksUIPanel = elements.Add(new CuiPanel
             {
                 Image = { Color = _instance._config.GUI.Color },
                 RectTransform = {
-                    AnchorMin = _config.GUI.GUIButtonPosition.Anchors.AnchorsMin,
-                    AnchorMax = _config.GUI.GUIButtonPosition.Anchors.AnchorsMax,
-                    OffsetMin = _config.GUI.GUIButtonPosition.Offsets.OffsetsMin,
-                    OffsetMax = _config.GUI.GUIButtonPosition.Offsets.OffsetsMax
-                },
+                        AnchorMin = _config.GUI.GUIButtonPosition.Anchors.AnchorsMin,
+                        AnchorMax = _config.GUI.GUIButtonPosition.Anchors.AnchorsMax,
+                        OffsetMin = _config.GUI.GUIButtonPosition.Offsets.OffsetsMin,
+                        OffsetMax = _config.GUI.GUIButtonPosition.Offsets.OffsetsMax
+                    },
                 CursorEnabled = false
             }, "Overlay", GUIPanelName);
 
@@ -568,38 +651,39 @@ namespace Oxide.Plugins {
                 Components = {
                     new CuiRawImageComponent { Url = _instance._config.GUI.Image },
                     new CuiRectTransformComponent { AnchorMin = "0 0", AnchorMax = "1 1" }
-                }
+                    }
             });
 
             elements.Add(new CuiButton
             {
                 Button = {
-                        Command = "backpack.open",
-                        Color = "0 0 0 0"
-                    },
-                RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
-                Text = { Text = "" }
+                    Command = "backpack.open", Color = "0 0 0 0" },
+                    RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
+                    Text = { Text = "" }
             }, BackpacksUIPanel);
 
-            CuiHelper.AddUi (player, elements);
+            CuiHelper.AddUi(player, elements);
+        }		
+
+        void DestroyGUI(BasePlayer player)
+        {
+            CuiHelper.DestroyUi(player, GUIPanelName);
         }
 
-        void DestroyGUI (BasePlayer player) {
-            CuiHelper.DestroyUi (player, GUIPanelName);
-        }
+        private static void LoadData<T>(out T data, string filename = null) => 
+            data = Interface.Oxide.DataFileSystem.ReadObject<T>(filename ?? _instance.Name);
 
-        private static void LoadData<T> (out T data, string filename = null) =>
-            data = Interface.Oxide.DataFileSystem.ReadObject<T> (filename ?? _instance.Name);
-
-        private static void SaveData<T> (T data, string filename = null) =>
-            Interface.Oxide.DataFileSystem.WriteObject (filename ?? _instance.Name, data);
+        private static void SaveData<T>(T data, string filename = null) => 
+            Interface.Oxide.DataFileSystem.WriteObject(filename ?? _instance.Name, data);
 
         #endregion
 
         #region Localization
 
-        protected override void LoadDefaultMessages () {
-            lang.RegisterMessages (new Dictionary<string, string> {
+        protected override void LoadDefaultMessages()
+        {
+            lang.RegisterMessages(new Dictionary<string, string>
+            {
                 ["No Permission"] = "You don't have permission to use this command.",
                 ["May Not Open Backpack In Event"] = "You may not open a backpack while participating in an event!",
                 ["View Backpack Syntax"] = "Syntax: /viewbackpack <name or id>",
@@ -620,83 +704,92 @@ namespace Oxide.Plugins {
 
         #region Configuration
 
-        protected override void LoadConfig () {
-            base.LoadConfig ();
-            _config = Config.ReadObject<Configuration> ();
-            SaveConfig ();
+        protected override void LoadConfig()
+        {
+            base.LoadConfig();
+            _config = Config.ReadObject<Configuration>();
+            SaveConfig();
         }
 
-        protected override void SaveConfig () => Config.WriteObject (_config);
+        protected override void SaveConfig() => Config.WriteObject(_config);
 
-        protected override void LoadDefaultConfig () {
-            _config = new Configuration {
-                BlacklistedItems = new HashSet<string> {
-                "autoturret",
-                "lmg.m249"
+        protected override void LoadDefaultConfig()
+        {
+            _config = new Configuration
+            {
+                BlacklistedItems = new HashSet<string>
+                {
+                    "autoturret",
+                    "lmg.m249"
                 }
             };
 
-            SaveConfig ();
+            SaveConfig();
         }
 
-        private class Configuration {
+        private class Configuration
+        {
             private ushort _backpackSize = 1;
 
-            [JsonProperty ("Backpack Size (1-7 Rows)")]
-            public ushort BackpackSize {
+            [JsonProperty("Backpack Size (1-7 Rows)")]
+            public ushort BackpackSize
+            {
                 get { return _backpackSize; }
-                set { _backpackSize = (ushort) Mathf.Clamp (value, MinSize, MaxSize); }
+                set { _backpackSize = (ushort) Mathf.Clamp(value, MinSize, MaxSize); }
             }
 
-            [JsonProperty ("Drop on Death (true/false)")]
+            [JsonProperty("Drop on Death (true/false)")]
             public bool DropOnDeath = true;
 
-            [JsonProperty ("Erase on Death (true/false)")]
+            [JsonProperty("Erase on Death (true/false)")]
             public bool EraseOnDeath = false;
 
-            [JsonProperty ("Use Blacklist (true/false)")]
+            [JsonProperty("Use Blacklist (true/false)")]
             public bool UseBlacklist = false;
 
-            [JsonProperty ("Clear Backpacks on Map-Wipe (true/false)")]
+            [JsonProperty("Clear Backpacks on Map-Wipe (true/false)")]
             public bool ClearBackpacksOnWipe = false;
 
-            [JsonProperty ("Only Save Backpacks on Server-Save (true/false)")]
+            [JsonProperty("Only Save Backpacks on Server-Save (true/false)")]
             public bool SaveBackpacksOnServerSave = false;
 
-            [JsonProperty ("Blacklisted Items (Item Shortnames)")]
+            [JsonProperty("Blacklisted Items (Item Shortnames)")]
             public HashSet<string> BlacklistedItems;
 
-            [JsonProperty (PropertyName = "GUI Button")]
-            public GUIButton GUI = new GUIButton ();
+            [JsonProperty(PropertyName = "GUI Button")]
+            public GUIButton GUI = new GUIButton();
 
-            public class GUIButton {
-                [JsonProperty (PropertyName = "Image")]
+            public class GUIButton
+            {
+                [JsonProperty(PropertyName = "Image")]
                 public string Image = "https://i.imgur.com/CyF0QNV.png";
 
-                [JsonProperty (PropertyName = "Background color (RGBA format)")]
+                [JsonProperty(PropertyName = "Background color (RGBA format)")]
                 public string Color = "1 0.96 0.88 0.15";
 
-                [JsonProperty (PropertyName = "GUI Button Position")]
-                public Position GUIButtonPosition = new Position ();
-                public class Position {
-                    [JsonProperty (PropertyName = "Anchors")]
-                    public Anchors Anchors = new Anchors ();
+                [JsonProperty(PropertyName = "GUI Button Position")]
+                public Position GUIButtonPosition = new Position();
+                public class Position
+                {
+                    [JsonProperty(PropertyName = "Anchors")]
+                    public Anchors Anchors = new Anchors();
 
-                    [JsonProperty (PropertyName = "Offsets")]
-                    public Offsets Offsets = new Offsets ();
+                    [JsonProperty(PropertyName = "Offsets")]
+                    public Offsets Offsets = new Offsets();
                 }
 
-                public class Anchors {
-                    [JsonProperty (PropertyName = "Anchor Min X")]
+                public class Anchors
+                {
+                    [JsonProperty(PropertyName = "Anchor Min X")]
                     public float AnchorMinX = 0.5f;
 
-                    [JsonProperty (PropertyName = "Anchor Min Y")]
+                    [JsonProperty(PropertyName = "Anchor Min Y")]
                     public float AnchorMinY = 0.0f;
 
-                    [JsonProperty (PropertyName = "Anchor Max X")]
+                    [JsonProperty(PropertyName = "Anchor Max X")]
                     public float AnchorMaxX = 0.5f;
 
-                    [JsonProperty (PropertyName = "Anchor Max Y")]
+                    [JsonProperty(PropertyName = "Anchor Max Y")]
                     public float AnchorMaxY = 0.0f;
 
                     [JsonIgnore]
@@ -706,17 +799,18 @@ namespace Oxide.Plugins {
                     public string AnchorsMax => $"{AnchorMaxX} {AnchorMaxY}";
                 }
 
-                public class Offsets {
-                    [JsonProperty (PropertyName = "Offset Min X")]
+                public class Offsets
+                {
+                    [JsonProperty(PropertyName = "Offset Min X")]
                     public int OffsetMinX = 185;
 
-                    [JsonProperty (PropertyName = "Offset Min Y")]
+                    [JsonProperty(PropertyName = "Offset Min Y")]
                     public int OffsetMinY = 18;
 
-                    [JsonProperty (PropertyName = "Offset Max X")]
+                    [JsonProperty(PropertyName = "Offset Max X")]
                     public int OffsetMaxX = 245;
 
-                    [JsonProperty (PropertyName = "Offset Max Y")]
+                    [JsonProperty(PropertyName = "Offset Max Y")]
                     public int OffsetMaxY = 78;
 
                     [JsonIgnore]
@@ -732,63 +826,74 @@ namespace Oxide.Plugins {
 
         #region Backpack
 
-        private class Backpack {
+        private class Backpack
+        {
             private bool _initialized = false;
             private string _ownerIdString;
             private bool _hasPossibleOverflow = false;
 
-            private ItemContainer _itemContainer = new ItemContainer ();
-            private List<BasePlayer> _looters = new List<BasePlayer> ();
+            private ItemContainer _itemContainer = new ItemContainer();
+            private List<BasePlayer> _looters = new List<BasePlayer>();
 
-            [JsonProperty ("OwnerID")]
+            [JsonProperty("OwnerID")]
             public ulong OwnerId { get; private set; }
 
-            [JsonProperty ("Items")]
-            private List<ItemData> _itemDataCollection = new List<ItemData> ();
+            [JsonProperty("Items")]
+            private List<ItemData> _itemDataCollection = new List<ItemData>();
 
-            public Backpack (ulong ownerId) : base () {
+            public Backpack(ulong ownerId) : base()
+            {
                 OwnerId = ownerId;
             }
 
-            ~Backpack () {
-                ForceCloseAllLooters ();
-                KillContainer ();
+            ~Backpack()
+            {
+                ForceCloseAllLooters();
+                KillContainer();
             }
 
-            public IPlayer FindOwnerPlayer () => _instance.covalence.Players.FindPlayerById (_ownerIdString);
+            public IPlayer FindOwnerPlayer() => _instance.covalence.Players.FindPlayerById(_ownerIdString);
 
-            public bool IsUnderlyingContainer (ItemContainer itemContainer) => _itemContainer == itemContainer;
+            public bool IsUnderlyingContainer(ItemContainer itemContainer) => _itemContainer == itemContainer;
 
-            public ushort GetAllowedSize () {
-                foreach (var kvp in _instance._backpackSizePermissions) {
-                    if (_instance.permission.UserHasPermission (_ownerIdString, kvp.Key))
+            public ushort GetAllowedSize()
+            {
+                foreach(var kvp in _instance._backpackSizePermissions)
+                {
+                    if (_instance.permission.UserHasPermission(_ownerIdString, kvp.Key))
                         return kvp.Value;
                 }
 
                 return _instance._config.BackpackSize;
             }
 
-            private int GetAllowedCapacity () => GetAllowedSize () * SlotsPerRow;
+            private int GetAllowedCapacity() => GetAllowedSize() * SlotsPerRow;
 
-            public void Initialize () {
-                if (!_initialized) {
-                    _ownerIdString = OwnerId.ToString ();
-                } else {
+            public void Initialize()
+            {
+                if (!_initialized)
+                {
+                    _ownerIdString = OwnerId.ToString();
+                }
+                else
+                {
                     // Force-close since we are re-initializing
-                    ForceCloseAllLooters ();
+                    ForceCloseAllLooters();
                 }
 
-                var ownerPlayer = FindOwnerPlayer ()?.Object as BasePlayer;
+                var ownerPlayer = FindOwnerPlayer()?.Object as BasePlayer;
                 _itemContainer.entityOwner = ownerPlayer;
 
-                var allowedCapacity = GetAllowedCapacity ();
-                if (!_initialized) {
+                var allowedCapacity = GetAllowedCapacity();
+                if (!_initialized)
+                {
                     _itemContainer.isServer = true;
                     _itemContainer.allowedContents = ItemContainer.ContentsType.Generic;
-                    _itemContainer.GiveUID ();
+                    _itemContainer.GiveUID();
                     _itemContainer.capacity = allowedCapacity;
 
-                    if (_itemDataCollection.Count != 0 && _itemDataCollection.Max (item => item.Position) >= allowedCapacity) {
+                    if (_itemDataCollection.Count != 0 && _itemDataCollection.Max(item => item.Position) >= allowedCapacity)
+                    {
                         // Temporarily increase the capacity to allow all items to fit
                         // Extra items will be addressed when the backpack is opened by the owner
                         // If an admin views the backpack in the meantime, it will appear as max capacity
@@ -796,151 +901,176 @@ namespace Oxide.Plugins {
                         _hasPossibleOverflow = true;
                     }
 
-                    foreach (var backpackItem in _itemDataCollection) {
-                        var item = backpackItem.ToItem ();
+                    foreach (var backpackItem in _itemDataCollection)
+                    {
+                        var item = backpackItem.ToItem();
 
-                        if (item != null) {
-                            item.MoveToContainer (_itemContainer, item.position);
+                        if (item != null)
+                        {
+                            item.MoveToContainer(_itemContainer, item.position);
                         }
                     }
 
                     _initialized = true;
-                } else if (_itemContainer.capacity > allowedCapacity) {
+                }
+                else if (_itemContainer.capacity > allowedCapacity)
+                {
                     // The capacity will be reduced later when the backpack is opened by the owner
                     _hasPossibleOverflow = true;
-                } else if (_itemContainer.capacity < allowedCapacity) {
+                }
+                else if (_itemContainer.capacity < allowedCapacity)
+                {
                     // Allowed capacity was increased since last initialized
                     _itemContainer.capacity = allowedCapacity;
                 }
             }
 
-            public void KillContainer () {
+            public void KillContainer()
+            {
                 _initialized = false;
 
-                _itemContainer.Kill ();
+                _itemContainer.Kill();
                 _itemContainer = null;
 
-                ItemManager.DoRemoves ();
+                ItemManager.DoRemoves();
             }
 
-            public void Open (BasePlayer looter) {
-                if (_instance._openBackpacks.ContainsKey (looter))
+            public void Open(BasePlayer looter)
+            {
+                if (_instance._openBackpacks.ContainsKey(looter))
                     return;
 
-                _instance._openBackpacks.Add (looter, this);
+                _instance._openBackpacks.Add(looter, this);
 
-                if (!_initialized) {
-                    Initialize ();
+                if (!_initialized)
+                {
+                    Initialize();
                 }
 
                 // The entityOwner may no longer be valid if it was instantiated while the player was offline (due to player death)
-                if (_itemContainer.entityOwner == null) {
-                    var ownerPlayer = FindOwnerPlayer ()?.Object as BasePlayer;
+                if (_itemContainer.entityOwner == null)
+                {
+                    var ownerPlayer = FindOwnerPlayer()?.Object as BasePlayer;
                     if (ownerPlayer != null)
                         _itemContainer.entityOwner = ownerPlayer;
                 }
 
                 // Container can't be looted for some reason.
                 // We should cancel here and remove the looter from the open backpacks again.
-                if (looter.inventory.loot.IsLooting () ||
-                    !(_itemContainer.entityOwner?.CanBeLooted (looter) ?? looter.CanBeLooted (looter))) {
-                    _instance._openBackpacks.Remove (looter);
+                if (looter.inventory.loot.IsLooting()
+                    || !(_itemContainer.entityOwner?.CanBeLooted(looter) ?? looter.CanBeLooted(looter)))
+                {
+                    _instance._openBackpacks.Remove(looter);
                     return;
                 }
 
-                if (!_looters.Contains (looter))
-                    _looters.Add (looter);
+                if (!_looters.Contains(looter))
+                    _looters.Add(looter);
 
-                if (!_instance.VerifyCanOpenBackpack (looter, OwnerId))
+                if (!_instance.VerifyCanOpenBackpack(looter, OwnerId))
                     return;
 
-                if (_hasPossibleOverflow && looter.userID == OwnerId) {
-                    HandlePossiblyOverflowingItems (looter);
+                if (_hasPossibleOverflow && looter.userID == OwnerId)
+                {
+                    HandlePossiblyOverflowingItems(looter);
                 }
 
-                PlayerLootContainer (looter, _itemContainer);
+                PlayerLootContainer(looter, _itemContainer);
 
-                Interface.CallHook ("OnBackpackOpened", looter, OwnerId, _itemContainer);
+                Interface.CallHook("OnBackpackOpened", looter, OwnerId, _itemContainer);
             }
 
-            private void HandlePossiblyOverflowingItems (BasePlayer receiver) {
+            private void HandlePossiblyOverflowingItems(BasePlayer receiver)
+            {
                 // Close for other looters since we are going to alter the capacity
-                foreach (var looter in _looters.ToArray ()) {
-                    if (looter != receiver) {
-                        ForceCloseLooter (looter);
+                foreach (var looter in _looters.ToArray())
+                {
+                    if (looter != receiver)
+                    {
+                        ForceCloseLooter(looter);
                     }
                 }
 
-                var allowedCapacity = GetAllowedCapacity ();
+                var allowedCapacity = GetAllowedCapacity();
 
                 // Item order is preserved so that compaction is more deterministic
                 // Basically, items earlier in the backpack are more likely to stay in the backpack
                 var extraItems = _itemContainer.itemList
-                    .OrderBy (item => item.position)
-                    .Where (item => item.position >= allowedCapacity)
-                    .ToArray ();
+                    .OrderBy(item => item.position)
+                    .Where(item => item.position >= allowedCapacity)
+                    .ToArray();
 
                 // Remove the extra items from the container so the capacity can be reduced
-                foreach (var item in extraItems) {
-                    item.RemoveFromContainer ();
+                foreach (var item in extraItems)
+                {
+                    item.RemoveFromContainer();
                 }
 
                 // Capacity must be reduced before attempting to move overflowing items or they will be placed in the extra slots
                 _itemContainer.capacity = allowedCapacity;
 
                 var itemsDroppedOrGivenToPlayer = 0;
-                foreach (var item in extraItems) {
+                foreach (var item in extraItems)
+                {
                     // Try to move the item to a vacant backpack slot or add to an existing stack in the backpack
                     // If the item cannot be completely compacted into the backpack, the remainder is given to the player
                     // If the item does not completely fit in the player inventory, the remainder is automatically dropped
-                    if (!item.MoveToContainer (_itemContainer)) {
+                    if (!item.MoveToContainer(_itemContainer))
+                    {
                         itemsDroppedOrGivenToPlayer++;
-                        receiver.GiveItem (item);
+                        receiver.GiveItem(item);
                     }
                 }
 
-                if (itemsDroppedOrGivenToPlayer > 0) {
-                    _instance.PrintToChat (receiver, _instance.lang.GetMessage ("Backpack Over Capacity", _instance, receiver.UserIDString));
+                if (itemsDroppedOrGivenToPlayer > 0)
+                {
+                    _instance.PrintToChat(receiver, _instance.lang.GetMessage("Backpack Over Capacity", _instance, receiver.UserIDString));
                 }
 
                 _hasPossibleOverflow = false;
             }
 
-            public void ForceCloseAllLooters () {
-                foreach (BasePlayer looter in _looters.ToArray ()) {
-                    ForceCloseLooter (looter);
+            public void ForceCloseAllLooters()
+            {
+                foreach (BasePlayer looter in _looters.ToArray())
+                {
+                    ForceCloseLooter(looter);
                 }
             }
 
-            private void ForceCloseLooter (BasePlayer looter) {
-                looter.inventory.loot.Clear ();
-                looter.inventory.loot.MarkDirty ();
-                looter.inventory.loot.SendImmediate ();
+            private void ForceCloseLooter(BasePlayer looter)
+            {
+                looter.inventory.loot.Clear();
+                looter.inventory.loot.MarkDirty();
+                looter.inventory.loot.SendImmediate();
 
-                OnClose (looter);
+                OnClose(looter);
             }
 
-            public void OnClose (BasePlayer looter) {
-                _looters.Remove (looter);
-                _instance._openBackpacks.Remove (looter);
+            public void OnClose(BasePlayer looter)
+            {
+                _looters.Remove(looter);
+                _instance._openBackpacks.Remove(looter);
 
-                Interface.CallHook ("OnBackpackClosed", looter, OwnerId, _itemContainer);
+				Interface.CallHook("OnBackpackClosed", looter, OwnerId, _itemContainer);
 
-                if (!_instance._config.SaveBackpacksOnServerSave) {
-                    SaveData ();
+                if (!_instance._config.SaveBackpacksOnServerSave)
+                {
+                    SaveData();
                 }
             }
 
-            public DroppedItemContainer Drop (Vector3 position) {
-                object hookResult = Interface.CallHook ("CanDropBackpack", OwnerId, position);
+            public DroppedItemContainer Drop(Vector3 position)
+            {
+                object hookResult = Interface.CallHook("CanDropBackpack", OwnerId, position);
 
-                if (hookResult is bool && (bool) hookResult == false)
+                if (hookResult is bool && (bool)hookResult == false)
                     return null;
 
                 if (_itemContainer.itemList.Count == 0)
                     return null;
-
-                BaseEntity entity = GameManager.server.CreateEntity (BackpackPrefab, position, Quaternion.identity);
+                
+                BaseEntity entity = GameManager.server.CreateEntity(BackpackPrefab, position, Quaternion.identity);
                 DroppedItemContainer container = entity as DroppedItemContainer;
 
                 // This needs to be set to "genericlarge" to allow up to 7 rows to be displayed.
@@ -951,82 +1081,93 @@ namespace Oxide.Plugins {
                 container.playerName = $"{FindOwnerPlayer()?.Name ?? "Somebody"}'s Backpack";
                 container.playerSteamID = OwnerId;
 
-                container.inventory = new ItemContainer ();
-                container.inventory.ServerInitialize (null, _itemContainer.itemList.Count);
-                container.inventory.GiveUID ();
+                container.inventory = new ItemContainer();
+                container.inventory.ServerInitialize(null, _itemContainer.itemList.Count);
+                container.inventory.GiveUID();
                 container.inventory.entityOwner = container;
-                container.inventory.SetFlag (ItemContainer.Flag.NoItemInput, true);
+                container.inventory.SetFlag(ItemContainer.Flag.NoItemInput, true);
 
-                foreach (Item item in _itemContainer.itemList.ToArray ()) {
-                    if (!item.MoveToContainer (container.inventory)) {
-                        item.Remove ();
-                        item.DoRemove ();
+                foreach (Item item in _itemContainer.itemList.ToArray())
+                {
+                    if (!item.MoveToContainer(container.inventory))
+                    {
+                        item.Remove();
+                        item.DoRemove();
                     }
                 }
 
-                container.ResetRemovalTime ();
-                container.Spawn ();
+                container.ResetRemovalTime();
+                container.Spawn();
 
-                ItemManager.DoRemoves ();
+                ItemManager.DoRemoves();
 
-                if (!_instance._config.SaveBackpacksOnServerSave) {
-                    SaveData ();
+                if (!_instance._config.SaveBackpacksOnServerSave)
+                {
+                    SaveData();
                 }
 
                 return container;
             }
 
-            public void EraseContents () {
-                object hookResult = Interface.CallHook ("CanEraseBackpack", OwnerId);
+            public void EraseContents()
+            {
+                object hookResult = Interface.CallHook("CanEraseBackpack", OwnerId);
 
-                if (hookResult is bool && (bool) hookResult == false)
+                if (hookResult is bool && (bool)hookResult == false)
                     return;
 
-                foreach (var item in _itemContainer.itemList.ToList ()) {
-                    item.Remove ();
-                    item.DoRemove ();
+                foreach (var item in _itemContainer.itemList.ToList())
+                {
+                    item.Remove();
+                    item.DoRemove();
                 }
 
-                ItemManager.DoRemoves ();
+                ItemManager.DoRemoves();
 
-                if (!_instance._config.SaveBackpacksOnServerSave) {
-                    SaveData ();
+                if (!_instance._config.SaveBackpacksOnServerSave)
+                {
+                    SaveData();
                 }
             }
 
-            public void SaveData () {
+            public void SaveData()
+            {
                 _itemDataCollection = _itemContainer.itemList
-                    .Select (ItemData.FromItem)
-                    .ToList ();
+                    .Select(ItemData.FromItem)
+                    .ToList();
 
-                Backpacks.SaveData (this, $"{_instance.Name}/{OwnerId}");
+                Backpacks.SaveData(this, $"{_instance.Name}/{OwnerId}");
             }
 
-            public int GetItemQuantity (int itemID) => _itemContainer.FindItemsByItemID (itemID).Sum (item => item.amount);
+            public int GetItemQuantity(int itemID) => _itemContainer.FindItemsByItemID(itemID).Sum(item => item.amount);
 
-            public int MoveItemsToPlayerInventory (BasePlayer player, int itemID, int desiredAmount) {
-                List<Item> matchingItemStacks = _itemContainer.FindItemsByItemID (itemID);
+            public int MoveItemsToPlayerInventory(BasePlayer player, int itemID, int desiredAmount)
+            {
+                List<Item> matchingItemStacks = _itemContainer.FindItemsByItemID(itemID);
                 int amountTransferred = 0;
 
-                foreach (Item itemStack in matchingItemStacks) {
+                foreach (Item itemStack in matchingItemStacks)
+                {
                     int remainingDesiredAmount = desiredAmount - amountTransferred;
-                    Item itemToTransfer = (itemStack.amount > remainingDesiredAmount) ? itemStack.SplitItem (remainingDesiredAmount) : itemStack;
+                    Item itemToTransfer = (itemStack.amount > remainingDesiredAmount) ? itemStack.SplitItem(remainingDesiredAmount) : itemStack;
                     int initialStackAmount = itemToTransfer.amount;
 
-                    bool transferFullySucceeded = player.inventory.GiveItem (itemToTransfer);
+                    bool transferFullySucceeded = player.inventory.GiveItem(itemToTransfer);
                     amountTransferred += initialStackAmount;
 
-                    if (!transferFullySucceeded) {
+                    if (!transferFullySucceeded)
+                    {
                         int amountRemainingInStack = itemToTransfer.amount;
 
                         // Decrement the amountTransferred by the amount remaining in the stack
                         // Since earlier we incremented it by the full stack amount
                         amountTransferred -= amountRemainingInStack;
 
-                        if (itemToTransfer != itemStack) {
+                        if (itemToTransfer != itemStack)
+                        {
                             // Add the remaining items from the split stack back to the original stack
                             itemStack.amount += amountRemainingInStack;
-                            itemStack.MarkDirty ();
+                            itemStack.MarkDirty();
                         }
                         break;
                     }
@@ -1036,49 +1177,56 @@ namespace Oxide.Plugins {
                 }
 
                 if (amountTransferred > 0 && !_instance._config.SaveBackpacksOnServerSave)
-                    SaveData ();
+                    SaveData();
 
                 return amountTransferred;
             }
 
-            public static bool HasBackpackFile (ulong id) {
+            public static bool HasBackpackFile(ulong id)
+            {
                 var fileName = $"{_instance.Name}/{id}";
 
-                return Interface.Oxide.DataFileSystem.ExistsDatafile (fileName);
+                return Interface.Oxide.DataFileSystem.ExistsDatafile(fileName);
             }
 
-            public static Backpack Get (ulong id) {
+            public static Backpack Get(ulong id)
+            {
                 if (id == 0)
-                    _instance.PrintWarning ("Accessing backpack for ID 0! Please report this to the author with as many details as possible.");
+                    _instance.PrintWarning("Accessing backpack for ID 0! Please report this to the author with as many details as possible.");
 
-                if (_instance._backpacks.ContainsKey (id))
+                if (_instance._backpacks.ContainsKey(id))
                     return _instance._backpacks[id];
-
+                
                 var fileName = $"{_instance.Name}/{id}";
 
-                TryMigrateData (fileName);
+                TryMigrateData(fileName);
 
                 Backpack backpack;
-                if (Interface.Oxide.DataFileSystem.ExistsDatafile (fileName)) {
-                    LoadData (out backpack, fileName);
-                } else {
-                    backpack = new Backpack (id);
-                    Backpacks.SaveData (backpack, fileName);
+                if (Interface.Oxide.DataFileSystem.ExistsDatafile(fileName))
+                {
+                    LoadData(out backpack, fileName);
+                }
+                else
+                {
+                    backpack = new Backpack(id);
+                    Backpacks.SaveData(backpack, fileName);
                 }
 
-                Interface.Oxide.DataFileSystem.GetDatafile (fileName).Settings = new JsonSerializerSettings {
+                Interface.Oxide.DataFileSystem.GetDatafile(fileName).Settings = new JsonSerializerSettings
+                {
                     DefaultValueHandling = DefaultValueHandling.Ignore
                 };
 
-                _instance._backpacks.Add (id, backpack);
-
-                backpack.Initialize ();
+                _instance._backpacks.Add(id, backpack);
+                
+                backpack.Initialize();
 
                 return backpack;
             }
         }
 
-        public class ItemData {
+        public class ItemData
+        {
             public int ID;
             public int Position = -1;
             public int Amount;
@@ -1095,17 +1243,19 @@ namespace Oxide.Plugins {
             public string Name;
             public string Text;
 
-            public List<ItemData> Contents = new List<ItemData> ();
+            public List<ItemData> Contents = new List<ItemData>();
 
-            public Item ToItem () {
+            public Item ToItem()
+            {
                 if (Amount == 0)
                     return null;
 
-                Item item = ItemManager.CreateByItemID (ID, Amount, Skin);
+                Item item = ItemManager.CreateByItemID(ID, Amount, Skin);
 
                 item.position = Position;
 
-                if (IsBlueprint) {
+                if (IsBlueprint)
+                {
                     item.blueprintTarget = BlueprintTarget;
                     return item;
                 }
@@ -1118,23 +1268,26 @@ namespace Oxide.Plugins {
 
                 if (Contents != null)
                     foreach (var contentItem in Contents)
-                        contentItem.ToItem ().MoveToContainer (item.contents);
+                        contentItem.ToItem().MoveToContainer(item.contents);
                 else
                     item.contents = null;
 
-                BaseProjectile.Magazine magazine = item.GetHeldEntity ()?.GetComponent<BaseProjectile> ()?.primaryMagazine;
-                FlameThrower flameThrower = item.GetHeldEntity ()?.GetComponent<FlameThrower> ();
+                BaseProjectile.Magazine magazine = item.GetHeldEntity()?.GetComponent<BaseProjectile>()?.primaryMagazine;
+                FlameThrower flameThrower = item.GetHeldEntity()?.GetComponent<FlameThrower>();
 
-                if (magazine != null) {
+                if (magazine != null)
+                {
                     magazine.contents = Ammo;
-                    magazine.ammoType = ItemManager.FindItemDefinition (AmmoType);
+                    magazine.ammoType = ItemManager.FindItemDefinition(AmmoType);
                 }
 
                 if (flameThrower != null)
                     flameThrower.ammo = FlameFuel;
 
-                if (DataInt > 0) {
-                    item.instanceData = new ProtoBuf.Item.InstanceData {
+                if (DataInt > 0)
+                {
+                    item.instanceData = new ProtoBuf.Item.InstanceData
+                    {
                         ShouldPool = false,
                         dataInt = DataInt
                     };
@@ -1148,19 +1301,20 @@ namespace Oxide.Plugins {
                 return item;
             }
 
-            public static ItemData FromItem (Item item) => new ItemData {
+            public static ItemData FromItem(Item item) => new ItemData
+            {
                 ID = item.info.itemid,
                 Position = item.position,
-                Ammo = item.GetHeldEntity ()?.GetComponent<BaseProjectile> ()?.primaryMagazine?.contents ?? 0,
-                AmmoType = item.GetHeldEntity ()?.GetComponent<BaseProjectile> ()?.primaryMagazine?.ammoType?.itemid ?? 0,
+                Ammo = item.GetHeldEntity()?.GetComponent<BaseProjectile>()?.primaryMagazine?.contents ?? 0,
+                AmmoType = item.GetHeldEntity()?.GetComponent<BaseProjectile>()?.primaryMagazine?.ammoType?.itemid ?? 0,
                 Amount = item.amount,
                 Condition = item.condition,
                 MaxCondition = item.maxCondition,
                 Fuel = item.fuel,
                 Skin = item.skin,
-                Contents = item.contents?.itemList?.Select (FromItem).ToList (),
-                FlameFuel = item.GetHeldEntity ()?.GetComponent<FlameThrower> ()?.ammo ?? 0,
-                IsBlueprint = item.IsBlueprint (),
+                Contents = item.contents?.itemList?.Select(FromItem).ToList(),
+                FlameFuel = item.GetHeldEntity()?.GetComponent<FlameThrower>()?.ammo ?? 0,
+                IsBlueprint = item.IsBlueprint(),
                 BlueprintTarget = item.blueprintTarget,
                 DataInt = item.instanceData?.dataInt ?? 0,
                 Name = item.name,
