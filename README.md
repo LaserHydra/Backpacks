@@ -41,18 +41,10 @@ Please consider donating to support me and help me put more time into my plugins
     "Image": "https://i.imgur.com/CyF0QNV.png",
     "Background color (RGBA format)": "1 0.96 0.88 0.15",
     "GUI Button Position": {
-      "Anchors": {
-        "Anchor Min X": 0.5,
-        "Anchor Min Y": 0.0,
-        "Anchor Max X": 0.5,
-        "Anchor Max Y": 0.0
-      },
-      "Offsets": {
-        "Offset Min X": 185,
-        "Offset Min Y": 18,
-        "Offset Max X": 245,
-        "Offset Max Y": 78
-      }
+      "Anchors Min": "0.5 0.0",
+      "Anchors Max": "0.5 0.0",
+      "Offsets Min": "185 18",
+      "Offsets Max": "245 78"
     }
   },
   "Backpack Size (1-7 Rows)": 1
@@ -62,23 +54,16 @@ Please consider donating to support me and help me put more time into my plugins
 Alternative backpacks buttons:
 ```json
 //button left side
-  "GUI button": {
+  "GUI Button": {
     "Image": "https://i.imgur.com/wLR9Z6V.png",
     "Background color (RGBA format)": "1 0.96 0.88 0.15",
     "GUI Button Position": {
-      "Anchors": {
-        "Anchor Min X": 0.5,
-        "Anchor Min Y": 0.0,
-        "Anchor Max X": 0.5,
-        "Anchor Max Y": 0.0
-      },
-      "Offsets": {
-        "Offset Min X": -265,
-        "Offset Min Y": 18,
-        "Offset Max X": -205,
-        "Offset Max Y": 78
-      }
+      "Anchors Min": "0.5 0.0",
+      "Anchors Max": "0.5 0.0",
+      "Offsets Min": "-265 18",
+      "Offsets Max": "-205 78"
     }
+  },
 ```
 ```json
 //button right side
@@ -86,19 +71,12 @@ Alternative backpacks buttons:
     "Image": "https://i.imgur.com/h1HQEAB.png",
     "Background color (RGBA format)": "1 0.96 0.88 0.15",
     "GUI Button Position": {
-      "Anchors": {
-        "Anchor Min X": 0.5,
-        "Anchor Min Y": 0.0,
-        "Anchor Max X": 0.5,
-        "Anchor Max Y": 0.0
-      },
-      "Offsets": {
-        "Offset Min X": 185,
-        "Offset Min Y": 18,
-        "Offset Max X": 245,
-        "Offset Max Y": 78
-      }
+      "Anchors Min": "0.5 0.0",
+      "Anchors Max": "0.5 0.0",
+      "Offsets Min": "185 18",
+      "Offsets Max": "245 78"
     }
+  },
 ```
 ```json
 //Universal image
