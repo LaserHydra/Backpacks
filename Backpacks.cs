@@ -201,7 +201,7 @@ namespace Oxide.Plugins
 
         private void OnEntityDeath(BaseCombatEntity victim, HitInfo info)
         {
-            if (victim is BasePlayer && !(victim is NPCPlayer) && !(victim is HTNPlayer))
+            if (victim is BasePlayer && !victim.IsNpc)
             {
                 var player = (BasePlayer) victim;
                 DestroyGUI(player);
@@ -260,6 +260,14 @@ namespace Oxide.Plugins
                     OnUsagePermissionChanged(player.Id);
                 }
             }
+
+            if (perm.StartsWith(GUIPermission))
+            {
+                foreach (IPlayer player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
+                {
+                    CreateGUI(player.Object as BasePlayer);
+                }
+            }
         }
 
         private void OnGroupPermissionRevoked(string group, string perm)
@@ -271,18 +279,32 @@ namespace Oxide.Plugins
                     OnUsagePermissionChanged(player.Id);
                 }
             }
+
+            if (perm.StartsWith(GUIPermission))
+            {
+                foreach (IPlayer player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
+                {
+                    DestroyGUI(player.Object as BasePlayer);
+                }
+            }
         }
 
         private void OnUserPermissionGranted(string userId, string perm)
         {
             if (perm.StartsWith(UsagePermission))
                 OnUsagePermissionChanged(userId);
+
+            if (perm.StartsWith(GUIPermission))
+                CreateGUI(BasePlayer.Find(userId));
         }
 
         private void OnUserPermissionRevoked(string userId, string perm)
         {
             if (perm.StartsWith(UsagePermission))
                 OnUsagePermissionChanged(userId);
+
+            if (perm.StartsWith(GUIPermission))
+                DestroyGUI(BasePlayer.Find(userId));
         }
 
         private void OnUsagePermissionChanged(string userIdString)
@@ -603,7 +625,7 @@ namespace Oxide.Plugins
 
         void CreateGUI(BasePlayer player)
         {
-            if (player == null || (player is NPCPlayer) || (player is HTNPlayer))
+            if (player == null || player.IsNpc)
                 return;
 
             if (!permission.UserHasPermission(player.UserIDString, GUIPermission))
@@ -734,7 +756,7 @@ namespace Oxide.Plugins
             [JsonProperty("Blacklisted Items (Item Shortnames)")]
             public HashSet<string> BlacklistedItems;
 
-            [JsonProperty(PropertyName = "GUI button")]
+            [JsonProperty(PropertyName = "GUI Button")]
             public GUIButton GUI = new GUIButton();
 
             public class GUIButton
@@ -765,10 +787,10 @@ namespace Oxide.Plugins
                     public float AnchorMinY = 0.0f;
 
                     [JsonProperty(PropertyName = "Anchor Max X")]
-                    public float AnchorMaxX = 1.0f;
+                    public float AnchorMaxX = 0.5f;
 
                     [JsonProperty(PropertyName = "Anchor Max Y")]
-                    public float AnchorMaxY = 0.5f;
+                    public float AnchorMaxY = 0.0f;
 
                     [JsonIgnore]
                     public string AnchorsMin => $"{AnchorMinX} {AnchorMinY}";
@@ -780,16 +802,16 @@ namespace Oxide.Plugins
                 public class Offsets
                 {
                     [JsonProperty(PropertyName = "Offset Min X")]
-                    public int OffsetMinX = 184;
+                    public int OffsetMinX = 185;
 
                     [JsonProperty(PropertyName = "Offset Min Y")]
                     public int OffsetMinY = 18;
 
                     [JsonProperty(PropertyName = "Offset Max X")]
-                    public int OffsetMaxX = -396;
+                    public int OffsetMaxX = 245;
 
                     [JsonProperty(PropertyName = "Offset Max Y")]
-                    public int OffsetMaxY = -282;
+                    public int OffsetMaxY = 78;
 
                     [JsonIgnore]
                     public string OffsetsMin => $"{OffsetMinX} {OffsetMinY}";
