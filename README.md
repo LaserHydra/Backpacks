@@ -1,4 +1,4 @@
-﻿**Backpacks** allows players to have backpacks that provide them with extra inventory space. The backpack can be dropped on death.
+﻿**Backpacks** allows players to have backpacks that provide them with extra inventory space. The backpack can be dropped on death. Supports GUI button.
 
 **Note:** To bind a key to open the backpack, use: `bind b backpack.open` in your F1 client console.
 
@@ -18,6 +18,7 @@ Please consider donating to support me and help me put more time into my plugins
 ## Permissions
 
 - `backpacks.admin` -- required for `/viewbackpack` command
+- `backpacks.gui` -- required to use GUI button
 - `backpacks.use` -- required to open your own backpack
 - `backpacks.use.1 - 7` -- gives player access to a certain amount of inventory rows overwriting the configured default size *(e.g. backpacks.use.3 gives them 3 rows of item space; still requires backpacks.use)*
 - `backpacks.fetch` -- required to use the `backpack.fetch` command
@@ -30,14 +31,56 @@ Please consider donating to support me and help me put more time into my plugins
   "Drop on Death (true/false)": true,
   "Erase on Death (true/false)": false,
   "Use Blacklist (true/false)": false,
-  "Clear Backpacks on Map-Wipe (true/false)": true,
+  "Clear Backpacks on Map-Wipe (true/false)": false,
   "Only Save Backpacks on Server-Save (true/false)": false,
   "Blacklisted Items (Item Shortnames)": [
     "autoturret",
     "lmg.m249"
   ],
+  "GUI Button": {
+    "Image": "https://i.imgur.com/CyF0QNV.png",
+    "Background color (RGBA format)": "1 0.96 0.88 0.15",
+    "GUI Button Position": {
+      "Anchors Min": "0.5 0.0",
+      "Anchors Max": "0.5 0.0",
+      "Offsets Min": "185 18",
+      "Offsets Max": "245 78"
+    }
+  },
   "Backpack Size (1-7 Rows)": 1
 }
+```
+
+Alternative backpacks buttons:
+```json
+//button left side
+  "GUI Button": {
+    "Image": "https://i.imgur.com/wLR9Z6V.png",
+    "Background color (RGBA format)": "1 0.96 0.88 0.15",
+    "GUI Button Position": {
+      "Anchors Min": "0.5 0.0",
+      "Anchors Max": "0.5 0.0",
+      "Offsets Min": "-265 18",
+      "Offsets Max": "-205 78"
+    }
+  },
+```
+```json
+//button right side
+  "GUI Button": {
+    "Image": "https://i.imgur.com/h1HQEAB.png",
+    "Background color (RGBA format)": "1 0.96 0.88 0.15",
+    "GUI Button Position": {
+      "Anchors Min": "0.5 0.0",
+      "Anchors Max": "0.5 0.0",
+      "Offsets Min": "185 18",
+      "Offsets Max": "245 78"
+    }
+  },
+```
+```json
+//Universal image
+    "Image": "https://i.imgur.com/5RE9II5.png",
 ```
 
 ## Localization

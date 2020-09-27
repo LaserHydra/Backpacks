@@ -5,6 +5,7 @@ using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
 using Oxide.Core;
 using Oxide.Core.Libraries.Covalence;
+using Oxide.Game.Rust.Cui;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -16,7 +17,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "LaserHydra", "3.2.1")]
+    [Info("Backpacks", "LaserHydra", "3.3.0")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : RustPlugin
     {
@@ -25,8 +26,10 @@ namespace Oxide.Plugins
         private const ushort MinSize = 1;
         private const ushort MaxSize = 7;
         private const ushort SlotsPerRow = 6;
+        private const string GUIPanelName = "BackpacksUI";
 
         private const string UsagePermission = "backpacks.use";
+        private const string GUIPermission = "backpacks.gui";
         private const string FetchPermission = "backpacks.fetch";
         private const string AdminPermission = "backpacks.admin";
         private const string KeepOnDeathPermission = "backpacks.keepondeath";
@@ -54,6 +57,7 @@ namespace Oxide.Plugins
             _instance = this;
 
             permission.RegisterPermission(UsagePermission, this);
+            permission.RegisterPermission(GUIPermission, this);
             permission.RegisterPermission(FetchPermission, this);
             permission.RegisterPermission(AdminPermission, this);
             permission.RegisterPermission(KeepOnDeathPermission, this);
@@ -73,6 +77,9 @@ namespace Oxide.Plugins
             {
                 Unsubscribe("OnPlayerCorpse");
             }
+
+            foreach (var player in BasePlayer.activePlayerList)
+                CreateGUI(player);
         }
 
         private void Unload()
@@ -83,6 +90,8 @@ namespace Oxide.Plugins
                 backpack.SaveData();
                 backpack.KillContainer();
             }
+            foreach (var player in BasePlayer.activePlayerList)
+                DestroyGUI(player);
         }
 
         private void OnNewSave(string filename)
@@ -192,9 +201,10 @@ namespace Oxide.Plugins
 
         private void OnEntityDeath(BaseCombatEntity victim, HitInfo info)
         {
-            if (victim is BasePlayer && !(victim is NPCPlayer) && !(victim is HTNPlayer))
+            if (victim is BasePlayer && !victim.IsNpc)
             {
                 var player = (BasePlayer) victim;
+                DestroyGUI(player);
 
                 if (Backpack.HasBackpackFile(player.userID))
                 {
@@ -250,6 +260,14 @@ namespace Oxide.Plugins
                     OnUsagePermissionChanged(player.Id);
                 }
             }
+
+            if (perm.StartsWith(GUIPermission))
+            {
+                foreach (IPlayer player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
+                {
+                    CreateGUI(player.Object as BasePlayer);
+                }
+            }
         }
 
         private void OnGroupPermissionRevoked(string group, string perm)
@@ -261,18 +279,32 @@ namespace Oxide.Plugins
                     OnUsagePermissionChanged(player.Id);
                 }
             }
+
+            if (perm.StartsWith(GUIPermission))
+            {
+                foreach (IPlayer player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
+                {
+                    DestroyGUI(player.Object as BasePlayer);
+                }
+            }
         }
 
         private void OnUserPermissionGranted(string userId, string perm)
         {
             if (perm.StartsWith(UsagePermission))
                 OnUsagePermissionChanged(userId);
+
+            if (perm.StartsWith(GUIPermission))
+                CreateGUI(BasePlayer.Find(userId));
         }
 
         private void OnUserPermissionRevoked(string userId, string perm)
         {
             if (perm.StartsWith(UsagePermission))
                 OnUsagePermissionChanged(userId);
+
+            if (perm.StartsWith(GUIPermission))
+                DestroyGUI(BasePlayer.Find(userId));
         }
 
         private void OnUsagePermissionChanged(string userIdString)
@@ -581,6 +613,62 @@ namespace Oxide.Plugins
             return true;
         }
 
+        void OnPlayerConnected(BasePlayer player)
+        {
+            CreateGUI(player);
+        }
+
+        void OnPlayerSleepEnded(BasePlayer player)
+        {
+            CreateGUI(player);
+        }
+
+        void CreateGUI(BasePlayer player)
+        {
+            if (player == null || player.IsNpc)
+                return;
+
+            if (!permission.UserHasPermission(player.UserIDString, GUIPermission))
+                return;
+
+            CuiHelper.DestroyUi(player, GUIPanelName);
+            var elements = new CuiElementContainer();
+            var BackpacksUIPanel = elements.Add(new CuiPanel
+            {
+                Image = { Color = _instance._config.GUI.Color },
+                RectTransform = {
+                    AnchorMin = _config.GUI.GUIButtonPosition.AnchorsMin,
+                    AnchorMax = _config.GUI.GUIButtonPosition.AnchorsMax,
+                    OffsetMin = _config.GUI.GUIButtonPosition.OffsetsMin,
+                    OffsetMax = _config.GUI.GUIButtonPosition.OffsetsMax
+                },
+                CursorEnabled = false
+            }, "Overlay", GUIPanelName);
+
+            elements.Add(new CuiElement
+            {
+                Parent = GUIPanelName,
+                Components = {
+                    new CuiRawImageComponent { Url = _instance._config.GUI.Image },
+                    new CuiRectTransformComponent { AnchorMin = "0 0", AnchorMax = "1 1" }
+                }
+            });
+
+            elements.Add(new CuiButton
+            {
+                Button = { Command = "backpack.open", Color = "0 0 0 0" },
+                RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
+                Text = { Text = "" }
+            }, BackpacksUIPanel);
+
+            CuiHelper.AddUi(player, elements);
+        }		
+
+        void DestroyGUI(BasePlayer player)
+        {
+            CuiHelper.DestroyUi(player, GUIPanelName);
+        }
+
         private static void LoadData<T>(out T data, string filename = null) => 
             data = Interface.Oxide.DataFileSystem.ReadObject<T>(filename ?? _instance.Name);
 
@@ -666,6 +754,35 @@ namespace Oxide.Plugins
 
             [JsonProperty("Blacklisted Items (Item Shortnames)")]
             public HashSet<string> BlacklistedItems;
+
+            [JsonProperty(PropertyName = "GUI Button")]
+            public GUIButton GUI = new GUIButton();
+
+            public class GUIButton
+            {
+                [JsonProperty(PropertyName = "Image")]
+                public string Image = "https://i.imgur.com/CyF0QNV.png";
+
+                [JsonProperty(PropertyName = "Background color (RGBA format)")]
+                public string Color = "1 0.96 0.88 0.15";
+
+                [JsonProperty(PropertyName = "GUI Button Position")]
+                public Position GUIButtonPosition = new Position();
+                public class Position
+                {
+                    [JsonProperty(PropertyName = "Anchors Min")]
+                    public string AnchorsMin = "0.5 0.0";
+
+                    [JsonProperty(PropertyName = "Anchors Max")]
+                    public string AnchorsMax = "0.5 0.0";
+
+                    [JsonProperty(PropertyName = "Offsets Min")]
+                    public string OffsetsMin = "185 18";
+
+                    [JsonProperty(PropertyName = "Offsets Max")]
+                    public string OffsetsMax = "245 78";
+                }
+            }
         }
 
         #endregion
