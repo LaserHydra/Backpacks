@@ -637,11 +637,11 @@ namespace Oxide.Plugins
             {
                 Image = { Color = _instance._config.GUI.Color },
                 RectTransform = {
-                        AnchorMin = _config.GUI.GUIButtonPosition.Anchors.AnchorsMin,
-                        AnchorMax = _config.GUI.GUIButtonPosition.Anchors.AnchorsMax,
-                        OffsetMin = _config.GUI.GUIButtonPosition.Offsets.OffsetsMin,
-                        OffsetMax = _config.GUI.GUIButtonPosition.Offsets.OffsetsMax
-                    },
+                    AnchorMin = _config.GUI.GUIButtonPosition.Anchors.AnchorsMin,
+                    AnchorMax = _config.GUI.GUIButtonPosition.Anchors.AnchorsMax,
+                    OffsetMin = _config.GUI.GUIButtonPosition.Offsets.OffsetsMin,
+                    OffsetMax = _config.GUI.GUIButtonPosition.Offsets.OffsetsMax
+                },
                 CursorEnabled = false
             }, "Overlay", GUIPanelName);
 
@@ -651,15 +651,14 @@ namespace Oxide.Plugins
                 Components = {
                     new CuiRawImageComponent { Url = _instance._config.GUI.Image },
                     new CuiRectTransformComponent { AnchorMin = "0 0", AnchorMax = "1 1" }
-                    }
+                }
             });
 
             elements.Add(new CuiButton
             {
-                Button = {
-                    Command = "backpack.open", Color = "0 0 0 0" },
-                    RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
-                    Text = { Text = "" }
+                Button = { Command = "backpack.open", Color = "0 0 0 0" },
+                RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
+                Text = { Text = "" }
             }, BackpacksUIPanel);
 
             CuiHelper.AddUi(player, elements);
