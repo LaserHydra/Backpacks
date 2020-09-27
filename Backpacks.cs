@@ -637,10 +637,10 @@ namespace Oxide.Plugins
             {
                 Image = { Color = _instance._config.GUI.Color },
                 RectTransform = {
-                    AnchorMin = _config.GUI.GUIButtonPosition.Anchors.AnchorsMin,
-                    AnchorMax = _config.GUI.GUIButtonPosition.Anchors.AnchorsMax,
-                    OffsetMin = _config.GUI.GUIButtonPosition.Offsets.OffsetsMin,
-                    OffsetMax = _config.GUI.GUIButtonPosition.Offsets.OffsetsMax
+                    AnchorMin = _config.GUI.GUIButtonPosition.AnchorsMin,
+                    AnchorMax = _config.GUI.GUIButtonPosition.AnchorsMax,
+                    OffsetMin = _config.GUI.GUIButtonPosition.OffsetsMin,
+                    OffsetMax = _config.GUI.GUIButtonPosition.OffsetsMax
                 },
                 CursorEnabled = false
             }, "Overlay", GUIPanelName);
@@ -770,53 +770,17 @@ namespace Oxide.Plugins
                 public Position GUIButtonPosition = new Position();
                 public class Position
                 {
-                    [JsonProperty(PropertyName = "Anchors")]
-                    public Anchors Anchors = new Anchors();
+                    [JsonProperty(PropertyName = "Anchors Min")]
+                    public string AnchorsMin = "0.5 0.0";
 
-                    [JsonProperty(PropertyName = "Offsets")]
-                    public Offsets Offsets = new Offsets();
-                }
+                    [JsonProperty(PropertyName = "Anchors Max")]
+                    public string AnchorsMax = "0.5 0.0";
 
-                public class Anchors
-                {
-                    [JsonProperty(PropertyName = "Anchor Min X")]
-                    public float AnchorMinX = 0.5f;
+                    [JsonProperty(PropertyName = "Offsets Min")]
+                    public string OffsetsMin = "185 18";
 
-                    [JsonProperty(PropertyName = "Anchor Min Y")]
-                    public float AnchorMinY = 0.0f;
-
-                    [JsonProperty(PropertyName = "Anchor Max X")]
-                    public float AnchorMaxX = 0.5f;
-
-                    [JsonProperty(PropertyName = "Anchor Max Y")]
-                    public float AnchorMaxY = 0.0f;
-
-                    [JsonIgnore]
-                    public string AnchorsMin => $"{AnchorMinX} {AnchorMinY}";
-
-                    [JsonIgnore]
-                    public string AnchorsMax => $"{AnchorMaxX} {AnchorMaxY}";
-                }
-
-                public class Offsets
-                {
-                    [JsonProperty(PropertyName = "Offset Min X")]
-                    public int OffsetMinX = 185;
-
-                    [JsonProperty(PropertyName = "Offset Min Y")]
-                    public int OffsetMinY = 18;
-
-                    [JsonProperty(PropertyName = "Offset Max X")]
-                    public int OffsetMaxX = 245;
-
-                    [JsonProperty(PropertyName = "Offset Max Y")]
-                    public int OffsetMaxY = 78;
-
-                    [JsonIgnore]
-                    public string OffsetsMin => $"{OffsetMinX} {OffsetMinY}";
-
-                    [JsonIgnore]
-                    public string OffsetsMax => $"{OffsetMaxX} {OffsetMaxY}";
+                    [JsonProperty(PropertyName = "Offsets Max")]
+                    public string OffsetsMax = "245 78";
                 }
             }
         }
