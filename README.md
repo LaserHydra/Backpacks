@@ -43,14 +43,14 @@ Please consider donating to support me and help me put more time into my plugins
       "Anchors": {
         "Anchor Min X": 0.5,
         "Anchor Min Y": 0.0,
-        "Anchor Max X": 1.0,
-        "Anchor Max Y": 0.5
+        "Anchor Max X": 0.5,
+        "Anchor Max Y": 0.0
       },
       "Offsets": {
-        "Offset Min X": 184,
+        "Offset Min X": 185,
         "Offset Min Y": 18,
-        "Offset Max X": -396,
-        "Offset Max Y": -282
+        "Offset Max X": 245,
+        "Offset Max Y": 78
       }
     }
   },
@@ -66,16 +66,16 @@ Alternative backpacks buttons:
     "Background color (RGBA format)": "1 0.96 0.88 0.15",
     "GUI Button Position": {
       "Anchors": {
-        "Anchor Min X": 0.0,
+        "Anchor Min X": 0.5,
         "Anchor Min Y": 0.0,
         "Anchor Max X": 0.5,
-        "Anchor Max Y": 0.5
+        "Anchor Max Y": 0.0
       },
       "Offsets": {
-        "Offset Min X": 376,
+        "Offset Min X": -265,
         "Offset Min Y": 18,
-        "Offset Max X": -204,
-        "Offset Max Y": -282
+        "Offset Max X": -205,
+        "Offset Max Y": 78
       }
     }
 ```
@@ -88,14 +88,14 @@ Alternative backpacks buttons:
       "Anchors": {
         "Anchor Min X": 0.5,
         "Anchor Min Y": 0.0,
-        "Anchor Max X": 1.0,
-        "Anchor Max Y": 0.5
+        "Anchor Max X": 0.5,
+        "Anchor Max Y": 0.0
       },
       "Offsets": {
-        "Offset Min X": 184,
+        "Offset Min X": 185,
         "Offset Min Y": 18,
-        "Offset Max X": -396,
-        "Offset Max Y": -282
+        "Offset Max X": 245,
+        "Offset Max Y": 78
       }
     }
 ```
