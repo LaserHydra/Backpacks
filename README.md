@@ -18,6 +18,7 @@ Please consider donating to support me and help me put more time into my plugins
 ## Permissions
 
 - `backpacks.admin` -- required for `/viewbackpack` command
+- `backpacks.gui` -- required to use GUI button
 - `backpacks.use` -- required to open your own backpack
 - `backpacks.use.1 - 7` -- gives player access to a certain amount of inventory rows overwriting the configured default size *(e.g. backpacks.use.3 gives them 3 rows of item space; still requires backpacks.use)*
 - `backpacks.fetch` -- required to use the `backpack.fetch` command
