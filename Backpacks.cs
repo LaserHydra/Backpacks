@@ -375,7 +375,7 @@ namespace Oxide.Plugins
         {
             BasePlayer player = arg.Player();
 
-            if (player == null)
+            if (player == null || !player.IsAlive())
                 return;
 
             if (permission.UserHasPermission(player.UserIDString, UsagePermission))
@@ -392,7 +392,7 @@ namespace Oxide.Plugins
         {
             BasePlayer player = arg.Player();
 
-            if (player == null)
+            if (player == null || !player.IsAlive())
                 return;
 
             if (!permission.UserHasPermission(player.UserIDString, FetchPermission))
