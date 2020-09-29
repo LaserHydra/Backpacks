@@ -625,7 +625,7 @@ namespace Oxide.Plugins
 
         void CreateGUI(BasePlayer player)
         {
-            if (player == null || player.IsNpc)
+            if (player == null || player.IsNpc || !player.IsAlive())
                 return;
 
             if (!permission.UserHasPermission(player.UserIDString, GUIPermission))
