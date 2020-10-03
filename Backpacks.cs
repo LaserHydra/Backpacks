@@ -75,7 +75,7 @@ namespace Oxide.Plugins
 
             if (!_config.DropOnDeath || !ConVar.Server.corpses)
             {
-                Unsubscribe("OnPlayerCorpse");
+                Unsubscribe("OnPlayerCorpseSpawned");
             }
 
             foreach (var player in BasePlayer.activePlayerList)
@@ -233,7 +233,7 @@ namespace Oxide.Plugins
             }
         }
 
-        private void OnPlayerCorpse(BasePlayer player, BaseCorpse corpse)
+        private void OnPlayerCorpseSpawned(BasePlayer player, BaseCorpse corpse)
         {
             if (!_lastDroppedBackpacks.ContainsKey(player.userID))
                 return;
