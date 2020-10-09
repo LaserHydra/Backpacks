@@ -23,6 +23,7 @@ Please consider donating to support me and help me put more time into my plugins
 - `backpacks.fetch` -- required to use the `backpack.fetch` command
 - `backpacks.keepondeath` -- exempts player from having their backpack erased or dropped on death
 - `backpacks.keeponwipe` -- exempts player from having their backpack erased on map wipe
+- `backpacks.noblacklist` -- exempts player from the item blacklist
 
 ## Configuration
 

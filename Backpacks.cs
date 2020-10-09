@@ -31,6 +31,7 @@ namespace Oxide.Plugins
         private const string AdminPermission = "backpacks.admin";
         private const string KeepOnDeathPermission = "backpacks.keepondeath";
         private const string KeepOnWipePermission = "backpacks.keeponwipe";
+        private const string NoBlacklistPermission = "backpacks.noblacklist";
 
         private const string BackpackPrefab = "assets/prefabs/misc/item drop/item_drop_backpack.prefab";
 
@@ -59,6 +60,7 @@ namespace Oxide.Plugins
             permission.RegisterPermission(AdminPermission, this);
             permission.RegisterPermission(KeepOnDeathPermission, this);
             permission.RegisterPermission(KeepOnWipePermission, this);
+            permission.RegisterPermission(NoBlacklistPermission, this);
 
             for (ushort size = MinSize; size <= MaxSize; size++)
             {
@@ -176,7 +178,7 @@ namespace Oxide.Plugins
 
             Backpack backpack = _backpacks.Values.FirstOrDefault(b => b.IsUnderlyingContainer(container));
 
-            if (backpack != null)
+            if (backpack != null && !permission.UserHasPermission(backpack.OwnerIdString, NoBlacklistPermission))
             {
                 // Is the Item blacklisted
                 if (_config.BlacklistedItems.Any(shortName => shortName == item.info.shortname))
@@ -686,11 +688,13 @@ namespace Oxide.Plugins
         private class Backpack
         {
             private bool _initialized = false;
-            private string _ownerIdString;
             private bool _hasPossibleOverflow = false;
 
             private ItemContainer _itemContainer = new ItemContainer();
             private List<BasePlayer> _looters = new List<BasePlayer>();
+
+            [JsonIgnore]
+            public string OwnerIdString { get; private set; }
 
             [JsonProperty("OwnerID")]
             public ulong OwnerId { get; private set; }
@@ -709,7 +713,7 @@ namespace Oxide.Plugins
                 KillContainer();
             }
 
-            public IPlayer FindOwnerPlayer() => _instance.covalence.Players.FindPlayerById(_ownerIdString);
+            public IPlayer FindOwnerPlayer() => _instance.covalence.Players.FindPlayerById(OwnerIdString);
 
             public bool IsUnderlyingContainer(ItemContainer itemContainer) => _itemContainer == itemContainer;
 
@@ -717,7 +721,7 @@ namespace Oxide.Plugins
             {
                 foreach(var kvp in _instance._backpackSizePermissions)
                 {
-                    if (_instance.permission.UserHasPermission(_ownerIdString, kvp.Key))
+                    if (_instance.permission.UserHasPermission(OwnerIdString, kvp.Key))
                         return kvp.Value;
                 }
 
@@ -730,7 +734,7 @@ namespace Oxide.Plugins
             {
                 if (!_initialized)
                 {
-                    _ownerIdString = OwnerId.ToString();
+                    OwnerIdString = OwnerId.ToString();
                 }
                 else
                 {
