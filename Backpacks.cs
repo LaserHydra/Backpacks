@@ -30,6 +30,7 @@ namespace Oxide.Plugins
         private const string FetchPermission = "backpacks.fetch";
         private const string AdminPermission = "backpacks.admin";
         private const string KeepOnDeathPermission = "backpacks.keepondeath";
+        private const string KeepOnWipePermission = "backpacks.keeponwipe";
 
         private const string BackpackPrefab = "assets/prefabs/misc/item drop/item_drop_backpack.prefab";
 
@@ -57,6 +58,7 @@ namespace Oxide.Plugins
             permission.RegisterPermission(FetchPermission, this);
             permission.RegisterPermission(AdminPermission, this);
             permission.RegisterPermission(KeepOnDeathPermission, this);
+            permission.RegisterPermission(KeepOnWipePermission, this);
 
             for (ushort size = MinSize; size <= MaxSize; size++)
             {
@@ -101,6 +103,8 @@ namespace Oxide.Plugins
                         .Replace(".json", string.Empty);
                 });
 
+            int skippedBackpacks = 0;
+
             foreach (var fileName in fileNames)
             {
                 ulong userId;
@@ -108,11 +112,18 @@ namespace Oxide.Plugins
                 if (!ulong.TryParse(fileName, out userId))
                     continue;
 
+                if (permission.UserHasPermission(fileName, KeepOnWipePermission))
+                {
+                    skippedBackpacks++;
+                    continue;
+                }
+
                 var backpack = new Backpack(userId);
                 backpack.SaveData();
             }
 
-            PrintWarning("New save created. All backpacks were cleared. This can be disabled in the configuration file.");
+            string skippedBackpacksMessage = skippedBackpacks > 0 ? $", except {skippedBackpacks} due to being exempt" : string.Empty;
+            PrintWarning($"New save created. All backpacks were cleared{skippedBackpacksMessage}. Players with the '{KeepOnWipePermission}' permission are exempt. Clearing backpacks can be disabled for all players in the configuration file.");
         }
 
         private void OnServerSave()
