@@ -22,6 +22,7 @@ Please consider donating to support me and help me put more time into my plugins
 - `backpacks.use.1 - 7` -- gives player access to a certain amount of inventory rows overwriting the configured default size *(e.g. backpacks.use.3 gives them 3 rows of item space; still requires backpacks.use)*
 - `backpacks.fetch` -- required to use the `backpack.fetch` command
 - `backpacks.keepondeath` -- exempts player from having their backpack erased or dropped on death
+- `backpacks.keeponwipe` -- exempts player from having their backpack erased on map wipe
 
 ## Configuration
 
