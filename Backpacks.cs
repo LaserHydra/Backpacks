@@ -17,7 +17,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "LaserHydra", "3.3.0")]
+    [Info("Backpacks", "LaserHydra", "3.2.1")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : RustPlugin
     {
@@ -253,7 +253,7 @@ namespace Oxide.Plugins
 
         private void OnGroupPermissionGranted(string group, string perm)
         {
-            if (perm.StartsWith(UsagePermission))
+            if (perm.Equals(UsagePermission))
             {
                 foreach (IPlayer player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
                 {
@@ -261,7 +261,7 @@ namespace Oxide.Plugins
                 }
             }
 
-            if (perm.StartsWith(GUIPermission))
+            if (perm.Equals(GUIPermission))
             {
                 foreach (IPlayer player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
                 {
@@ -272,7 +272,7 @@ namespace Oxide.Plugins
 
         private void OnGroupPermissionRevoked(string group, string perm)
         {
-            if (perm.StartsWith(UsagePermission))
+            if (perm.Equals(UsagePermission))
             {
                 foreach (IPlayer player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
                 {
@@ -280,7 +280,7 @@ namespace Oxide.Plugins
                 }
             }
 
-            if (perm.StartsWith(GUIPermission))
+            if (perm.Equals(GUIPermission))
             {
                 foreach (IPlayer player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
                 {
@@ -291,19 +291,19 @@ namespace Oxide.Plugins
 
         private void OnUserPermissionGranted(string userId, string perm)
         {
-            if (perm.StartsWith(UsagePermission))
+            if (perm.Equals(UsagePermission))
                 OnUsagePermissionChanged(userId);
 
-            if (perm.StartsWith(GUIPermission))
+            if (perm.Equals(GUIPermission))
                 CreateGUI(BasePlayer.Find(userId));
         }
 
         private void OnUserPermissionRevoked(string userId, string perm)
         {
-            if (perm.StartsWith(UsagePermission))
+            if (perm.Equals(UsagePermission))
                 OnUsagePermissionChanged(userId);
 
-            if (perm.StartsWith(GUIPermission))
+            if (perm.Equals(GUIPermission))
                 DestroyGUI(BasePlayer.Find(userId));
         }
 
