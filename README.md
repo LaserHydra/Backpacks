@@ -51,36 +51,19 @@ Please consider donating to support me and help me put more time into my plugins
 }
 ```
 
-Alternative backpacks buttons:
+Alternative backpacks images:
+[right-side](https://i.imgur.com/h1HQEAB.png)
+[left-side](https://i.imgur.com/wLR9Z6V.png)
+[universal](https://i.imgur.com/5RE9II5.png)
+
+Left-side button coordinates
 ```json
-//button left side
-  "GUI Button": {
-    "Image": "https://i.imgur.com/wLR9Z6V.png",
-    "Background color (RGBA format)": "1 0.96 0.88 0.15",
     "GUI Button Position": {
       "Anchors Min": "0.5 0.0",
       "Anchors Max": "0.5 0.0",
       "Offsets Min": "-265 18",
       "Offsets Max": "-205 78"
     }
-  },
-```
-```json
-//button right side
-  "GUI Button": {
-    "Image": "https://i.imgur.com/h1HQEAB.png",
-    "Background color (RGBA format)": "1 0.96 0.88 0.15",
-    "GUI Button Position": {
-      "Anchors Min": "0.5 0.0",
-      "Anchors Max": "0.5 0.0",
-      "Offsets Min": "185 18",
-      "Offsets Max": "245 78"
-    }
-  },
-```
-```json
-//Universal image
-    "Image": "https://i.imgur.com/5RE9II5.png",
 ```
 
 ## Localization

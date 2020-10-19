@@ -253,7 +253,7 @@ namespace Oxide.Plugins
 
         private void OnGroupPermissionGranted(string group, string perm)
         {
-            if (perm.Equals(UsagePermission))
+            if (perm.StartsWith(UsagePermission))
             {
                 foreach (IPlayer player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
                 {
@@ -272,7 +272,7 @@ namespace Oxide.Plugins
 
         private void OnGroupPermissionRevoked(string group, string perm)
         {
-            if (perm.Equals(UsagePermission))
+            if (perm.StartsWith(UsagePermission))
             {
                 foreach (IPlayer player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
                 {
@@ -291,7 +291,7 @@ namespace Oxide.Plugins
 
         private void OnUserPermissionGranted(string userId, string perm)
         {
-            if (perm.Equals(UsagePermission))
+            if (perm.StartsWith(UsagePermission))
                 OnUsagePermissionChanged(userId);
 
             if (perm.Equals(GUIPermission))
@@ -300,7 +300,7 @@ namespace Oxide.Plugins
 
         private void OnUserPermissionRevoked(string userId, string perm)
         {
-            if (perm.Equals(UsagePermission))
+            if (perm.StartsWith(UsagePermission))
                 OnUsagePermissionChanged(userId);
 
             if (perm.Equals(GUIPermission))
@@ -613,17 +613,17 @@ namespace Oxide.Plugins
             return true;
         }
 
-        void OnPlayerConnected(BasePlayer player)
+        private void OnPlayerConnected(BasePlayer player)
         {
             CreateGUI(player);
         }
 
-        void OnPlayerSleepEnded(BasePlayer player)
+        private void OnPlayerSleepEnded(BasePlayer player)
         {
             CreateGUI(player);
         }
 
-        void CreateGUI(BasePlayer player)
+        private void CreateGUI(BasePlayer player)
         {
             if (player == null || player.IsNpc || !player.IsAlive())
                 return;
@@ -664,7 +664,7 @@ namespace Oxide.Plugins
             CuiHelper.AddUi(player, elements);
         }		
 
-        void DestroyGUI(BasePlayer player)
+        private void DestroyGUI(BasePlayer player)
         {
             CuiHelper.DestroyUi(player, GUIPanelName);
         }
