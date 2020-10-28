@@ -147,7 +147,7 @@ namespace Oxide.Plugins
                     backpack.SaveData();
                     backpack.KillContainer();
                 }
-                
+
                 _backpacks.Clear();
             }
         }
@@ -168,7 +168,7 @@ namespace Oxide.Plugins
                 _backpacks.Remove(player.userID);
             }
         }
-        
+
         private object CanLootPlayer(BasePlayer looted, BasePlayer looter)
         {
             if (_openBackpacks.ContainsKey(looter)
@@ -233,7 +233,7 @@ namespace Oxide.Plugins
                     else if (_config.DropOnDeath)
                     {
                         var droppedContainer = backpack.Drop(player.transform.position);
-                        
+
                         if (droppedContainer != null && ConVar.Server.corpses)
                         {
                             if (_lastDroppedBackpacks.ContainsKey(player.userID))
@@ -257,7 +257,7 @@ namespace Oxide.Plugins
 
             var corpseCollider = corpse.GetComponent<Collider>();
             var containerCollider = _lastDroppedBackpacks[player.userID].GetComponent<Collider>();
-            
+
             if (corpseCollider != null && containerCollider != null)
                 Physics.IgnoreCollision(corpseCollider, containerCollider);
 
@@ -266,14 +266,6 @@ namespace Oxide.Plugins
 
         private void OnGroupPermissionGranted(string group, string perm)
         {
-            if (perm.StartsWith(UsagePermission))
-            {
-                foreach (IPlayer player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
-                {
-                    OnUsagePermissionChanged(player.Id);
-                }
-            }
-
             if (perm.Equals(GUIPermission))
             {
                 foreach (IPlayer player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
@@ -285,14 +277,6 @@ namespace Oxide.Plugins
 
         private void OnGroupPermissionRevoked(string group, string perm)
         {
-            if (perm.StartsWith(UsagePermission))
-            {
-                foreach (IPlayer player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
-                {
-                    OnUsagePermissionChanged(player.Id);
-                }
-            }
-
             if (perm.Equals(GUIPermission))
             {
                 foreach (IPlayer player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
@@ -304,29 +288,14 @@ namespace Oxide.Plugins
 
         private void OnUserPermissionGranted(string userId, string perm)
         {
-            if (perm.StartsWith(UsagePermission))
-                OnUsagePermissionChanged(userId);
-
             if (perm.Equals(GUIPermission))
                 CreateGUI(BasePlayer.Find(userId));
         }
 
         private void OnUserPermissionRevoked(string userId, string perm)
         {
-            if (perm.StartsWith(UsagePermission))
-                OnUsagePermissionChanged(userId);
-
             if (perm.Equals(GUIPermission))
                 DestroyGUI(BasePlayer.Find(userId));
-        }
-
-        private void OnUsagePermissionChanged(string userIdString)
-        {
-            if (permission.UserHasPermission(userIdString, UsagePermission))
-            {
-                var userId = ulong.Parse(userIdString);
-                Backpack.Get(userId).Initialize();
-            }
         }
 
         #endregion
@@ -361,12 +330,12 @@ namespace Oxide.Plugins
                             ["allowedContents"] = storageContainer.inventory.allowedContents,
                             ["availableSlots"] = storageContainer.inventory.availableSlots.Count
                         };
-                        
+
                         PrintToChat(string.Join(Environment.NewLine, data.Select(kvp => $"[{kvp.Key}] : {kvp.Value}").ToArray()));
 
                         timer.In(0.5f, () => PlayerLootContainer(player, storageContainer.inventory));
                     }
-                        
+
                     else
                         PrintToChat("not a storage container");
                 }
@@ -533,7 +502,7 @@ namespace Oxide.Plugins
 
             Dictionary<string, object> data;
             LoadData(out data, fileName);
-            
+
             if (data.ContainsKey("ownerID") && data.ContainsKey("Inventory"))
             {
                 var inventory = (JObject) data["Inventory"];
@@ -675,17 +644,17 @@ namespace Oxide.Plugins
             }, BackpacksUIPanel);
 
             CuiHelper.AddUi(player, elements);
-        }		
+        }
 
         private void DestroyGUI(BasePlayer player)
         {
             CuiHelper.DestroyUi(player, GUIPanelName);
         }
 
-        private static void LoadData<T>(out T data, string filename = null) => 
+        private static void LoadData<T>(out T data, string filename = null) =>
             data = Interface.Oxide.DataFileSystem.ReadObject<T>(filename ?? _instance.Name);
 
-        private static void SaveData<T>(T data, string filename = null) => 
+        private static void SaveData<T>(T data, string filename = null) =>
             Interface.Oxide.DataFileSystem.WriteObject(filename ?? _instance.Name, data);
 
         #endregion
@@ -805,7 +774,6 @@ namespace Oxide.Plugins
         private class Backpack
         {
             private bool _initialized = false;
-            private bool _hasPossibleOverflow = false;
 
             private ItemContainer _itemContainer = new ItemContainer();
             private List<BasePlayer> _looters = new List<BasePlayer>();
@@ -862,45 +830,33 @@ namespace Oxide.Plugins
                 var ownerPlayer = FindOwnerPlayer()?.Object as BasePlayer;
                 _itemContainer.entityOwner = ownerPlayer;
 
-                var allowedCapacity = GetAllowedCapacity();
-                if (!_initialized)
-                {
-                    _itemContainer.isServer = true;
-                    _itemContainer.allowedContents = ItemContainer.ContentsType.Generic;
-                    _itemContainer.GiveUID();
-                    _itemContainer.capacity = allowedCapacity;
+                if (_initialized)
+                    return;
 
-                    if (_itemDataCollection.Count != 0 && _itemDataCollection.Max(item => item.Position) >= allowedCapacity)
+                _itemContainer.isServer = true;
+                _itemContainer.allowedContents = ItemContainer.ContentsType.Generic;
+                _itemContainer.GiveUID();
+                _itemContainer.capacity = GetAllowedCapacity();
+
+                if (_itemDataCollection.Count != 0 && _itemDataCollection.Max(item => item.Position) >= _itemContainer.capacity)
+                {
+                    // Temporarily increase the capacity to allow all items to fit
+                    // Extra items will be addressed when the backpack is opened by the owner
+                    // If an admin views the backpack in the meantime, it will appear as max capacity
+                    _itemContainer.capacity = MaxSize * SlotsPerRow;
+                }
+
+                foreach (var backpackItem in _itemDataCollection)
+                {
+                    var item = backpackItem.ToItem();
+
+                    if (item != null)
                     {
-                        // Temporarily increase the capacity to allow all items to fit
-                        // Extra items will be addressed when the backpack is opened by the owner
-                        // If an admin views the backpack in the meantime, it will appear as max capacity
-                        _itemContainer.capacity = MaxSize * SlotsPerRow;
-                        _hasPossibleOverflow = true;
+                        item.MoveToContainer(_itemContainer, item.position);
                     }
-
-                    foreach (var backpackItem in _itemDataCollection)
-                    {
-                        var item = backpackItem.ToItem();
-
-                        if (item != null)
-                        {
-                            item.MoveToContainer(_itemContainer, item.position);
-                        }
-                    }
-
-                    _initialized = true;
                 }
-                else if (_itemContainer.capacity > allowedCapacity)
-                {
-                    // The capacity will be reduced later when the backpack is opened by the owner
-                    _hasPossibleOverflow = true;
-                }
-                else if (_itemContainer.capacity < allowedCapacity)
-                {
-                    // Allowed capacity was increased since last initialized
-                    _itemContainer.capacity = allowedCapacity;
-                }
+
+                _initialized = true;
             }
 
             public void KillContainer()
@@ -942,34 +898,34 @@ namespace Oxide.Plugins
                     return;
                 }
 
-                if (!_looters.Contains(looter))
-                    _looters.Add(looter);
-
                 if (!_instance.VerifyCanOpenBackpack(looter, OwnerId))
                     return;
 
-                if (_hasPossibleOverflow && looter.userID == OwnerId)
-                {
-                    HandlePossiblyOverflowingItems(looter);
-                }
+                // Only handle overflow when the owner is opening the backpack
+                if (looter.userID == OwnerId)
+                    MaybeAdjustCapacityAndHandleOverflow(looter);
+
+                if (!_looters.Contains(looter))
+                    _looters.Add(looter);
 
                 PlayerLootContainer(looter, _itemContainer);
 
                 Interface.CallHook("OnBackpackOpened", looter, OwnerId, _itemContainer);
             }
 
-            private void HandlePossiblyOverflowingItems(BasePlayer receiver)
+            private void MaybeAdjustCapacityAndHandleOverflow(BasePlayer receiver)
             {
-                // Close for other looters since we are going to alter the capacity
-                foreach (var looter in _looters.ToArray())
+                var allowedCapacity = GetAllowedCapacity();
+
+                if (_itemContainer.capacity <= allowedCapacity)
                 {
-                    if (looter != receiver)
-                    {
-                        ForceCloseLooter(looter);
-                    }
+                    // Increasing or maintaining capacity is always safe to do
+                    _itemContainer.capacity = allowedCapacity;
+                    return;
                 }
 
-                var allowedCapacity = GetAllowedCapacity();
+                // Close for all looters since we are going to alter the capacity
+                ForceCloseAllLooters();
 
                 // Item order is preserved so that compaction is more deterministic
                 // Basically, items earlier in the backpack are more likely to stay in the backpack
@@ -1004,8 +960,6 @@ namespace Oxide.Plugins
                 {
                     _instance.PrintToChat(receiver, _instance.lang.GetMessage("Backpack Over Capacity", _instance, receiver.UserIDString));
                 }
-
-                _hasPossibleOverflow = false;
             }
 
             public void ForceCloseAllLooters()
@@ -1047,7 +1001,7 @@ namespace Oxide.Plugins
 
                 if (_itemContainer.itemList.Count == 0)
                     return null;
-                
+
                 BaseEntity entity = GameManager.server.CreateEntity(BackpackPrefab, position, Quaternion.identity);
                 DroppedItemContainer container = entity as DroppedItemContainer;
 
@@ -1174,7 +1128,7 @@ namespace Oxide.Plugins
 
                 if (_instance._backpacks.ContainsKey(id))
                     return _instance._backpacks[id];
-                
+
                 var fileName = $"{_instance.Name}/{id}";
 
                 TryMigrateData(fileName);
@@ -1196,7 +1150,7 @@ namespace Oxide.Plugins
                 };
 
                 _instance._backpacks.Add(id, backpack);
-                
+
                 backpack.Initialize();
 
                 return backpack;
