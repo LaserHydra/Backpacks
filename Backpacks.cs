@@ -297,6 +297,16 @@ namespace Oxide.Plugins
                 DestroyGUI(BasePlayer.Find(userId));
         }
 
+        private void OnPlayerConnected(BasePlayer player)
+        {
+            CreateGUI(player);
+        }
+
+        private void OnPlayerSleepEnded(BasePlayer player)
+        {
+            CreateGUI(player);
+        }
+
         #endregion
 
         #region Commands
@@ -630,16 +640,6 @@ namespace Oxide.Plugins
             }
 
             return droppedContainer;
-        }
-
-        private void OnPlayerConnected(BasePlayer player)
-        {
-            CreateGUI(player);
-        }
-
-        private void OnPlayerSleepEnded(BasePlayer player)
-        {
-            CreateGUI(player);
         }
 
         private void CreateGUI(BasePlayer player)
