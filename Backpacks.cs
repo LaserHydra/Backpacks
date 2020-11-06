@@ -231,15 +231,7 @@ namespace Oxide.Plugins
                         backpack.EraseContents();
                     else if (_config.DropOnDeath)
                     {
-                        var droppedContainer = backpack.Drop(player.transform.position);
-
-                        if (droppedContainer != null && ConVar.Server.corpses)
-                        {
-                            if (_lastDroppedBackpacks.ContainsKey(player.userID))
-                                _lastDroppedBackpacks[player.userID] = droppedContainer;
-                            else
-                                _lastDroppedBackpacks.Add(player.userID, droppedContainer);
-                        }
+                        DropBackpackWithReducedCorpseCollision(backpack, player.transform.position);
                     }
                 }
             }
@@ -594,6 +586,21 @@ namespace Oxide.Plugins
             return true;
         }
 
+        private DroppedItemContainer DropBackpackWithReducedCorpseCollision(Backpack backpack, Vector3 position)
+        {
+            var droppedContainer = backpack.Drop(position);
+
+            if (droppedContainer != null && ConVar.Server.corpses)
+            {
+                if (_lastDroppedBackpacks.ContainsKey(backpack.OwnerId))
+                    _lastDroppedBackpacks[backpack.OwnerId] = droppedContainer;
+                else
+                    _lastDroppedBackpacks.Add(backpack.OwnerId, droppedContainer);
+            }
+
+            return droppedContainer;
+        }
+
         private void OnPlayerConnected(BasePlayer player)
         {
             CreateGUI(player);
@@ -769,6 +776,17 @@ namespace Oxide.Plugins
         #endregion
 
         #region Backpack
+
+        private DroppedItemContainer API_DropBackpack(BasePlayer player)
+        {
+            if (!Backpack.HasBackpackFile(player.userID))
+                return null;
+
+            var backpack = Backpack.Get(player.userID);
+            backpack.ForceCloseAllLooters();
+
+            return DropBackpackWithReducedCorpseCollision(backpack, player.transform.position);
+        }
 
         private class Backpack
         {
