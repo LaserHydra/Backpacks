@@ -369,13 +369,21 @@ namespace Oxide.Plugins
             if (player == null || !player.IsAlive())
                 return;
 
-            if (permission.UserHasPermission(player.UserIDString, UsagePermission))
+            if (!permission.UserHasPermission(player.UserIDString, UsagePermission))
             {
-                player.EndLooting();
-                timer.Once(0.1f, () => Backpack.Get(player.userID).Open(player));
-            }
-            else
                 PrintToChat(player, lang.GetMessage("No Permission", this, player.UserIDString));
+                return;
+            }
+
+            if (_openBackpacks.ContainsKey(player))
+            {
+                // HACK: Send empty respawn information to fully close the player inventory (toggle backpack closed)
+                player.ClientRPCPlayer(null, player, "OnRespawnInformation");
+                return;
+            }
+
+            player.EndLooting();
+            timer.Once(0.1f, () => Backpack.Get(player.userID).Open(player));
         }
 
         [ConsoleCommand("backpack.fetch")]
