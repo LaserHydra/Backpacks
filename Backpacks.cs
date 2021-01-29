@@ -619,7 +619,7 @@ namespace Oxide.Plugins
 
         private bool VerifyCanOpenBackpack(BasePlayer looter, ulong ownerId)
         {
-            if (EventManager?.Call<bool>("isPlaying", looter) ?? false)
+            if (IsPlayingEvent(looter))
             {
                 PrintToChat(looter, lang.GetMessage("May Not Open Backpack In Event", this, looter.UserIDString));
                 return false;
@@ -633,6 +633,21 @@ namespace Oxide.Plugins
             }
 
             return true;
+        }
+
+        private bool IsPlayingEvent(BasePlayer player)
+        {
+            if (EventManager == null)
+                return false;
+
+            // EventManager 3.x
+            var isPlayingResult = EventManager.Call("isPlaying", player);
+            if (isPlayingResult != null)
+                return isPlayingResult is bool && (bool)isPlayingResult;
+
+            // EventManager 4.x
+            var isEventPlayerResult = EventManager.Call("IsEventPlayer", player);
+            return isEventPlayerResult is bool && (bool)isEventPlayerResult;
         }
 
         private DroppedItemContainer DropBackpackWithReducedCorpseCollision(Backpack backpack, Vector3 position)
@@ -979,7 +994,10 @@ namespace Oxide.Plugins
                 }
 
                 if (!_instance.VerifyCanOpenBackpack(looter, OwnerId))
+                {
+                    _instance._openBackpacks.Remove(looter);
                     return;
+                }
 
                 // Only handle overflow when the owner is opening the backpack
                 if (looter.userID == OwnerId)
