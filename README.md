@@ -10,6 +10,7 @@ Please consider donating to support me and help me put more time into my plugins
 
 - `/backpack` -- open your own backpack
 - `/viewbackpack <name or id>` -- open another players backpack **[Admin Command]**
+- `/backpackgui` -- toggle whether you can see the backpack GUI button
 
 ## Console Commands
 

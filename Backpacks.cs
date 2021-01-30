@@ -45,6 +45,7 @@ namespace Oxide.Plugins
         private static Backpacks _instance;
 
         private Configuration _config;
+        private StoredData _storedData;
 
         [PluginReference]
         private RustPlugin EventManager;
@@ -81,18 +82,23 @@ namespace Oxide.Plugins
                 Unsubscribe(nameof(OnPlayerCorpseSpawned));
             }
 
+            _storedData = StoredData.Load();
+
             foreach (var player in BasePlayer.activePlayerList)
                 CreateGUI(player);
         }
 
         private void Unload()
         {
+            _storedData.Save();
+
             foreach (var backpack in _backpacks.Values)
             {
                 backpack.ForceCloseAllLooters();
                 backpack.SaveData();
                 backpack.KillContainer();
             }
+
             foreach (var player in BasePlayer.activePlayerList)
                 DestroyGUI(player);
         }
@@ -138,6 +144,8 @@ namespace Oxide.Plugins
 
         private void OnServerSave()
         {
+            _storedData.Save();
+
             if (_config.SaveBackpacksOnServerSave)
             {
                 foreach (var backpack in _backpacks.Values)
@@ -287,6 +295,16 @@ namespace Oxide.Plugins
         {
             if (perm.Equals(GUIPermission))
                 DestroyGUI(BasePlayer.Find(userId));
+        }
+
+        private void OnPlayerConnected(BasePlayer player)
+        {
+            CreateGUI(player);
+        }
+
+        private void OnPlayerSleepEnded(BasePlayer player)
+        {
+            CreateGUI(player);
         }
 
         #endregion
@@ -479,6 +497,29 @@ namespace Oxide.Plugins
             timer.Once(0.5f, () => backpack.Open(player));
         }
 
+        [ChatCommand("backpackgui")]
+        private void ToggleBackpackGUI(BasePlayer player, string cmd, string[] args)
+        {
+            if (!permission.UserHasPermission(player.UserIDString, GUIPermission))
+            {
+                PrintToChat(player, lang.GetMessage("No Permission", this, player.UserIDString));
+                return;
+            }
+
+            if (_storedData.PlayersWithDisabledGUI.Contains(player.userID))
+            {
+                _storedData.PlayersWithDisabledGUI.Remove(player.userID);
+                CreateGUI(player);
+            }
+            else
+            {
+                _storedData.PlayersWithDisabledGUI.Add(player.userID);
+                DestroyGUI(player);
+            }
+
+            PrintToChat(player, lang.GetMessage("Toggled Backpack GUI", this, player.UserIDString));
+        }
+
         #endregion
 
         #region Helper Methods
@@ -601,22 +642,15 @@ namespace Oxide.Plugins
             return droppedContainer;
         }
 
-        private void OnPlayerConnected(BasePlayer player)
-        {
-            CreateGUI(player);
-        }
-
-        private void OnPlayerSleepEnded(BasePlayer player)
-        {
-            CreateGUI(player);
-        }
-
         private void CreateGUI(BasePlayer player)
         {
             if (player == null || player.IsNpc || !player.IsAlive())
                 return;
 
             if (!permission.UserHasPermission(player.UserIDString, GUIPermission))
+                return;
+
+            if (_storedData.PlayersWithDisabledGUI.Contains(player.userID))
                 return;
 
             CuiHelper.DestroyUi(player, GUIPanelName);
@@ -683,7 +717,8 @@ namespace Oxide.Plugins
                 ["Invalid Item Amount"] = "Item amount must be an integer greater than 0.",
                 ["Item Not In Backpack"] = "Item \"{0}\" not found in backpack.",
                 ["Items Fetched"] = "Fetched {0} \"{1}\" from backpack.",
-                ["Fetch Failed"] = "Couldn't fetch \"{0}\" from backpack. Inventory may be full."
+                ["Fetch Failed"] = "Couldn't fetch \"{0}\" from backpack. Inventory may be full.",
+                ["Toggled Backpack GUI"] = "Toggled backpack GUI button.",
             }, this);
         }
 
@@ -771,6 +806,26 @@ namespace Oxide.Plugins
                     public string OffsetsMax = "245 78";
                 }
             }
+        }
+
+        #endregion
+
+        #region Stored Data
+
+        private class StoredData
+        {
+            public static StoredData Load()
+            {
+                return Interface.Oxide.DataFileSystem.ExistsDatafile(_instance.Name) ?
+                    Interface.Oxide.DataFileSystem.ReadObject<StoredData>(_instance.Name) :
+                    new StoredData();
+            }
+
+            [JsonProperty("PlayersWithDisabledGUI")]
+            public HashSet<ulong> PlayersWithDisabledGUI = new HashSet<ulong>();
+
+            public void Save() =>
+                Interface.Oxide.DataFileSystem.WriteObject(_instance.Name, this);
         }
 
         #endregion
