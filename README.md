@@ -88,6 +88,18 @@ Left-side button coordinates
 }
 ```
 
+## Developer API
+
+### API_DropBackpack
+
+Plugins can call this API to drop a player's backpack at their current position. This can be used, for example, to only drop the player's backpack when they die in a PvP zone.
+
+```csharp
+DroppedItemContainer API_DropBackpack(BasePlayer player)
+```
+
+Note: This intentionally ignores the player's `backpacks.keepondeath` permission in order to provide maximum flexibility to other plugins, so it's recommended that other plugins provide a similar permission to allow exemptions.
+
 ## Hooks
 
 ### CanOpenBackpack
