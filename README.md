@@ -101,30 +101,38 @@ DroppedItemContainer API_DropBackpack(BasePlayer player)
 
 Note: This intentionally ignores the player's `backpacks.keepondeath` permission in order to provide maximum flexibility to other plugins, so it's recommended that other plugins provide a similar permission to allow exemptions.
 
+### API_GetExistingBackpacks
+
+Plugins can call this API to get all existing backpack containers. This can be used, for example, to allow item cleaner plugins to ignore items in backpacks.
+
+```csharp
+Dictionary<ulong, ItemContainer> API_GetExistingBackpacks()
+```
+
 ## Hooks
 
 ### CanOpenBackpack
 
-Called when a player tries to open a backpack.  
-Returning a string will cancel backpack opening and send the string as a chat message to the player trying to open the backpack.  
+Called when a player tries to open a backpack.
+Returning a string will cancel backpack opening and send the string as a chat message to the player trying to open the backpack.
 
 ```csharp
 string CanOpenBackpack(BasePlayer player, ulong backpackOwnerID)
 ```
-  
+
 ### OnBackpackOpened
 
-Called when a player successfully opened a backpack.  
-No return behaviour.  
+Called when a player successfully opened a backpack.
+No return behaviour.
 
 ```csharp
 void OnBackpackOpened(BasePlayer player, ulong backpackOwnerID, ItemContainer backpackContainer)
 ```
-  
+
 ### OnBackpackClosed
 
-Called when a player closed a backpack.  
-No return behaviour.  
+Called when a player closed a backpack.
+No return behaviour.
 
 ```csharp
 void OnBackpackClosed(BasePlayer player, ulong backpackOwnerID, ItemContainer backpackContainer)
@@ -132,8 +140,8 @@ void OnBackpackClosed(BasePlayer player, ulong backpackOwnerID, ItemContainer ba
 
 ### CanBackpackAcceptItem
 
-Called when a player tries to move an item into a backpack.  
-Returning false prevents the item being moved.    
+Called when a player tries to move an item into a backpack.
+Returning false prevents the item being moved.
 
 ```csharp
 bool CanBackpackAcceptItem(ulong backpackOwnerID, ItemContainer backpackContainer, Item item)
@@ -141,8 +149,8 @@ bool CanBackpackAcceptItem(ulong backpackOwnerID, ItemContainer backpackContaine
 
 ### CanDropBackpack
 
-Called when a player dies and the "Drop on Death" option is set to true.  
-Returning false prevents the backpack dropping.  
+Called when a player dies and the "Drop on Death" option is set to true.
+Returning false prevents the backpack dropping.
 
 ```csharp
 bool CanDropBackpack(ulong backpackOwnerID, Vector3 position)
@@ -150,8 +158,8 @@ bool CanDropBackpack(ulong backpackOwnerID, Vector3 position)
 
 ### CanEraseBackpack
 
-Called when a player dies and the "Erase on Death" option is set to true.  
-Returning false prevents the backpack being erased.  
+Called when a player dies and the "Erase on Death" option is set to true.
+Returning false prevents the backpack being erased.
 
 ```csharp
 bool CanEraseBackpack(ulong backpackOwnerID)

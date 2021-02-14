@@ -862,6 +862,13 @@ namespace Oxide.Plugins
 
         #region Backpack
 
+        #region API
+
+        private Dictionary<ulong, ItemContainer> API_GetExistingBackpacks()
+        {
+            return _backpacks.ToDictionary(x => x.Key, x => x.Value.GetContainer());
+        }
+
         private DroppedItemContainer API_DropBackpack(BasePlayer player)
         {
             if (!Backpack.HasBackpackFile(player.userID))
@@ -872,6 +879,8 @@ namespace Oxide.Plugins
 
             return DropBackpackWithReducedCorpseCollision(backpack, player.transform.position);
         }
+
+        #endregion
 
         private class Backpack
         {
@@ -914,6 +923,8 @@ namespace Oxide.Plugins
 
                 return _instance._config.BackpackSize;
             }
+
+            public ItemContainer GetContainer() => _itemContainer;
 
             private int GetAllowedCapacity() => GetAllowedSize() * SlotsPerRow;
 
