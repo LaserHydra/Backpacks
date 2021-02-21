@@ -1446,8 +1446,20 @@ namespace Oxide.Plugins
                     item.maxCondition = MaxCondition;
 
                 if (Contents != null)
-                    foreach (var contentItem in Contents)
-                        contentItem.ToItem().MoveToContainer(item.contents);
+                {
+                    if (Contents.Count > 0)
+                    {
+                        if (item.contents == null)
+                        {
+                            item.contents = new ItemContainer();
+                            item.contents.ServerInitialize(null, Contents.Count);
+                            item.contents.GiveUID();
+                            item.contents.parent = item;
+                        }
+                        foreach (var contentItem in Contents)
+                            contentItem.ToItem().MoveToContainer(item.contents);
+                    }
+                }
                 else
                     item.contents = null;
 
