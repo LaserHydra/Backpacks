@@ -189,22 +189,20 @@ namespace Oxide.Plugins
 
         private object CanAcceptItem(ItemContainer container, Item item)
         {
-            if (!_config.UseBlacklist)
+            Backpack backpack = Backpack.GetForContainer(container);
+            if (backpack == null)
                 return null;
 
-            Backpack backpack = _backpacks.Values.FirstOrDefault(b => b.IsUnderlyingContainer(container));
-
-            if (backpack != null && !permission.UserHasPermission(backpack.OwnerIdString, NoBlacklistPermission))
+            if (_config.UseBlacklist
+                && !permission.UserHasPermission(backpack.OwnerIdString, NoBlacklistPermission)
+                && _config.BlacklistedItems.Contains(item.info.shortname))
             {
-                // Is the Item blacklisted
-                if (_config.BlacklistedItems.Any(shortName => shortName == item.info.shortname))
-                    return ItemContainer.CanAcceptResult.CannotAccept;
-
-                object hookResult = Interface.CallHook("CanBackpackAcceptItem", backpack.OwnerId, container, item);
-
-                if (hookResult is bool && (bool)hookResult == false)
-                    return ItemContainer.CanAcceptResult.CannotAccept;
+                return ItemContainer.CanAcceptResult.CannotAccept;
             }
+
+            object hookResult = Interface.CallHook("CanBackpackAcceptItem", backpack.OwnerId, container, item);
+            if (hookResult is bool && (bool)hookResult == false)
+                return ItemContainer.CanAcceptResult.CannotAccept;
 
             return null;
         }
@@ -1271,6 +1269,16 @@ namespace Oxide.Plugins
                 var fileName = $"{_instance.Name}/{id}";
 
                 return Interface.Oxide.DataFileSystem.ExistsDatafile(fileName);
+            }
+
+            public static Backpack GetForContainer(ItemContainer container)
+            {
+                foreach (var backpack in _instance._backpacks.Values)
+                {
+                    if (backpack.IsUnderlyingContainer(container))
+                        return backpack;
+                }
+                return null;
             }
 
             private static Backpack GetCachedBackpack(ulong id)
