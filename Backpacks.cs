@@ -365,7 +365,7 @@ namespace Oxide.Plugins
             }
 
             player.EndLooting();
-            timer.Once(0.1f, () => Backpack.Get(player.userID).Open(player));
+            NextTick(() => Backpack.Get(player.userID).Open(player));
         }
 
         [ConsoleCommand("backpack.open")]
@@ -391,7 +391,7 @@ namespace Oxide.Plugins
             }
 
             player.EndLooting();
-            timer.Once(0.1f, () => Backpack.Get(player.userID).Open(player));
+            NextTick(() => Backpack.Get(player.userID).Open(player));
         }
 
         [ConsoleCommand("backpack.fetch")]
