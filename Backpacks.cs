@@ -193,6 +193,11 @@ namespace Oxide.Plugins
             if (backpack == null)
                 return null;
 
+            // Prevent erasing items that have since become blacklisted.
+            // Blacklisted items will be dropped when the owner opens the backpack.
+            if (!backpack.Initialized)
+                return null;
+
             if (_config.UseBlacklist
                 && !permission.UserHasPermission(backpack.OwnerIdString, NoBlacklistPermission)
                 && _config.BlacklistedItems.Contains(item.info.shortname))
@@ -760,6 +765,7 @@ namespace Oxide.Plugins
                 ["User Name not Found"] = "Could not find player with name '{0}'",
                 ["Multiple Players Found"] = "Multiple matching players found:\n{0}",
                 ["Backpack Over Capacity"] = "Your backpack was over capacity. Overflowing items were added to your inventory or dropped.",
+                ["Blacklisted Items Removed"] = "Your backpack contained blacklisted items. They have been added to your inventory or dropped.",
                 ["Backpack Fetch Syntax"] = "Syntax: backpack.fetch <item short name or id> <amount>",
                 ["Invalid Item"] = "Invalid Item Name or ID.",
                 ["Invalid Item Amount"] = "Item amount must be an integer greater than 0.",
@@ -912,10 +918,13 @@ namespace Oxide.Plugins
 
         private class Backpack
         {
-            private bool _initialized = false;
-
             private ItemContainer _itemContainer = new ItemContainer();
             private List<BasePlayer> _looters = new List<BasePlayer>();
+
+            private bool _processedBlacklist = false;
+
+            [JsonIgnore]
+            public bool Initialized { get; private set; } = false;
 
             [JsonIgnore]
             public string OwnerIdString { get; private set; }
@@ -958,7 +967,7 @@ namespace Oxide.Plugins
 
             public void Initialize()
             {
-                if (!_initialized)
+                if (!Initialized)
                 {
                     OwnerIdString = OwnerId.ToString();
                 }
@@ -971,7 +980,7 @@ namespace Oxide.Plugins
                 var ownerPlayer = FindOwnerPlayer()?.Object as BasePlayer;
                 _itemContainer.entityOwner = ownerPlayer;
 
-                if (_initialized)
+                if (Initialized)
                     return;
 
                 _itemContainer.isServer = true;
@@ -997,12 +1006,12 @@ namespace Oxide.Plugins
                     }
                 }
 
-                _initialized = true;
+                Initialized = true;
             }
 
             public void KillContainer()
             {
-                _initialized = false;
+                Initialized = false;
 
                 _itemContainer.Kill();
                 _itemContainer = null;
@@ -1017,7 +1026,7 @@ namespace Oxide.Plugins
 
                 _instance._openBackpacks.Add(looter, this);
 
-                if (!_initialized)
+                if (!Initialized)
                 {
                     Initialize();
                 }
@@ -1045,9 +1054,12 @@ namespace Oxide.Plugins
                     return;
                 }
 
-                // Only handle overflow when the owner is opening the backpack
+                // Only drop items when the owner is opening the backpack.
                 if (looter.userID == OwnerId)
+                {
+                    MaybeRemoveBlacklistedItems(looter);
                     MaybeAdjustCapacityAndHandleOverflow(looter);
+                }
 
                 if (!_looters.Contains(looter))
                     _looters.Add(looter);
@@ -1103,6 +1115,43 @@ namespace Oxide.Plugins
                 if (itemsDroppedOrGivenToPlayer > 0)
                 {
                     _instance.PrintToChat(receiver, _instance.lang.GetMessage("Backpack Over Capacity", _instance, receiver.UserIDString));
+                }
+            }
+
+            private void MaybeRemoveBlacklistedItems(BasePlayer receiver)
+            {
+                if (!_instance._config.UseBlacklist)
+                    return;
+
+                if (_instance.permission.UserHasPermission(OwnerIdString, NoBlacklistPermission))
+                {
+                    // Don't process the blacklist while the player has the noblacklist permission.
+                    // This allows the blacklist to be processed again in case the noblacklist permission is revoked.
+                    _processedBlacklist = false;
+                    return;
+                }
+
+                // Optimization: Avoid having to process the blacklist every time the backpack is opened.
+                if (_processedBlacklist)
+                    return;
+
+                _processedBlacklist = true;
+
+                var itemsDroppedOrGivenToPlayer = 0;
+                for (var i = _itemContainer.itemList.Count - 1; i >= 0; i--)
+                {
+                    var item = _itemContainer.itemList[i];
+                    if (_instance._config.BlacklistedItems.Contains(item.info.shortname))
+                    {
+                        itemsDroppedOrGivenToPlayer++;
+                        item.RemoveFromContainer();
+                        receiver.GiveItem(item);
+                    }
+                }
+
+                if (itemsDroppedOrGivenToPlayer > 0)
+                {
+                    _instance.PrintToChat(receiver, _instance.lang.GetMessage("Blacklisted Items Removed", _instance, receiver.UserIDString));
                 }
             }
 
