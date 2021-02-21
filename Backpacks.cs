@@ -837,8 +837,11 @@ namespace Oxide.Plugins
             [JsonProperty("Blacklisted Items (Item Shortnames)")]
             public HashSet<string> BlacklistedItems;
 
-            [JsonProperty(PropertyName = "GUI Button")]
+            [JsonProperty("GUI Button")]
             public GUIButton GUI = new GUIButton();
+
+            [JsonProperty("Softcore")]
+            public SoftcoreOptions Softcore = new SoftcoreOptions();
 
             public class GUIButton
             {
@@ -864,6 +867,12 @@ namespace Oxide.Plugins
                     [JsonProperty(PropertyName = "Offsets Max")]
                     public string OffsetsMax = "245 78";
                 }
+            }
+
+            public class SoftcoreOptions
+            {
+                [JsonProperty("Reclaim Fraction")]
+                public float ReclaimFraction = 0.5f;
             }
         }
 
@@ -1200,6 +1209,12 @@ namespace Oxide.Plugins
                 if (_itemContainer.itemList.Count == 0)
                     return null;
 
+                ReclaimItemsForSoftcore();
+
+                // Check again since the items may have all been reclaimed for Softcore.
+                if (_itemContainer.itemList.Count == 0)
+                    return null;
+
                 BaseEntity entity = GameManager.server.CreateEntity(BackpackPrefab, position, Quaternion.identity);
                 DroppedItemContainer container = entity as DroppedItemContainer;
 
@@ -1237,6 +1252,23 @@ namespace Oxide.Plugins
                 }
 
                 return container;
+            }
+
+            private void ReclaimItemsForSoftcore()
+            {
+                var softcoreGameMode = BaseGameMode.svActiveGameMode as GameModeSoftcore;
+                if (softcoreGameMode == null || ReclaimManager.instance == null)
+                    return;
+
+                List<Item> reclaimItemList = Facepunch.Pool.GetList<Item>();
+                softcoreGameMode.AddFractionOfContainer(_itemContainer, ref reclaimItemList, _instance._config.Softcore.ReclaimFraction);
+                if (reclaimItemList.Count > 0)
+                {
+                    // There's a vanilla bug where accessing the reclaim backpack will erase items in the reclaim entry above 32.
+                    // So we just add a new reclaim entry which can only be accessed at the terminal to avoid this issue.
+                    ReclaimManager.instance.AddPlayerReclaim(OwnerId, reclaimItemList);
+                }
+                Facepunch.Pool.FreeList(ref reclaimItemList);
             }
 
             public void EraseContents(bool force = false)

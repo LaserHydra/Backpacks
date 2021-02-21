@@ -62,6 +62,9 @@ Please consider donating to support me and help me put more time into my plugins
       "Offsets Max": "245 78"
     }
   },
+  "Softcore": {
+    "Reclaim Fraction": 0.5
+  },
   "Backpack Size (1-7 Rows)": 1
 }
 ```
