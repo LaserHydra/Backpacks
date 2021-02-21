@@ -542,6 +542,8 @@ namespace Oxide.Plugins
 
             Dictionary<string, object> data;
             LoadData(out data, fileName);
+            if (data == null)
+                return false;
 
             if (data.ContainsKey("ownerID") && data.ContainsKey("Inventory"))
             {
@@ -714,11 +716,11 @@ namespace Oxide.Plugins
             CuiHelper.DestroyUi(player, GUIPanelName);
         }
 
-        private static void LoadData<T>(out T data, string filename = null) =>
-            data = Interface.Oxide.DataFileSystem.ReadObject<T>(filename ?? _instance.Name);
+        private static void LoadData<T>(out T data, string filename) =>
+            data = Interface.Oxide.DataFileSystem.ReadObject<T>(filename);
 
-        private static void SaveData<T>(T data, string filename = null) =>
-            Interface.Oxide.DataFileSystem.WriteObject(filename ?? _instance.Name, data);
+        private static void SaveData<T>(T data, string filename) =>
+            Interface.Oxide.DataFileSystem.WriteObject(filename, data);
 
         #endregion
 
@@ -839,9 +841,14 @@ namespace Oxide.Plugins
         {
             public static StoredData Load()
             {
-                return Interface.Oxide.DataFileSystem.ExistsDatafile(_instance.Name) ?
-                    Interface.Oxide.DataFileSystem.ReadObject<StoredData>(_instance.Name) :
-                    new StoredData();
+                var data = Interface.Oxide.DataFileSystem.ReadObject<StoredData>(_instance.Name);
+                if (data == null)
+                {
+                    _instance.PrintWarning($"Data file {_instance.Name}.json is invalid. Creating new data file.");
+                    data = new StoredData();
+                    data.Save();
+                }
+                return data;
             }
 
             [JsonProperty("PlayersWithDisabledGUI")]
@@ -1235,6 +1242,12 @@ namespace Oxide.Plugins
                 if (Interface.Oxide.DataFileSystem.ExistsDatafile(fileName))
                 {
                     LoadData(out backpack, fileName);
+                    if (backpack == null)
+                    {
+                        _instance.PrintWarning($"Data file {fileName}.json is invalid. Creating new data file.");
+                        backpack = new Backpack(id);
+                        Backpacks.SaveData(backpack, fileName);
+                    }
                 }
                 else
                 {
