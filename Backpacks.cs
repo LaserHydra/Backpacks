@@ -474,6 +474,31 @@ namespace Oxide.Plugins
             }
         }
 
+        [ConsoleCommand("backpack.erase")]
+        private void EraseBackpackServerCommand(ConsoleSystem.Arg arg)
+        {
+            BasePlayer player = arg.Player();
+            if (player != null)
+            {
+                // Only allowed as a server command.
+                return;
+            }
+
+            var args = arg.Args;
+
+            ulong userId;
+            if (!arg.HasArgs(1) || !ulong.TryParse(args[0], out userId))
+            {
+                PrintWarning($"Syntax: {arg.cmd.FullName} <id>");
+                return;
+            }
+
+            if (Backpack.TryEraseForPlayer(userId))
+                PrintWarning($"Erased backpack for player {userId}.");
+            else
+                PrintWarning($"Player {userId} has no backpack to erase.");
+        }
+
         [ChatCommand("viewbackpack")]
         private void ViewBackpack(BasePlayer player, string cmd, string[] args)
         {
@@ -869,6 +894,11 @@ namespace Oxide.Plugins
             return _backpacks.ToDictionary(x => x.Key, x => x.Value.GetContainer());
         }
 
+        private void API_EraseBackpack(ulong userId)
+        {
+            Backpack.TryEraseForPlayer(userId);
+        }
+
         private DroppedItemContainer API_DropBackpack(BasePlayer player)
         {
             if (!Backpack.HasBackpackFile(player.userID))
@@ -1157,12 +1187,15 @@ namespace Oxide.Plugins
                 return container;
             }
 
-            public void EraseContents()
+            public void EraseContents(bool force = false)
             {
-                object hookResult = Interface.CallHook("CanEraseBackpack", OwnerId);
+                if (!force)
+                {
+                    object hookResult = Interface.CallHook("CanEraseBackpack", OwnerId);
 
-                if (hookResult is bool && (bool)hookResult == false)
-                    return;
+                    if (hookResult is bool && (bool)hookResult == false)
+                        return;
+                }
 
                 foreach (var item in _itemContainer.itemList.ToList())
                 {
@@ -1186,6 +1219,9 @@ namespace Oxide.Plugins
 
                 Backpacks.SaveData(this, $"{_instance.Name}/{OwnerId}");
             }
+
+            public void Cache() =>
+                _instance._backpacks[OwnerId] = this;
 
             public int GetItemQuantity(int itemID) => _itemContainer.FindItemsByItemID(itemID).Sum(item => item.amount);
 
@@ -1237,13 +1273,22 @@ namespace Oxide.Plugins
                 return Interface.Oxide.DataFileSystem.ExistsDatafile(fileName);
             }
 
+            private static Backpack GetCachedBackpack(ulong id)
+            {
+                Backpack backpack;
+                return _instance._backpacks.TryGetValue(id, out backpack)
+                    ? backpack
+                    : null;
+            }
+
             public static Backpack Get(ulong id)
             {
                 if (id == 0)
                     _instance.PrintWarning("Accessing backpack for ID 0! Please report this to the author with as many details as possible.");
 
-                if (_instance._backpacks.ContainsKey(id))
-                    return _instance._backpacks[id];
+                var cachedBackpack = GetCachedBackpack(id);
+                if (cachedBackpack != null)
+                    return cachedBackpack;
 
                 var fileName = $"{_instance.Name}/{id}";
 
@@ -1271,11 +1316,34 @@ namespace Oxide.Plugins
                     DefaultValueHandling = DefaultValueHandling.Ignore
                 };
 
-                _instance._backpacks.Add(id, backpack);
-
+                backpack.Cache();
                 backpack.Initialize();
 
                 return backpack;
+            }
+
+            public static bool TryEraseForPlayer(ulong id)
+            {
+                Backpack backpack = GetCachedBackpack(id);
+                if (backpack != null)
+                {
+                    backpack.ForceCloseAllLooters();
+                    backpack.EraseContents(force: true);
+                    return true;
+                }
+
+                if (!HasBackpackFile(id))
+                    return false;
+
+                // If the backpack is not in the cache, create an empty one and add it.
+                // In case it isn't saved immediately, this ensures it will be saved as empty on server save.
+                backpack = new Backpack(id);
+                backpack.Cache();
+
+                if (!_instance._config.SaveBackpacksOnServerSave)
+                    backpack.SaveData();
+
+                return true;
             }
         }
 

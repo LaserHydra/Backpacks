@@ -16,6 +16,10 @@ Please consider donating to support me and help me put more time into my plugins
 
 - `backpack.fetch <item short name or id> <amount>` -- Fetch an item from your backpack
 
+## Server Commands
+
+- `backpack.erase <id>` -- forcibly erase the contents of a specific player's backpack
+
 ## Permissions
 
 - `backpacks.admin` -- required for `/viewbackpack` command
@@ -100,6 +104,16 @@ DroppedItemContainer API_DropBackpack(BasePlayer player)
 ```
 
 Note: This intentionally ignores the player's `backpacks.keepondeath` permission in order to provide maximum flexibility to other plugins, so it's recommended that other plugins provide a similar permission to allow exemptions.
+
+### API_EraseBackpack
+
+Plugins can call this API to erase the contents of a specific player's backpack.
+
+```csharp
+void API_EraseBackpack(ulong backpackOwnerID)
+```
+
+Note: This cannot be blocked by the `CanEraseBackpack` hook.
 
 ### API_GetExistingBackpacks
 
