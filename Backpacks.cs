@@ -358,10 +358,14 @@ namespace Oxide.Plugins
         [ChatCommand("backpack")]
         private void OpenBackpackChatCommand(BasePlayer player, string cmd, string[] args)
         {
-            if (permission.UserHasPermission(player.UserIDString, UsagePermission))
-                timer.Once(0.5f, () => Backpack.Get(player.userID).Open(player));
-            else
+            if (!permission.UserHasPermission(player.UserIDString, UsagePermission))
+            {
                 PrintToChat(player, lang.GetMessage("No Permission", this, player.UserIDString));
+                return;
+            }
+
+            player.EndLooting();
+            timer.Once(0.1f, () => Backpack.Get(player.userID).Open(player));
         }
 
         [ConsoleCommand("backpack.open")]
@@ -380,6 +384,7 @@ namespace Oxide.Plugins
 
             if (_openBackpacks.ContainsKey(player))
             {
+                player.EndLooting();
                 // HACK: Send empty respawn information to fully close the player inventory (toggle backpack closed)
                 player.ClientRPCPlayer(null, player, "OnRespawnInformation");
                 return;
