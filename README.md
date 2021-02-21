@@ -1,4 +1,12 @@
-﻿**Backpacks** allows players to have backpacks that provide them with extra inventory space. The backpack can be dropped on death. Supports GUI button.
+﻿## Features
+
+**Backpacks** allows players to have backpacks that provide them with extra inventory space.
+
+- Customizable capacity per player
+- Option to drop or erase contents on death
+- Option to clear on map wipe
+- Optional item blacklist
+- Optional GUI button
 
 **Note:** To bind a key to open the backpack, use: `bind b backpack.open` in your F1 client console.
 
@@ -9,12 +17,12 @@ Please consider donating to support me and help me put more time into my plugins
 ## Chat Commands
 
 - `/backpack` -- open your own backpack
-- `/viewbackpack <name or id>` -- open another players backpack **[Admin Command]**
 - `/backpackgui` -- toggle whether you can see the backpack GUI button
+- `/viewbackpack <name or id>` -- open another player's backpack **[Admin Command]**
 
 ## Console Commands
 
-- `backpack.fetch <item short name or id> <amount>` -- Fetch an item from your backpack
+- `backpack.fetch <item short name or id> <amount>` -- fetch an item from your backpack
 
 ## Server Commands
 
@@ -125,7 +133,7 @@ Plugins can call this API to get all existing backpack containers. This can be u
 Dictionary<ulong, ItemContainer> API_GetExistingBackpacks()
 ```
 
-## Hooks
+## Developer Hooks
 
 ### CanOpenBackpack
 
