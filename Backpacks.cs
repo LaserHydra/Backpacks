@@ -222,30 +222,29 @@ namespace Oxide.Plugins
             }
         }
 
-        private void OnEntityDeath(BaseCombatEntity victim, HitInfo info)
+        // Handle player death by normal means.
+        private void OnEntityDeath(BasePlayer player, HitInfo info) =>
+            OnEntityKill(player);
+
+        // Handle player death while sleeping in a safe zone.
+        private void OnEntityKill(BasePlayer player)
         {
-            if (victim is BasePlayer && !victim.IsNpc)
-            {
-                var player = (BasePlayer) victim;
-                DestroyGUI(player);
+            if (player.IsNpc)
+                return;
 
-                if (Backpack.HasBackpackFile(player.userID))
-                {
-                    var backpack = Backpack.Get(player.userID);
+            DestroyGUI(player);
 
-                    backpack.ForceCloseAllLooters();
+            if (!Backpack.HasBackpackFile(player.userID)
+                || permission.UserHasPermission(player.UserIDString, KeepOnDeathPermission))
+                return;
 
-                    if (permission.UserHasPermission(player.UserIDString, KeepOnDeathPermission))
-                        return;
+            var backpack = Backpack.Get(player.userID);
+            backpack.ForceCloseAllLooters();
 
-                    if (_config.EraseOnDeath)
-                        backpack.EraseContents();
-                    else if (_config.DropOnDeath)
-                    {
-                        DropBackpackWithReducedCorpseCollision(backpack, player.transform.position);
-                    }
-                }
-            }
+            if (_config.EraseOnDeath)
+                backpack.EraseContents();
+            else if (_config.DropOnDeath)
+                DropBackpackWithReducedCorpseCollision(backpack, player.transform.position);
         }
 
         private void OnPlayerCorpseSpawned(BasePlayer player, BaseCorpse corpse)
