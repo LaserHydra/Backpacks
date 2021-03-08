@@ -16,7 +16,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "LaserHydra", "3.5.0")]
+    [Info("Backpacks", "LaserHydra", "3.5.1")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : RustPlugin
     {
@@ -364,7 +364,8 @@ namespace Oxide.Plugins
             }
 
             player.EndLooting();
-            NextTick(() => Backpack.Get(player.userID).Open(player));
+            // Must delay opening in case the chat is still closing or the loot panel may close instantly.
+            timer.Once(0.5f, () => Backpack.Get(player.userID).Open(player));
         }
 
         [ConsoleCommand("backpack.open")]
@@ -390,7 +391,19 @@ namespace Oxide.Plugins
             }
 
             player.EndLooting();
-            NextTick(() => Backpack.Get(player.userID).Open(player));
+
+            // Key binds automatically pass the "True" argument at the end.
+            if (arg.HasArgs(1) && arg.Args[0] == "True")
+            {
+                // Open instantly when using a key bind.
+                NextTick(() => Backpack.Get(player.userID).Open(player));
+            }
+            else
+            {
+                // Not opening via key bind, so the chat window may be open.
+                // Must delay opening in case the chat is still closing or the loot panel may close instantly.
+                timer.Once(0.5f, () => Backpack.Get(player.userID).Open(player));
+            }
         }
 
         [ConsoleCommand("backpack.fetch")]
