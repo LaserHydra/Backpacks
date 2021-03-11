@@ -402,7 +402,7 @@ namespace Oxide.Plugins
             {
                 // Not opening via key bind, so the chat window may be open.
                 // Must delay opening in case the chat is still closing or the loot panel may close instantly.
-                timer.Once(0.5f, () => Backpack.Get(player.userID).Open(player));
+                timer.Once(0.1f, () => Backpack.Get(player.userID).Open(player));
             }
         }
 
