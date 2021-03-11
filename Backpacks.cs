@@ -4,6 +4,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Oxide.Core;
 using Oxide.Core.Libraries.Covalence;
+using Oxide.Core.Plugins;
 using Oxide.Game.Rust.Cui;
 using System;
 using System.Collections.Generic;
@@ -16,7 +17,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "LaserHydra", "3.5.1")]
+    [Info("Backpacks", "LaserHydra", "3.5.2")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : RustPlugin
     {
@@ -48,7 +49,7 @@ namespace Oxide.Plugins
         private StoredData _storedData;
 
         [PluginReference]
-        private RustPlugin EventManager;
+        private Plugin Arena, EventManager;
 
         #endregion
 
@@ -684,17 +685,27 @@ namespace Oxide.Plugins
 
         private bool IsPlayingEvent(BasePlayer player)
         {
-            if (EventManager == null)
-                return false;
+            // Multiple event/arena plugins define the isEventPlayer method as a standard.
+            var isPlaying = Interface.Call("isEventPlayer", player);
+            if (isPlaying is bool && (bool)isPlaying)
+                return true;
 
-            // EventManager 3.x
-            var isPlayingResult = EventManager.Call("isPlaying", player);
-            if (isPlayingResult != null)
-                return isPlayingResult is bool && (bool)isPlayingResult;
+            if (EventManager != null)
+            {
+                // EventManager 3.x
+                isPlaying = EventManager.Call("isPlaying", player);
+                if (isPlaying is bool && (bool)isPlaying)
+                    return true;
+            }
 
-            // EventManager 4.x
-            var isEventPlayerResult = EventManager.Call("IsEventPlayer", player);
-            return isEventPlayerResult is bool && (bool)isEventPlayerResult;
+            if (Arena != null)
+            {
+                isPlaying = Arena.Call("IsEventPlayer", player);
+                if (isPlaying is bool && (bool)isPlaying)
+                    return true;
+            }
+
+            return false;
         }
 
         private DroppedItemContainer DropBackpackWithReducedCorpseCollision(Backpack backpack, Vector3 position)
