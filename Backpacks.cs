@@ -300,15 +300,13 @@ namespace Oxide.Plugins
                 DestroyGUI(BasePlayer.Find(userId));
         }
 
-        private void OnPlayerConnected(BasePlayer player)
-        {
-            CreateGUI(player);
-        }
+        private void OnPlayerConnected(BasePlayer player) => CreateGUI(player);
 
-        private void OnPlayerSleepEnded(BasePlayer player)
-        {
-            CreateGUI(player);
-        }
+        private void OnPlayerRespawned(BasePlayer player) => CreateGUI(player);
+
+        private void OnPlayerSleepEnded(BasePlayer player) => CreateGUI(player);
+
+        private void OnPlayerSleep(BasePlayer player) => DestroyGUI(player);
 
         #endregion
 
@@ -725,7 +723,7 @@ namespace Oxide.Plugins
 
         private void CreateGUI(BasePlayer player)
         {
-            if (player == null || player.IsNpc || !player.IsAlive())
+            if (player == null || player.IsNpc || !player.IsAlive() || player.IsSleeping())
                 return;
 
             if (!permission.UserHasPermission(player.UserIDString, GUIPermission))
