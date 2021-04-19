@@ -306,7 +306,13 @@ namespace Oxide.Plugins
 
         private void OnPlayerSleepEnded(BasePlayer player) => CreateGUI(player);
 
-        private void OnPlayerSleep(BasePlayer player) => DestroyGUI(player);
+        private void OnPlayerSleep(BasePlayer player)
+        {    
+            if (player != null)
+            {
+                DestroyGUI(player);
+            }
+        }
 
         #endregion
 
