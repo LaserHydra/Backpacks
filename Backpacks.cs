@@ -57,48 +57,14 @@ namespace Oxide.Plugins
 
         private void Init()
         {
-            Unsubscribe(nameof(CanAcceptItem));
-            Unsubscribe(nameof(CanLootPlayer));
-            Unsubscribe(nameof(OnEntityDeath));
-            Unsubscribe(nameof(OnEntityKill));
-            Unsubscribe(nameof(OnGroupPermissionGranted));
-            Unsubscribe(nameof(OnGroupPermissionRevoked));
-            Unsubscribe(nameof(OnNewSave));
-            Unsubscribe(nameof(OnPlayerConnected));
-            Unsubscribe(nameof(OnPlayerCorpseSpawned));
-            Unsubscribe(nameof(OnPlayerDisconnected));
-            Unsubscribe(nameof(OnPlayerLootEnd));
-            Unsubscribe(nameof(OnPlayerRespawned));
             Unsubscribe(nameof(OnPlayerSleep));
             Unsubscribe(nameof(OnPlayerSleepEnded));
-            Unsubscribe(nameof(OnServerSave));
-            Unsubscribe(nameof(OnUserGroupAdded));
-            Unsubscribe(nameof(OnUserGroupRemoved));
-            Unsubscribe(nameof(OnUserPermissionGranted));
-            Unsubscribe(nameof(OnUserPermissionRevoked));
         }
 
         private void OnServerInitialized()
         {
-            Subscribe(nameof(CanAcceptItem));
-            Subscribe(nameof(CanLootPlayer));
-            Subscribe(nameof(OnEntityDeath));
-            Subscribe(nameof(OnEntityKill));
-            Subscribe(nameof(OnGroupPermissionGranted));
-            Subscribe(nameof(OnGroupPermissionRevoked));
-            Subscribe(nameof(OnNewSave));
-            Subscribe(nameof(OnPlayerConnected));
-            Subscribe(nameof(OnPlayerCorpseSpawned));
-            Subscribe(nameof(OnPlayerDisconnected));
-            Subscribe(nameof(OnPlayerLootEnd));
-            Subscribe(nameof(OnPlayerRespawned));
             Subscribe(nameof(OnPlayerSleep));
             Subscribe(nameof(OnPlayerSleepEnded));
-            Subscribe(nameof(OnServerSave));
-            Subscribe(nameof(OnUserGroupAdded));
-            Subscribe(nameof(OnUserGroupRemoved));
-            Subscribe(nameof(OnUserPermissionGranted));
-            Subscribe(nameof(OnUserPermissionRevoked));
         }
 
         private void Loaded()
@@ -335,18 +301,6 @@ namespace Oxide.Plugins
                     }
                 }
             }
-        }
-
-        private void OnUserGroupAdded(string userId, string groupName)
-        {
-            if (permission.GroupHasPermission(groupName, GUIPermission))
-                CreateGUI(BasePlayer.Find(userId));
-        }
-
-        private void OnUserGroupRemoved(string userId, string groupName)
-        {
-            if (permission.GroupHasPermission(groupName, GUIPermission) && !permission.UserHasPermission(userId, GUIPermission))
-                DestroyGUI(BasePlayer.Find(userId));
         }
 
         private void OnUserPermissionGranted(string userId, string perm)
