@@ -55,6 +55,18 @@ namespace Oxide.Plugins
 
         #region Hooks
 
+        private void Init()
+        {
+            Unsubscribe(nameof(OnPlayerSleep));
+            Unsubscribe(nameof(OnPlayerSleepEnded));
+        }
+
+        private void OnServerInitialized()
+        {
+            Subscribe(nameof(OnPlayerSleep));
+            Subscribe(nameof(OnPlayerSleepEnded));
+        }
+
         private void Loaded()
         {
             _instance = this;
@@ -283,7 +295,10 @@ namespace Oxide.Plugins
             {
                 foreach (IPlayer player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
                 {
-                    DestroyGUI(player.Object as BasePlayer);
+                    if (!permission.UserHasPermission(player.Id, GUIPermission))
+                    {
+                        DestroyGUI(player.Object as BasePlayer);
+                    }
                 }
             }
         }
@@ -296,7 +311,7 @@ namespace Oxide.Plugins
 
         private void OnUserPermissionRevoked(string userId, string perm)
         {
-            if (perm.Equals(GUIPermission))
+            if (perm.Equals(GUIPermission) && !permission.UserHasPermission(userId, GUIPermission))
                 DestroyGUI(BasePlayer.Find(userId));
         }
 
