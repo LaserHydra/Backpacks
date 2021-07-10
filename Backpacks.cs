@@ -371,6 +371,9 @@ namespace Oxide.Plugins
         [ChatCommand("backpack")]
         private void OpenBackpackChatCommand(BasePlayer player, string cmd, string[] args)
         {
+            if (!player.CanInteract())
+                return;
+
             if (!permission.UserHasPermission(player.UserIDString, UsagePermission))
             {
                 PrintToChat(player, lang.GetMessage("No Permission", this, player.UserIDString));
@@ -387,7 +390,7 @@ namespace Oxide.Plugins
         {
             BasePlayer player = arg.Player();
 
-            if (player == null || !player.IsAlive())
+            if (player == null || !player.CanInteract())
                 return;
 
             if (!permission.UserHasPermission(player.UserIDString, UsagePermission))
@@ -425,7 +428,7 @@ namespace Oxide.Plugins
         {
             BasePlayer player = arg.Player();
 
-            if (player == null || !player.IsAlive())
+            if (player == null || !player.CanInteract())
                 return;
 
             if (!permission.UserHasPermission(player.UserIDString, FetchPermission))
