@@ -54,6 +54,7 @@ Please consider donating to support me and help me put more time into my plugins
   ],
   "Use Whitelist (true/false)": false,
   "Whitelisted Items (Item Shortnames)": [],
+  "Minimum Despawn Time (Seconds)": 300.0,
   "GUI Button": {
     "Image": "https://i.imgur.com/CyF0QNV.png",
     "Background color (RGBA format)": "1 0.96 0.88 0.15",

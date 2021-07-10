@@ -882,6 +882,9 @@ namespace Oxide.Plugins
             [JsonProperty("Whitelisted Items (Item Shortnames)")]
             public HashSet<string> WhitelistedItems = new HashSet<string>();
 
+            [JsonProperty("Minimum Despawn Time (Seconds)")]
+            public float MinimumDespawnTime = 300;
+
             [JsonProperty("GUI Button")]
             public GUIButton GUI = new GUIButton();
 
@@ -1300,8 +1303,8 @@ namespace Oxide.Plugins
                     }
                 }
 
-                container.ResetRemovalTime();
                 container.Spawn();
+                container.ResetRemovalTime(Math.Max(_instance._config.MinimumDespawnTime, container.CalculateRemovalTime()));
 
                 ItemManager.DoRemoves();
 
