@@ -1,11 +1,11 @@
-## Features
+﻿## Features
 
 **Backpacks** allows players to have backpacks that provide them with extra inventory space.
 
 - Customizable capacity per player
 - Option to drop or erase contents on death
 - Option to clear on map wipe
-- Optional item blacklist
+- Optional item whitelist or blacklist
 - Optional GUI button
 
 **Note:** To bind a key to open the backpack, use: `bind b backpack.open` in your F1 client console.
@@ -37,7 +37,7 @@ Please consider donating to support me and help me put more time into my plugins
 - `backpacks.fetch` -- required to use the `backpack.fetch` command
 - `backpacks.keepondeath` -- exempts player from having their backpack erased or dropped on death
 - `backpacks.keeponwipe` -- exempts player from having their backpack erased on map wipe
-- `backpacks.noblacklist` -- exempts player from the item blacklist
+- `backpacks.noblacklist` -- exempts player from item restrictions (blacklist or whitelist)
 
 ## Configuration
 
@@ -45,13 +45,15 @@ Please consider donating to support me and help me put more time into my plugins
 {
   "Drop on Death (true/false)": true,
   "Erase on Death (true/false)": false,
-  "Use Blacklist (true/false)": false,
   "Clear Backpacks on Map-Wipe (true/false)": false,
   "Only Save Backpacks on Server-Save (true/false)": false,
+  "Use Blacklist (true/false)": false,
   "Blacklisted Items (Item Shortnames)": [
     "autoturret",
     "lmg.m249"
   ],
+  "Use Whitelist (true/false)": false,
+  "Whitelisted Items (Item Shortnames)": [],
   "GUI Button": {
     "Image": "https://i.imgur.com/CyF0QNV.png",
     "Background color (RGBA format)": "1 0.96 0.88 0.15",
@@ -68,6 +70,10 @@ Please consider donating to support me and help me put more time into my plugins
   "Backpack Size (1-7 Rows)": 1
 }
 ```
+
+Note: When using the item whitelist, the blacklist is ignored.
+
+#### Backpack icon customization
 
 Alternative backpacks images:
 [right-side](https://i.imgur.com/h1HQEAB.png)
