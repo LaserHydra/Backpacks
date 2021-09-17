@@ -1,4 +1,4 @@
-﻿## Features
+## Features
 
 **Backpacks** allows players to have backpacks that provide them with extra inventory space.
 
