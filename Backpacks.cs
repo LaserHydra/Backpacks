@@ -17,7 +17,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "LaserHydra", "3.6.0")]
+    [Info("Backpacks", "LaserHydra", "3.6.1")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : RustPlugin
     {
@@ -1075,7 +1075,6 @@ namespace Oxide.Plugins
                 foreach (var backpackItem in _itemDataCollection)
                 {
                     var item = backpackItem.ToItem();
-
                     if (item != null)
                     {
                         item.MoveToContainer(_itemContainer, item.position);
@@ -1529,6 +1528,8 @@ namespace Oxide.Plugins
                     return null;
 
                 Item item = ItemManager.CreateByItemID(ID, Amount, Skin);
+                if (item == null)
+                    return null;
 
                 item.position = Position;
 
@@ -1556,7 +1557,7 @@ namespace Oxide.Plugins
                             item.contents.parent = item;
                         }
                         foreach (var contentItem in Contents)
-                            contentItem.ToItem().MoveToContainer(item.contents);
+                            contentItem.ToItem()?.MoveToContainer(item.contents);
                     }
                 }
                 else
