@@ -17,7 +17,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "LaserHydra", "3.6.1")]
+    [Info("Backpacks", "LaserHydra", "3.6.2")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : RustPlugin
     {
@@ -37,6 +37,7 @@ namespace Oxide.Plugins
         private const string NoBlacklistPermission = "backpacks.noblacklist";
 
         private const string BackpackPrefab = "assets/prefabs/misc/item drop/item_drop_backpack.prefab";
+        private const string ResizableLootPanelName = "generic_resizable";
 
         private readonly Dictionary<ulong, Backpack> _backpacks = new Dictionary<ulong, Backpack>();
         private readonly Dictionary<BasePlayer, Backpack> _openBackpacks = new Dictionary<BasePlayer, Backpack>();
@@ -636,7 +637,7 @@ namespace Oxide.Plugins
             player.inventory.loot.AddContainer(container);
             player.inventory.loot.SendImmediate();
 
-            player.ClientRPCPlayer(null, player, "RPC_OpenLootPanel", "genericlarge");
+            player.ClientRPCPlayer(null, player, "RPC_OpenLootPanel", ResizableLootPanelName);
         }
 
         private IPlayer FindPlayer(string nameOrID, out string failureMessage)
@@ -1279,11 +1280,7 @@ namespace Oxide.Plugins
                 BaseEntity entity = GameManager.server.CreateEntity(BackpackPrefab, position, Quaternion.identity);
                 DroppedItemContainer container = entity as DroppedItemContainer;
 
-                // This needs to be set to "genericlarge" to allow up to 7 rows to be displayed.
-                container.lootPanelName = "genericlarge";
-
-                // The player name is being ignore due to the panelName being "genericlarge".
-                // TODO: Try to figure out a way to have 7 rows with custom name.
+                container.lootPanelName = ResizableLootPanelName;
                 container.playerName = $"{FindOwnerPlayer()?.Name ?? "Somebody"}'s Backpack";
                 container.playerSteamID = OwnerId;
 
