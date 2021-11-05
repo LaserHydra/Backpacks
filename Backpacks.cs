@@ -1456,6 +1456,9 @@ namespace Oxide.Plugins
                         backpack = new Backpack(id);
                         Backpacks.SaveData(backpack, fileName);
                     }
+
+                    // Ensure the backpack has the correct owner id, even if it was removed from the data file.
+                    backpack.OwnerId = id;
                 }
                 else
                 {
