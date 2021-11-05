@@ -17,7 +17,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "LaserHydra", "3.6.2")]
+    [Info("Backpacks", "LaserHydra", "3.6.3")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : RustPlugin
     {
@@ -408,13 +408,17 @@ namespace Oxide.Plugins
                 return;
             }
 
-            player.EndLooting();
+            if (player.inventory.loot.IsLooting())
+            {
+                player.EndLooting();
+                player.inventory.loot.SendImmediate();
+            }
 
             // Key binds automatically pass the "True" argument at the end.
             if (arg.HasArgs(1) && arg.Args[0] == "True")
             {
                 // Open instantly when using a key bind.
-                NextTick(() => Backpack.Get(player.userID).Open(player));
+                timer.Once(0.05f, () => Backpack.Get(player.userID).Open(player));
             }
             else
             {
