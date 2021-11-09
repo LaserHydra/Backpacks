@@ -408,24 +408,25 @@ namespace Oxide.Plugins
                 return;
             }
 
-            if (player.inventory.loot.IsLooting())
+            var wasLooting = player.inventory.loot.IsLooting();
+            if (wasLooting)
             {
                 player.EndLooting();
                 player.inventory.loot.SendImmediate();
             }
 
-            // Key binds automatically pass the "True" argument at the end.
-            if (arg.HasArgs(1) && arg.Args[0] == "True")
-            {
-                // Open instantly when using a key bind.
-                timer.Once(0.05f, () => Backpack.Get(player.userID).Open(player));
-            }
-            else
-            {
+            // Need a short delay when looting so the client doesn't reuse the previously drawn generic_resizable loot panel.
+            var delaySeconds = wasLooting
+                ? 0.1f
+                // Key binds automatically pass the "True" argument at the end.
+                // Can open instantly since not looting and chat is assumed to be closed.
+                : arg.Args?.LastOrDefault() == "True"
+                ? 0f
                 // Not opening via key bind, so the chat window may be open.
-                // Must delay opening in case the chat is still closing or the loot panel may close instantly.
-                timer.Once(0.1f, () => Backpack.Get(player.userID).Open(player));
-            }
+                // Must delay in case the chat is still closing or else the loot panel may close instantly.
+                : 0.1f;
+
+            timer.Once(delaySeconds, () => Backpack.Get(player.userID).Open(player));
         }
 
         [ConsoleCommand("backpack.fetch")]
