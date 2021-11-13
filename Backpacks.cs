@@ -42,10 +42,10 @@ namespace Oxide.Plugins
         private readonly BackpackManager _backpackManager = new BackpackManager();
         private Dictionary<string, ushort> _backpackSizePermissions = new Dictionary<string, ushort>();
 
-        private static Backpacks _instance;
-
         private ProtectionProperties _immortalProtection;
+        private string _cachedUI;
 
+        private static Backpacks _instance;
         private Configuration _config;
         private StoredData _storedData;
 
@@ -611,36 +611,42 @@ namespace Oxide.Plugins
                 return;
 
             CuiHelper.DestroyUi(player, GUIPanelName);
-            var elements = new CuiElementContainer();
-            var BackpacksUIPanel = elements.Add(new CuiPanel
-            {
-                Image = { Color = _instance._config.GUI.Color },
-                RectTransform = {
-                    AnchorMin = _config.GUI.GUIButtonPosition.AnchorsMin,
-                    AnchorMax = _config.GUI.GUIButtonPosition.AnchorsMax,
-                    OffsetMin = _config.GUI.GUIButtonPosition.OffsetsMin,
-                    OffsetMax = _config.GUI.GUIButtonPosition.OffsetsMax
-                },
-                CursorEnabled = false
-            }, "Overlay", GUIPanelName);
 
-            elements.Add(new CuiElement
+            if (_cachedUI == null)
             {
-                Parent = GUIPanelName,
-                Components = {
-                    new CuiRawImageComponent { Url = _instance._config.GUI.Image },
-                    new CuiRectTransformComponent { AnchorMin = "0 0", AnchorMax = "1 1" }
-                }
-            });
+                var elements = new CuiElementContainer();
+                var BackpacksUIPanel = elements.Add(new CuiPanel
+                {
+                    Image = { Color = _instance._config.GUI.Color },
+                    RectTransform = {
+                        AnchorMin = _config.GUI.GUIButtonPosition.AnchorsMin,
+                        AnchorMax = _config.GUI.GUIButtonPosition.AnchorsMax,
+                        OffsetMin = _config.GUI.GUIButtonPosition.OffsetsMin,
+                        OffsetMax = _config.GUI.GUIButtonPosition.OffsetsMax
+                    },
+                    CursorEnabled = false
+                }, "Overlay", GUIPanelName);
 
-            elements.Add(new CuiButton
-            {
-                Button = { Command = "backpack.open", Color = "0 0 0 0" },
-                RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
-                Text = { Text = "" }
-            }, BackpacksUIPanel);
+                elements.Add(new CuiElement
+                {
+                    Parent = GUIPanelName,
+                    Components = {
+                        new CuiRawImageComponent { Url = _instance._config.GUI.Image },
+                        new CuiRectTransformComponent { AnchorMin = "0 0", AnchorMax = "1 1" }
+                    }
+                });
 
-            CuiHelper.AddUi(player, elements);
+                elements.Add(new CuiButton
+                {
+                    Button = { Command = "backpack.open", Color = "0 0 0 0" },
+                    RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
+                    Text = { Text = "" }
+                }, BackpacksUIPanel);
+
+                _cachedUI = CuiHelper.ToJson(elements);
+            }
+
+            CuiHelper.AddUi(player, _cachedUI);
         }
 
         private void DestroyGUI(BasePlayer player)
