@@ -42,6 +42,10 @@ namespace Oxide.Plugins
         private readonly BackpackManager _backpackManager = new BackpackManager();
         private Dictionary<string, ushort> _backpackSizePermissions = new Dictionary<string, ushort>();
 
+        private readonly DynamicHookSubscriber<BasePlayer> _backpackLooters = new DynamicHookSubscriber<BasePlayer>(
+            nameof(OnLootEntityEnd)
+        );
+
         private ProtectionProperties _immortalProtection;
         private string _cachedUI;
 
@@ -58,8 +62,12 @@ namespace Oxide.Plugins
 
         private void Init()
         {
+            _instance = this;
+
             Unsubscribe(nameof(OnPlayerSleep));
             Unsubscribe(nameof(OnPlayerSleepEnded));
+
+            _backpackLooters.UnsubscribeAll();
         }
 
         private void OnServerInitialized()
@@ -74,8 +82,6 @@ namespace Oxide.Plugins
 
         private void Loaded()
         {
-            _instance = this;
-
             permission.RegisterPermission(UsagePermission, this);
             permission.RegisterPermission(GUIPermission, this);
             permission.RegisterPermission(FetchPermission, this);
@@ -295,7 +301,7 @@ namespace Oxide.Plugins
             player.EndLooting();
 
             // Must delay opening in case the chat is still closing or the loot panel may close instantly.
-            timer.Once(0.5f, () => _backpackManager.GetBackpack(player.userID).Open(player));
+            timer.Once(0.5f, () => _backpackManager.OpenBackpack(player.userID, player));
         }
 
         [ConsoleCommand("backpack.open")]
@@ -339,7 +345,7 @@ namespace Oxide.Plugins
                 // Must delay in case the chat is still closing or else the loot panel may close instantly.
                 : 0.1f;
 
-            timer.Once(delaySeconds, () => _backpackManager.GetBackpack(player.userID).Open(player));
+            timer.Once(delaySeconds, () => _backpackManager.OpenBackpack(player.userID, player));
         }
 
         [ConsoleCommand("backpack.fetch")]
@@ -484,7 +490,7 @@ namespace Oxide.Plugins
             BasePlayer targetBasePlayer = targetPlayer.Object as BasePlayer;
             ulong backpackOwnerId = targetBasePlayer?.userID ?? ulong.Parse(targetPlayer.Id);
 
-            timer.Once(0.5f, () => _backpackManager.GetBackpack(backpackOwnerId).Open(player));
+            timer.Once(0.5f, () => _backpackManager.OpenBackpack(backpackOwnerId, player));
         }
 
         [ChatCommand("backpackgui")]
@@ -842,6 +848,45 @@ namespace Oxide.Plugins
 
         #endregion
 
+        #region Dynamic Hook Subscriber
+
+        private class DynamicHookSubscriber<T>
+        {
+            private HashSet<T> _list = new HashSet<T>();
+            private string[] _hookNames;
+
+            public DynamicHookSubscriber(params string[] hookNames)
+            {
+                _hookNames = hookNames;
+            }
+
+            public void Add(T item)
+            {
+                if (_list.Add(item) && _list.Count == 1)
+                    SubscribeAll();
+            }
+
+            public void Remove(T item)
+            {
+                if (_list.Remove(item) && _list.Count == 0)
+                    UnsubscribeAll();
+            }
+
+            public void SubscribeAll()
+            {
+                foreach (var hookName in _hookNames)
+                    _instance.Subscribe(hookName);
+            }
+
+            public void UnsubscribeAll()
+            {
+                foreach (var hookName in _hookNames)
+                    _instance.Unsubscribe(hookName);
+            }
+        }
+
+        #endregion
+
         #region Backpack Manager
 
         private class BackpackManager
@@ -954,8 +999,15 @@ namespace Oxide.Plugins
                 return GetBackpackIfExists(userId)?.Drop(position);
             }
 
+            public void OpenBackpack(ulong backpackOwnerId, BasePlayer looter)
+            {
+                _instance._backpackLooters.Add(looter);
+                GetBackpack(backpackOwnerId).Open(looter);
+            }
+
             public void OnBackpackClosed(Backpack backpack, BasePlayer looter)
             {
+                _instance._backpackLooters.Remove(looter);
                 backpack.OnClosed(looter);
 				Interface.CallHook("OnBackpackClosed", looter, backpack.OwnerId, backpack.GetContainer());
 
