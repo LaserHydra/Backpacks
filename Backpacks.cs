@@ -146,7 +146,7 @@ namespace Oxide.Plugins
                 }
 
                 var backpack = new Backpack(userId);
-                backpack.SaveData();
+                backpack.SaveData(ignoreDirty: true);
             }
 
             string skippedBackpacksMessage = skippedBackpacks > 0 ? $", except {skippedBackpacks} due to being exempt" : string.Empty;
@@ -1047,6 +1047,7 @@ namespace Oxide.Plugins
             private ItemContainer _itemContainer;
             private List<BasePlayer> _looters = new List<BasePlayer>();
             private BasePlayer _lastLooter;
+            private bool _dirty = false;
 
             [JsonIgnore]
             public bool ProcessedRestrictedItems { get; private set; }
@@ -1089,34 +1090,6 @@ namespace Oxide.Plugins
             public ItemContainer GetContainer() => _itemContainer;
 
             private int GetAllowedCapacity() => GetAllowedSize() * SlotsPerRow;
-
-            private bool ShouldAcceptItem(Item item)
-            {
-                // Skip checking restricted items if they haven't been processed, to avoid erasing them.
-                // Restricted items will be dropped when the owner opens the backpack.
-                if (_instance._config.ItemRestrictionEnabled
-                    && ProcessedRestrictedItems
-                    && !_instance.permission.UserHasPermission(OwnerIdString, NoBlacklistPermission)
-                    && _instance._config.IsRestrictedItem(item))
-                {
-                    return false;
-                }
-
-                object hookResult = Interface.CallHook("CanBackpackAcceptItem", OwnerId, _itemContainer, item);
-                if (hookResult is bool && (bool)hookResult == false)
-                    return false;
-
-                return true;
-            }
-
-            private bool CanAcceptItem(Item item, int amount)
-            {
-                // Explicitly track hook time so server owners can be informed of the cost.
-                _instance.TrackStart();
-                var result = ShouldAcceptItem(item);
-                _instance.TrackEnd();
-                return result;
-            }
 
             private StorageContainer SpawnStorageContainer(int capacity)
             {
@@ -1164,6 +1137,36 @@ namespace Oxide.Plugins
                 return highestUsedSlot;
             }
 
+            private bool ShouldAcceptItem(Item item)
+            {
+                // Skip checking restricted items if they haven't been processed, to avoid erasing them.
+                // Restricted items will be dropped when the owner opens the backpack.
+                if (_instance._config.ItemRestrictionEnabled
+                    && ProcessedRestrictedItems
+                    && !_instance.permission.UserHasPermission(OwnerIdString, NoBlacklistPermission)
+                    && _instance._config.IsRestrictedItem(item))
+                {
+                    return false;
+                }
+
+                object hookResult = Interface.CallHook("CanBackpackAcceptItem", OwnerId, _itemContainer, item);
+                if (hookResult is bool && (bool)hookResult == false)
+                    return false;
+
+                return true;
+            }
+
+            private bool CanAcceptItem(Item item, int amount)
+            {
+                // Explicitly track hook time so server owners can be informed of the cost.
+                _instance.TrackStart();
+                var result = ShouldAcceptItem(item);
+                _instance.TrackEnd();
+                return result;
+            }
+
+            private void MarkDirty () => _dirty = true;
+
             public void EnsureContainer()
             {
                 if (_storageContainer != null)
@@ -1195,6 +1198,7 @@ namespace Oxide.Plugins
                 // Apply the item filter only after filling the container initially.
                 // This avoids unnecessary CanBackpackAcceptItem hooks calls on initial creation.
                 _itemContainer.canAcceptItem += this.CanAcceptItem;
+                _itemContainer.onDirty += this.MarkDirty;
             }
 
             private void TerminateContainerForLastLooter()
@@ -1479,8 +1483,11 @@ namespace Oxide.Plugins
                 }
             }
 
-            public void SaveData()
+            public void SaveData(bool ignoreDirty = false)
             {
+                if (!ignoreDirty && !_dirty)
+                    return;
+
                 // There is possibly no container if wiping a backpack on server wipe.
                 if (_itemContainer != null)
                 {
@@ -1490,6 +1497,7 @@ namespace Oxide.Plugins
                 }
 
                 Backpacks.SaveData(this, $"{_instance.Name}/{OwnerId}");
+                _dirty = false;
             }
 
             public int GetItemQuantity(int itemID) => _itemContainer.FindItemsByItemID(itemID).Sum(item => item.amount);
