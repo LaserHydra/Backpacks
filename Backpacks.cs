@@ -64,24 +64,6 @@ namespace Oxide.Plugins
         {
             _instance = this;
 
-            Unsubscribe(nameof(OnPlayerSleep));
-            Unsubscribe(nameof(OnPlayerSleepEnded));
-
-            _backpackLooters.UnsubscribeAll();
-        }
-
-        private void OnServerInitialized()
-        {
-            _immortalProtection = ScriptableObject.CreateInstance<ProtectionProperties>();
-            _immortalProtection.name = "BackpacksProtection";
-            _immortalProtection.Add(1);
-
-            Subscribe(nameof(OnPlayerSleep));
-            Subscribe(nameof(OnPlayerSleepEnded));
-        }
-
-        private void Loaded()
-        {
             permission.RegisterPermission(UsagePermission, this);
             permission.RegisterPermission(GUIPermission, this);
             permission.RegisterPermission(FetchPermission, this);
@@ -103,8 +85,23 @@ namespace Oxide.Plugins
 
             _storedData = StoredData.Load();
 
+            _backpackLooters.UnsubscribeAll();
+
+            Unsubscribe(nameof(OnPlayerSleep));
+            Unsubscribe(nameof(OnPlayerSleepEnded));
+        }
+
+        private void OnServerInitialized()
+        {
+            _immortalProtection = ScriptableObject.CreateInstance<ProtectionProperties>();
+            _immortalProtection.name = "BackpacksProtection";
+            _immortalProtection.Add(1);
+
             foreach (var player in BasePlayer.activePlayerList)
                 CreateGUI(player);
+
+            Subscribe(nameof(OnPlayerSleep));
+            Subscribe(nameof(OnPlayerSleepEnded));
         }
 
         private void Unload()
