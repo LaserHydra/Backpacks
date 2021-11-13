@@ -1258,8 +1258,46 @@ namespace Oxide.Plugins
                 TerminateEntityOnClient(_storageContainer, _lastLooter.Connection);
             }
 
+            private void DisassociateEntity(Item item)
+            {
+                if (item.instanceData != null)
+                {
+                    if (item.instanceData.subEntity != 0)
+                    {
+                        var associatedEntity = BaseNetworkable.serverEntities.Find(item.instanceData.subEntity) as BaseEntity;
+                        if (associatedEntity != null && associatedEntity.HasParent())
+                        {
+                            // Unparent the associated entity so it's not killed when its parent is.
+                            // For example, a CassetteRecorder would normally kill its child Cassette.
+                            associatedEntity.SetParent(null);
+                        }
+                    }
+
+                    // If the item has an associated entity (e.g., photo, sign, cassette), the id will already have been saved.
+                    // Forget about the entity when killing the item so that the entity will persist.
+                    // When the backpack item is recreated later, this property will set from the data file so that the item can be reassociated.
+                    item.instanceData.subEntity = 0;
+                }
+
+                if (item.contents != null)
+                {
+                    foreach (var childItem in item.contents.itemList)
+                    {
+                        DisassociateEntity(childItem);
+                    }
+                }
+            }
+
             public void KillContainer()
             {
+                if (_itemContainer != null)
+                {
+                    foreach (var item in _itemContainer.itemList)
+                    {
+                        DisassociateEntity(item);
+                    }
+                }
+
                 ForceCloseAllLooters();
                 TerminateContainerForLastLooter();
 
@@ -1638,6 +1676,9 @@ namespace Oxide.Plugins
             public string Text;
 
             [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+            public uint AssociatedEntityId;
+
+            [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
             public List<ItemData> Contents = new List<ItemData>();
 
             public Item ToItem()
@@ -1693,13 +1734,18 @@ namespace Oxide.Plugins
                 if (flameThrower != null)
                     flameThrower.ammo = FlameFuel;
 
-                if (DataInt > 0)
+                if (DataInt > 0 || AssociatedEntityId != 0)
                 {
                     item.instanceData = new ProtoBuf.Item.InstanceData
                     {
                         ShouldPool = false,
-                        dataInt = DataInt
+                        dataInt = DataInt,
                     };
+
+                    if (AssociatedEntityId != 0 && BaseNetworkable.serverEntities.Find(AssociatedEntityId) != null)
+                    {
+                        item.instanceData.subEntity = AssociatedEntityId;
+                    }
                 }
 
                 item.text = Text;
@@ -1726,6 +1772,7 @@ namespace Oxide.Plugins
                 IsBlueprint = item.IsBlueprint(),
                 BlueprintTarget = item.blueprintTarget,
                 DataInt = item.instanceData?.dataInt ?? 0,
+                AssociatedEntityId = item.instanceData?.subEntity ?? 0,
                 Name = item.name,
                 Text = item.text
             };
