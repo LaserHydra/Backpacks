@@ -177,29 +177,6 @@ namespace Oxide.Plugins
             }
         }
 
-        private object CanAcceptItem(ItemContainer container, Item item)
-        {
-            var backpack = _backpackManager.GetCachedBackpackForContainer(container);
-            if (backpack == null)
-                return null;
-
-            // Skip checking restricted items if they haven't been processed, to avoid erasing them.
-            // Restricted items will be dropped when the owner opens the backpack.
-            if (_config.ItemRestrictionEnabled
-                && backpack.ProcessedRestrictedItems
-                && !permission.UserHasPermission(backpack.OwnerIdString, NoBlacklistPermission)
-                && _config.IsRestrictedItem(item))
-            {
-                return ItemContainer.CanAcceptResult.CannotAccept;
-            }
-
-            object hookResult = Interface.CallHook("CanBackpackAcceptItem", backpack.OwnerId, container, item);
-            if (hookResult is bool && (bool)hookResult == false)
-                return ItemContainer.CanAcceptResult.CannotAccept;
-
-            return null;
-        }
-
         private void OnLootEntityEnd(BasePlayer player, StorageContainer storageContainer)
         {
             var backpack = _backpackManager.GetCachedBackpackForContainer(storageContainer.inventory);
@@ -1107,6 +1084,34 @@ namespace Oxide.Plugins
 
             private int GetAllowedCapacity() => GetAllowedSize() * SlotsPerRow;
 
+            private bool ShouldAcceptItem(Item item)
+            {
+                // Skip checking restricted items if they haven't been processed, to avoid erasing them.
+                // Restricted items will be dropped when the owner opens the backpack.
+                if (_instance._config.ItemRestrictionEnabled
+                    && ProcessedRestrictedItems
+                    && !_instance.permission.UserHasPermission(OwnerIdString, NoBlacklistPermission)
+                    && _instance._config.IsRestrictedItem(item))
+                {
+                    return false;
+                }
+
+                object hookResult = Interface.CallHook("CanBackpackAcceptItem", OwnerId, _itemContainer, item);
+                if (hookResult is bool && (bool)hookResult == false)
+                    return false;
+
+                return true;
+            }
+
+            private bool CanAcceptItem(Item item, int amount)
+            {
+                // Explicitly track hook time so server owners can be informed of the cost.
+                _instance.TrackStart();
+                var result = ShouldAcceptItem(item);
+                _instance.TrackEnd();
+                return result;
+            }
+
             private StorageContainer SpawnStorageContainer(int capacity)
             {
                 var storageEntity = GameManager.server.CreateEntity(CoffinPrefab, new Vector3(0, -1000, 0));
@@ -1180,6 +1185,10 @@ namespace Oxide.Plugins
                             item.Remove();
                     }
                 }
+
+                // Apply the item filter only after filling the container initially.
+                // This avoids unnecessary CanBackpackAcceptItem hooks calls on initial creation.
+                _itemContainer.canAcceptItem += this.CanAcceptItem;
             }
 
             private void TerminateContainerForLastLooter()
