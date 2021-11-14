@@ -414,7 +414,6 @@ namespace Oxide.Plugins
 
             string itemLocalizedName = itemDefinition.displayName.translated;
             Backpack backpack = _backpackManager.GetBackpack(player.userID);
-            backpack.EnsureContainer();
 
             int quantityInBackpack = backpack.GetItemQuantity(itemID);
 
@@ -1164,13 +1163,11 @@ namespace Oxide.Plugins
             private StorageContainer _storageContainer;
             private ItemContainer _itemContainer;
             private List<BasePlayer> _looters = new List<BasePlayer>();
+            private bool _processedRestrictedItems;
             private bool _dirty = false;
 
             [JsonIgnore]
             public BackpackNetworkController NetworkController { get; private set; }
-
-            [JsonIgnore]
-            public bool ProcessedRestrictedItems { get; private set; }
 
             [JsonIgnore]
             public string OwnerIdString { get; private set; }
@@ -1195,8 +1192,6 @@ namespace Oxide.Plugins
 
             public IPlayer FindOwnerPlayer() => _instance.covalence.Players.FindPlayerById(OwnerIdString);
 
-            public bool IsUnderlyingContainer(ItemContainer itemContainer) => _itemContainer == itemContainer;
-
             public ushort GetAllowedSize()
             {
                 foreach(var kvp in _instance._backpackSizePermissions)
@@ -1209,180 +1204,6 @@ namespace Oxide.Plugins
             }
 
             public ItemContainer GetContainer() => _itemContainer;
-
-            private int GetAllowedCapacity() => GetAllowedSize() * SlotsPerRow;
-
-            private StorageContainer SpawnStorageContainer(int capacity)
-            {
-                var storageEntity = GameManager.server.CreateEntity(CoffinPrefab, new Vector3(0, -1000, 0));
-                if (storageEntity == null)
-                    return null;
-
-                var containerEntity = storageEntity as StorageContainer;
-                if (containerEntity == null)
-                {
-                    UnityEngine.Object.Destroy(storageEntity);
-                    return null;
-                }
-
-                UnityEngine.Object.DestroyImmediate(containerEntity.GetComponent<DestroyOnGroundMissing>());
-                UnityEngine.Object.DestroyImmediate(containerEntity.GetComponent<GroundWatch>());
-
-                foreach (var collider in containerEntity.GetComponentsInChildren<Collider>())
-                    UnityEngine.Object.DestroyImmediate(collider);
-
-                containerEntity.baseProtection = _instance._immortalProtection;
-                containerEntity.panelName = ResizableLootPanelName;
-
-                // Make sure the container does not try to sync position, or else it may determine that it's outside of the world bounds and destroy itself.
-                containerEntity.syncPosition = false;
-
-                containerEntity.limitNetworking = true;
-                containerEntity.EnableSaving(false);
-                containerEntity.Spawn();
-
-                // Must change the network group after spawning,
-                // or else vanilla UpdateNetworkGroup will switch it to a positional network group.
-                containerEntity.net.SwitchGroup(NetworkController.NetworkGroup);
-
-                containerEntity.inventory.allowedContents = ItemContainer.ContentsType.Generic;
-                containerEntity.inventory.capacity = capacity;
-
-                return containerEntity;
-            }
-
-            private int GetHighestUsedSlot()
-            {
-                var highestUsedSlot = -1;
-                foreach (var itemData in _itemDataCollection)
-                {
-                    if (itemData.Position > highestUsedSlot)
-                        highestUsedSlot = itemData.Position;
-                }
-                return highestUsedSlot;
-            }
-
-            private bool ShouldAcceptItem(Item item)
-            {
-                // Skip checking restricted items if they haven't been processed, to avoid erasing them.
-                // Restricted items will be dropped when the owner opens the backpack.
-                if (_instance._config.ItemRestrictionEnabled
-                    && ProcessedRestrictedItems
-                    && !_instance.permission.UserHasPermission(OwnerIdString, NoBlacklistPermission)
-                    && _instance._config.IsRestrictedItem(item))
-                {
-                    return false;
-                }
-
-                object hookResult = Interface.CallHook("CanBackpackAcceptItem", OwnerId, _itemContainer, item);
-                if (hookResult is bool && (bool)hookResult == false)
-                    return false;
-
-                return true;
-            }
-
-            private bool CanAcceptItem(Item item, int amount)
-            {
-                // Explicitly track hook time so server owners can be informed of the cost.
-                _instance.TrackStart();
-                var result = ShouldAcceptItem(item);
-                _instance.TrackEnd();
-                return result;
-            }
-
-            private void MarkDirty () => _dirty = true;
-
-            public void EnsureContainer()
-            {
-                if (_storageContainer != null)
-                    return;
-
-                if (NetworkController == null)
-                    NetworkController = _instance._backpackManager.CreateNetworkController();
-
-                _storageContainer = SpawnStorageContainer(GetAllowedCapacity());
-                _itemContainer = _storageContainer.inventory;
-
-                _instance._backpackManager.RegisterContainer(_itemContainer, this);
-
-                if (GetHighestUsedSlot() >= _itemContainer.capacity)
-                {
-                    // Temporarily increase the capacity to allow all items to fit
-                    // Extra items will be addressed when the backpack is opened by the owner
-                    // If an admin views the backpack in the meantime, it will appear as max capacity
-                    _itemContainer.capacity = MaxSize * SlotsPerRow;
-                }
-
-                foreach (var backpackItem in _itemDataCollection)
-                {
-                    var item = backpackItem.ToItem();
-                    if (item != null)
-                    {
-                        if (!item.MoveToContainer(_itemContainer, item.position))
-                            item.Remove();
-                    }
-                }
-
-                // Apply the item filter only after filling the container initially.
-                // This avoids unnecessary CanBackpackAcceptItem hooks calls on initial creation.
-                _itemContainer.canAcceptItem += this.CanAcceptItem;
-                _itemContainer.onDirty += this.MarkDirty;
-            }
-
-            private void DisassociateEntity(Item item)
-            {
-                if (item.instanceData != null)
-                {
-                    if (item.instanceData.subEntity != 0)
-                    {
-                        var associatedEntity = BaseNetworkable.serverEntities.Find(item.instanceData.subEntity) as BaseEntity;
-                        if (associatedEntity != null && associatedEntity.HasParent())
-                        {
-                            // Unparent the associated entity so it's not killed when its parent is.
-                            // For example, a CassetteRecorder would normally kill its child Cassette.
-                            associatedEntity.SetParent(null);
-                        }
-                    }
-
-                    // If the item has an associated entity (e.g., photo, sign, cassette), the id will already have been saved.
-                    // Forget about the entity when killing the item so that the entity will persist.
-                    // When the backpack item is recreated later, this property will set from the data file so that the item can be reassociated.
-                    item.instanceData.subEntity = 0;
-                }
-
-                if (item.contents != null)
-                {
-                    foreach (var childItem in item.contents.itemList)
-                    {
-                        DisassociateEntity(childItem);
-                    }
-                }
-            }
-
-            private void KillContainer()
-            {
-                ForceCloseAllLooters();
-
-                if (_itemContainer != null)
-                {
-                    foreach (var item in _itemContainer.itemList)
-                    {
-                        DisassociateEntity(item);
-                    }
-                }
-
-                if (_storageContainer != null && !_storageContainer.IsDestroyed)
-                {
-                    _instance._backpackManager.UnregisterContainer(_itemContainer);
-                    _storageContainer.Kill();
-                }
-            }
-
-            public void SaveAndKill()
-            {
-                SaveData();
-                KillContainer();
-            }
 
             public void Open(BasePlayer looter)
             {
@@ -1407,103 +1228,6 @@ namespace Oxide.Plugins
                 Interface.CallHook("OnBackpackOpened", looter, OwnerId, _storageContainer.inventory);
             }
 
-            private void MaybeAdjustCapacityAndHandleOverflow(BasePlayer receiver)
-            {
-                var allowedCapacity = GetAllowedCapacity();
-
-                if (_itemContainer.capacity <= allowedCapacity)
-                {
-                    // Increasing or maintaining capacity is always safe to do
-                    _itemContainer.capacity = allowedCapacity;
-                    return;
-                }
-
-                // Close for all looters since we are going to alter the capacity
-                ForceCloseAllLooters();
-
-                // Item order is preserved so that compaction is more deterministic
-                // Basically, items earlier in the backpack are more likely to stay in the backpack
-                var extraItems = _itemContainer.itemList
-                    .OrderBy(item => item.position)
-                    .Where(item => item.position >= allowedCapacity)
-                    .ToArray();
-
-                // Remove the extra items from the container so the capacity can be reduced
-                foreach (var item in extraItems)
-                {
-                    item.RemoveFromContainer();
-                }
-
-                // Capacity must be reduced before attempting to move overflowing items or they will be placed in the extra slots
-                _itemContainer.capacity = allowedCapacity;
-
-                var itemsDroppedOrGivenToPlayer = 0;
-                foreach (var item in extraItems)
-                {
-                    // Try to move the item to a vacant backpack slot or add to an existing stack in the backpack
-                    // If the item cannot be completely compacted into the backpack, the remainder is given to the player
-                    // If the item does not completely fit in the player inventory, the remainder is automatically dropped
-                    if (!item.MoveToContainer(_itemContainer))
-                    {
-                        itemsDroppedOrGivenToPlayer++;
-                        receiver.GiveItem(item);
-                    }
-                }
-
-                if (itemsDroppedOrGivenToPlayer > 0)
-                {
-                    _instance.PrintToChat(receiver, _instance.lang.GetMessage("Backpack Over Capacity", _instance, receiver.UserIDString));
-                }
-            }
-
-            private void MaybeRemoveRestrictedItems(BasePlayer receiver)
-            {
-                if (!_instance._config.ItemRestrictionEnabled)
-                    return;
-
-                // Optimization: Avoid processing item restrictions every time the backpack is opened.
-                if (ProcessedRestrictedItems)
-                    return;
-
-                if (_instance.permission.UserHasPermission(OwnerIdString, NoBlacklistPermission))
-                {
-                    // Don't process item restrictions while the player has the noblacklist permission.
-                    // Setting this flag allows the item restrictions to be processed again in case the noblacklist permission is revoked.
-                    ProcessedRestrictedItems = false;
-                    return;
-                }
-
-                var itemsDroppedOrGivenToPlayer = 0;
-                for (var i = _itemContainer.itemList.Count - 1; i >= 0; i--)
-                {
-                    var item = _itemContainer.itemList[i];
-                    if (_instance._config.IsRestrictedItem(item))
-                    {
-                        itemsDroppedOrGivenToPlayer++;
-                        item.RemoveFromContainer();
-                        receiver.GiveItem(item);
-                    }
-                }
-
-                if (itemsDroppedOrGivenToPlayer > 0)
-                {
-                    _instance.PrintToChat(receiver, _instance.lang.GetMessage("Blacklisted Items Removed", _instance, receiver.UserIDString));
-                }
-
-                ProcessedRestrictedItems = true;
-            }
-
-            private void ForceCloseAllLooters()
-            {
-                if (_looters.Count == 0)
-                    return;
-
-                foreach (BasePlayer looter in _looters.ToArray())
-                {
-                    ForceCloseLooter(looter);
-                }
-            }
-
             public void OnClosed(BasePlayer looter)
             {
                 _looters.Remove(looter);
@@ -1514,15 +1238,6 @@ namespace Oxide.Plugins
                 {
                     NetworkController?.RemoveSubscriber(looter);
                 }
-            }
-
-            private void ForceCloseLooter(BasePlayer looter)
-            {
-                looter.inventory.loot.Clear();
-                looter.inventory.loot.MarkDirty();
-                looter.inventory.loot.SendImmediate();
-
-                OnClosed(looter);
             }
 
             public DroppedItemContainer Drop(Vector3 position)
@@ -1578,23 +1293,6 @@ namespace Oxide.Plugins
                 return container;
             }
 
-            private void ReclaimItemsForSoftcore()
-            {
-                var softcoreGameMode = BaseGameMode.svActiveGameMode as GameModeSoftcore;
-                if (softcoreGameMode == null || ReclaimManager.instance == null)
-                    return;
-
-                List<Item> reclaimItemList = Facepunch.Pool.GetList<Item>();
-                softcoreGameMode.AddFractionOfContainer(_itemContainer, ref reclaimItemList, _instance._config.Softcore.ReclaimFraction);
-                if (reclaimItemList.Count > 0)
-                {
-                    // There's a vanilla bug where accessing the reclaim backpack will erase items in the reclaim entry above 32.
-                    // So we just add a new reclaim entry which can only be accessed at the terminal to avoid this issue.
-                    ReclaimManager.instance.AddPlayerReclaim(OwnerId, reclaimItemList);
-                }
-                Facepunch.Pool.FreeList(ref reclaimItemList);
-            }
-
             public void EraseContents(bool force = false)
             {
                 // Optimization: If no container and no stored data, don't bother with the rest of the logic.
@@ -1648,10 +1346,22 @@ namespace Oxide.Plugins
                 _dirty = false;
             }
 
-            public int GetItemQuantity(int itemID) => _itemContainer.FindItemsByItemID(itemID).Sum(item => item.amount);
+            public void SaveAndKill()
+            {
+                SaveData();
+                KillContainer();
+            }
+
+            public int GetItemQuantity(int itemID)
+            {
+                EnsureContainer();
+                return _itemContainer.FindItemsByItemID(itemID).Sum(item => item.amount);
+            }
 
             public int MoveItemsToPlayerInventory(BasePlayer player, int itemID, int desiredAmount)
             {
+                EnsureContainer();
+
                 List<Item> matchingItemStacks = _itemContainer.FindItemsByItemID(itemID);
                 int amountTransferred = 0;
 
@@ -1689,6 +1399,292 @@ namespace Oxide.Plugins
                     SaveData();
 
                 return amountTransferred;
+            }
+
+            private void DisassociateEntity(Item item)
+            {
+                if (item.instanceData != null)
+                {
+                    if (item.instanceData.subEntity != 0)
+                    {
+                        var associatedEntity = BaseNetworkable.serverEntities.Find(item.instanceData.subEntity) as BaseEntity;
+                        if (associatedEntity != null && associatedEntity.HasParent())
+                        {
+                            // Unparent the associated entity so it's not killed when its parent is.
+                            // For example, a CassetteRecorder would normally kill its child Cassette.
+                            associatedEntity.SetParent(null);
+                        }
+                    }
+
+                    // If the item has an associated entity (e.g., photo, sign, cassette), the id will already have been saved.
+                    // Forget about the entity when killing the item so that the entity will persist.
+                    // When the backpack item is recreated later, this property will set from the data file so that the item can be reassociated.
+                    item.instanceData.subEntity = 0;
+                }
+
+                if (item.contents != null)
+                {
+                    foreach (var childItem in item.contents.itemList)
+                    {
+                        DisassociateEntity(childItem);
+                    }
+                }
+            }
+
+            private void KillContainer()
+            {
+                ForceCloseAllLooters();
+
+                if (_itemContainer != null)
+                {
+                    foreach (var item in _itemContainer.itemList)
+                    {
+                        DisassociateEntity(item);
+                    }
+                }
+
+                if (_storageContainer != null && !_storageContainer.IsDestroyed)
+                {
+                    _instance._backpackManager.UnregisterContainer(_itemContainer);
+                    _storageContainer.Kill();
+                }
+            }
+
+            private void ForceCloseLooter(BasePlayer looter)
+            {
+                looter.inventory.loot.Clear();
+                looter.inventory.loot.MarkDirty();
+                looter.inventory.loot.SendImmediate();
+
+                OnClosed(looter);
+            }
+
+            private void ForceCloseAllLooters()
+            {
+                if (_looters.Count == 0)
+                    return;
+
+                foreach (BasePlayer looter in _looters.ToArray())
+                {
+                    ForceCloseLooter(looter);
+                }
+            }
+
+            private int GetAllowedCapacity() => GetAllowedSize() * SlotsPerRow;
+
+            private int GetHighestUsedSlot()
+            {
+                var highestUsedSlot = -1;
+                foreach (var itemData in _itemDataCollection)
+                {
+                    if (itemData.Position > highestUsedSlot)
+                        highestUsedSlot = itemData.Position;
+                }
+                return highestUsedSlot;
+            }
+
+            private StorageContainer SpawnStorageContainer(int capacity)
+            {
+                var storageEntity = GameManager.server.CreateEntity(CoffinPrefab, new Vector3(0, -50, 0));
+                if (storageEntity == null)
+                    return null;
+
+                var containerEntity = storageEntity as StorageContainer;
+                if (containerEntity == null)
+                {
+                    UnityEngine.Object.Destroy(storageEntity);
+                    return null;
+                }
+
+                UnityEngine.Object.DestroyImmediate(containerEntity.GetComponent<DestroyOnGroundMissing>());
+                UnityEngine.Object.DestroyImmediate(containerEntity.GetComponent<GroundWatch>());
+
+                foreach (var collider in containerEntity.GetComponentsInChildren<Collider>())
+                    UnityEngine.Object.DestroyImmediate(collider);
+
+                containerEntity.baseProtection = _instance._immortalProtection;
+                containerEntity.panelName = ResizableLootPanelName;
+
+                containerEntity.limitNetworking = true;
+                containerEntity.EnableSaving(false);
+                containerEntity.Spawn();
+
+                // Must change the network group after spawning,
+                // or else vanilla UpdateNetworkGroup will switch it to a positional network group.
+                containerEntity.net.SwitchGroup(NetworkController.NetworkGroup);
+
+                containerEntity.inventory.allowedContents = ItemContainer.ContentsType.Generic;
+                containerEntity.inventory.capacity = capacity;
+
+                return containerEntity;
+            }
+
+            private bool ShouldAcceptItem(Item item)
+            {
+                // Skip checking restricted items if they haven't been processed, to avoid erasing them.
+                // Restricted items will be dropped when the owner opens the backpack.
+                if (_instance._config.ItemRestrictionEnabled
+                    && _processedRestrictedItems
+                    && !_instance.permission.UserHasPermission(OwnerIdString, NoBlacklistPermission)
+                    && _instance._config.IsRestrictedItem(item))
+                {
+                    return false;
+                }
+
+                object hookResult = Interface.CallHook("CanBackpackAcceptItem", OwnerId, _itemContainer, item);
+                if (hookResult is bool && (bool)hookResult == false)
+                    return false;
+
+                return true;
+            }
+
+            private bool CanAcceptItem(Item item, int amount)
+            {
+                // Explicitly track hook time so server owners can be informed of the cost.
+                _instance.TrackStart();
+                var result = ShouldAcceptItem(item);
+                _instance.TrackEnd();
+                return result;
+            }
+
+            private void EnsureContainer()
+            {
+                if (_storageContainer != null)
+                    return;
+
+                if (NetworkController == null)
+                    NetworkController = _instance._backpackManager.CreateNetworkController();
+
+                _storageContainer = SpawnStorageContainer(GetAllowedCapacity());
+                _itemContainer = _storageContainer.inventory;
+
+                _instance._backpackManager.RegisterContainer(_itemContainer, this);
+
+                if (GetHighestUsedSlot() >= _itemContainer.capacity)
+                {
+                    // Temporarily increase the capacity to allow all items to fit
+                    // Extra items will be addressed when the backpack is opened by the owner
+                    // If an admin views the backpack in the meantime, it will appear as max capacity
+                    _itemContainer.capacity = MaxSize * SlotsPerRow;
+                }
+
+                foreach (var backpackItem in _itemDataCollection)
+                {
+                    var item = backpackItem.ToItem();
+                    if (item != null)
+                    {
+                        if (!item.MoveToContainer(_itemContainer, item.position))
+                            item.Remove();
+                    }
+                }
+
+                // Apply the item filter only after filling the container initially.
+                // This avoids unnecessary CanBackpackAcceptItem hooks calls on initial creation.
+                _itemContainer.canAcceptItem += this.CanAcceptItem;
+                _itemContainer.onDirty += () => _dirty = true;
+            }
+
+            private void MaybeRemoveRestrictedItems(BasePlayer receiver)
+            {
+                if (!_instance._config.ItemRestrictionEnabled)
+                    return;
+
+                // Optimization: Avoid processing item restrictions every time the backpack is opened.
+                if (_processedRestrictedItems)
+                    return;
+
+                if (_instance.permission.UserHasPermission(OwnerIdString, NoBlacklistPermission))
+                {
+                    // Don't process item restrictions while the player has the noblacklist permission.
+                    // Setting this flag allows the item restrictions to be processed again in case the noblacklist permission is revoked.
+                    _processedRestrictedItems = false;
+                    return;
+                }
+
+                var itemsDroppedOrGivenToPlayer = 0;
+                for (var i = _itemContainer.itemList.Count - 1; i >= 0; i--)
+                {
+                    var item = _itemContainer.itemList[i];
+                    if (_instance._config.IsRestrictedItem(item))
+                    {
+                        itemsDroppedOrGivenToPlayer++;
+                        item.RemoveFromContainer();
+                        receiver.GiveItem(item);
+                    }
+                }
+
+                if (itemsDroppedOrGivenToPlayer > 0)
+                {
+                    _instance.PrintToChat(receiver, _instance.lang.GetMessage("Blacklisted Items Removed", _instance, receiver.UserIDString));
+                }
+
+                _processedRestrictedItems = true;
+            }
+
+            private void MaybeAdjustCapacityAndHandleOverflow(BasePlayer receiver)
+            {
+                var allowedCapacity = GetAllowedCapacity();
+
+                if (_itemContainer.capacity <= allowedCapacity)
+                {
+                    // Increasing or maintaining capacity is always safe to do
+                    _itemContainer.capacity = allowedCapacity;
+                    return;
+                }
+
+                // Close for all looters since we are going to alter the capacity
+                ForceCloseAllLooters();
+
+                // Item order is preserved so that compaction is more deterministic
+                // Basically, items earlier in the backpack are more likely to stay in the backpack
+                var extraItems = _itemContainer.itemList
+                    .OrderBy(item => item.position)
+                    .Where(item => item.position >= allowedCapacity)
+                    .ToArray();
+
+                // Remove the extra items from the container so the capacity can be reduced
+                foreach (var item in extraItems)
+                {
+                    item.RemoveFromContainer();
+                }
+
+                // Capacity must be reduced before attempting to move overflowing items or they will be placed in the extra slots
+                _itemContainer.capacity = allowedCapacity;
+
+                var itemsDroppedOrGivenToPlayer = 0;
+                foreach (var item in extraItems)
+                {
+                    // Try to move the item to a vacant backpack slot or add to an existing stack in the backpack
+                    // If the item cannot be completely compacted into the backpack, the remainder is given to the player
+                    // If the item does not completely fit in the player inventory, the remainder is automatically dropped
+                    if (!item.MoveToContainer(_itemContainer))
+                    {
+                        itemsDroppedOrGivenToPlayer++;
+                        receiver.GiveItem(item);
+                    }
+                }
+
+                if (itemsDroppedOrGivenToPlayer > 0)
+                {
+                    _instance.PrintToChat(receiver, _instance.lang.GetMessage("Backpack Over Capacity", _instance, receiver.UserIDString));
+                }
+            }
+
+            private void ReclaimItemsForSoftcore()
+            {
+                var softcoreGameMode = BaseGameMode.svActiveGameMode as GameModeSoftcore;
+                if (softcoreGameMode == null || ReclaimManager.instance == null)
+                    return;
+
+                List<Item> reclaimItemList = Facepunch.Pool.GetList<Item>();
+                softcoreGameMode.AddFractionOfContainer(_itemContainer, ref reclaimItemList, _instance._config.Softcore.ReclaimFraction);
+                if (reclaimItemList.Count > 0)
+                {
+                    // There's a vanilla bug where accessing the reclaim backpack will erase items in the reclaim entry above 32.
+                    // So we just add a new reclaim entry which can only be accessed at the terminal to avoid this issue.
+                    ReclaimManager.instance.AddPlayerReclaim(OwnerId, reclaimItemList);
+                }
+                Facepunch.Pool.FreeList(ref reclaimItemList);
             }
         }
 
