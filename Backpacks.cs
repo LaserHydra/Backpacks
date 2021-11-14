@@ -52,6 +52,7 @@ namespace Oxide.Plugins
         private static Backpacks _instance;
         private Configuration _config;
         private StoredData _storedData;
+        private int _wipeNumber;
 
         [PluginReference]
         private Plugin Arena, EventManager;
@@ -93,6 +94,8 @@ namespace Oxide.Plugins
 
         private void OnServerInitialized()
         {
+            _wipeNumber = DetermineWipeNumber();
+
             _immortalProtection = ScriptableObject.CreateInstance<ProtectionProperties>();
             _immortalProtection.name = "BackpacksProtection";
             _immortalProtection.Add(1);
@@ -519,6 +522,20 @@ namespace Oxide.Plugins
         #endregion
 
         #region Helper Methods
+
+        private int DetermineWipeNumber()
+        {
+            var saveName = World.SaveFileName;
+
+            var lastDotIndex = saveName.LastIndexOf('.');
+            var secondToLastDotIndex = saveName.LastIndexOf('.', lastDotIndex - 1);
+            var wipeNumberString = saveName.Substring(secondToLastDotIndex + 1, lastDotIndex - secondToLastDotIndex - 1);
+
+            int wipeNumber;
+            return int.TryParse(wipeNumberString, out wipeNumber)
+                ? wipeNumber
+                : 0;
+        }
 
         private IPlayer FindPlayer(string nameOrID, out string failureMessage)
         {
@@ -1033,6 +1050,17 @@ namespace Oxide.Plugins
                 // This improves compatibility with plugins such as Wipe Data Cleaner which reset the file to `{}`.
                 backpack.OwnerId = userId;
 
+                // Forget about associated entities from previous wipes.
+                if (backpack.WipeNumber != _instance._wipeNumber)
+                {
+                    foreach (var itemData in backpack.ItemDataCollection)
+                    {
+                        itemData.AssociatedEntityId = 0;
+                    }
+                }
+
+                backpack.WipeNumber = _instance._wipeNumber;
+
                 _cachedBackpacks[userId] = backpack;
 
                 return backpack;
@@ -1175,8 +1203,11 @@ namespace Oxide.Plugins
             [JsonProperty("OwnerID")]
             public ulong OwnerId { get; set; }
 
+            [JsonProperty("WipeNumber", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            public int WipeNumber;
+
             [JsonProperty("Items")]
-            private List<ItemData> _itemDataCollection = new List<ItemData>();
+            public List<ItemData> ItemDataCollection = new List<ItemData>();
 
             public Backpack(ulong ownerId) : base()
             {
@@ -1243,7 +1274,7 @@ namespace Oxide.Plugins
             public DroppedItemContainer Drop(Vector3 position)
             {
                 // Optimization: If no container and no stored data, don't bother with the rest of the logic.
-                if (_storageContainer == null && _itemDataCollection.Count == 0)
+                if (_storageContainer == null && ItemDataCollection.Count == 0)
                     return null;
 
                 object hookResult = Interface.CallHook("CanDropBackpack", OwnerId, position);
@@ -1296,7 +1327,7 @@ namespace Oxide.Plugins
             public void EraseContents(bool force = false)
             {
                 // Optimization: If no container and no stored data, don't bother with the rest of the logic.
-                if (_storageContainer == null && _itemDataCollection.Count == 0)
+                if (_storageContainer == null && ItemDataCollection.Count == 0)
                     return;
 
                 if (!force)
@@ -1320,7 +1351,7 @@ namespace Oxide.Plugins
                 else
                 {
                     // Optimization: Simply clear the data when there is no container.
-                    _itemDataCollection.Clear();
+                    ItemDataCollection.Clear();
                 }
 
                 if (!_instance._config.SaveBackpacksOnServerSave)
@@ -1337,7 +1368,7 @@ namespace Oxide.Plugins
                 // There is possibly no container if wiping a backpack on server wipe.
                 if (_itemContainer != null)
                 {
-                    _itemDataCollection = _itemContainer.itemList
+                    ItemDataCollection = _itemContainer.itemList
                         .Select(ItemData.FromItem)
                         .ToList();
                 }
@@ -1475,7 +1506,7 @@ namespace Oxide.Plugins
             private int GetHighestUsedSlot()
             {
                 var highestUsedSlot = -1;
-                foreach (var itemData in _itemDataCollection)
+                foreach (var itemData in ItemDataCollection)
                 {
                     if (itemData.Position > highestUsedSlot)
                         highestUsedSlot = itemData.Position;
@@ -1568,7 +1599,7 @@ namespace Oxide.Plugins
                     _itemContainer.capacity = MaxSize * SlotsPerRow;
                 }
 
-                foreach (var backpackItem in _itemDataCollection)
+                foreach (var backpackItem in ItemDataCollection)
                 {
                     var item = backpackItem.ToItem();
                     if (item != null)
