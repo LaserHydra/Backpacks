@@ -897,14 +897,16 @@ namespace Oxide.Plugins
 
         private class BackpackManager
         {
-            private uint _startNetworkGroupId = 10000000;
+            private const uint StartNetworkGroupId = 10000000;
+
+            private uint _nextNetworkGroupId = StartNetworkGroupId;
 
             private readonly Dictionary<ulong, Backpack> _cachedBackpacks = new Dictionary<ulong, Backpack>();
             private readonly Dictionary<ItemContainer, Backpack> _backpackContainers = new Dictionary<ItemContainer, Backpack>();
 
             public BackpackNetworkController CreateNetworkController()
             {
-                return new BackpackNetworkController(_startNetworkGroupId++);
+                return new BackpackNetworkController(_nextNetworkGroupId++);
             }
 
             private static string GetBackpackPath(ulong userId) => $"{_instance.Name}/{userId}";
@@ -1100,6 +1102,7 @@ namespace Oxide.Plugins
                 {
                     backpack.NetworkController?.RemoveAllSubscribers();
                 }
+                _nextNetworkGroupId = StartNetworkGroupId;
             }
         }
 
