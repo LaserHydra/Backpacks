@@ -110,6 +110,7 @@ namespace Oxide.Plugins
 
             _storedData.Save();
             _backpackManager.SaveAndKillCachedBackpacks();
+            _backpackManager.CleanupAllNetworkControllers();
 
             foreach (var player in BasePlayer.activePlayerList)
                 DestroyGUI(player);
@@ -163,6 +164,7 @@ namespace Oxide.Plugins
             if (_config.SaveBackpacksOnServerSave)
             {
                 _backpackManager.SaveAndKillCachedBackpacks();
+                _backpackManager.CleanupAllNetworkControllers();
                 _backpackManager.ClearCache();
             }
         }
@@ -172,6 +174,8 @@ namespace Oxide.Plugins
             var backpack = _backpackManager.GetCachedBackpack(player.userID);
             if (backpack == null)
                 return;
+
+            backpack.NetworkController?.RemoveSubscriber(player);
 
             if (!_config.SaveBackpacksOnServerSave)
             {
@@ -657,17 +661,6 @@ namespace Oxide.Plugins
             CuiHelper.DestroyUi(player, GUIPanelName);
         }
 
-        private static void TerminateEntityOnClient(BaseEntity entity, Connection connection)
-        {
-            if (Net.sv.write.Start())
-            {
-                Net.sv.write.PacketID(Message.Type.EntityDestroy);
-                Net.sv.write.EntityID(entity.net.ID);
-                Net.sv.write.UInt8((byte)BaseNetworkable.DestroyMode.None);
-                Net.sv.write.Send(new SendInfo(connection));
-            }
-        }
-
         private static void LoadData<T>(out T data, string filename) =>
             data = Interface.Oxide.DataFileSystem.ReadObject<T>(filename);
 
@@ -888,8 +881,15 @@ namespace Oxide.Plugins
 
         private class BackpackManager
         {
-            private readonly Dictionary<ulong, Backpack> _backpacks = new Dictionary<ulong, Backpack>();
+            private uint _startNetworkGroupId = 10000000;
+
+            private readonly Dictionary<ulong, Backpack> _cachedBackpacks = new Dictionary<ulong, Backpack>();
             private readonly Dictionary<ItemContainer, Backpack> _backpackContainers = new Dictionary<ItemContainer, Backpack>();
+
+            public BackpackNetworkController CreateNetworkController()
+            {
+                return new BackpackNetworkController(_startNetworkGroupId++);
+            }
 
             private static string GetBackpackPath(ulong userId) => $"{_instance.Name}/{userId}";
 
@@ -933,7 +933,7 @@ namespace Oxide.Plugins
             public Backpack GetCachedBackpack(ulong userId)
             {
                 Backpack backpack;
-                return _backpacks.TryGetValue(userId, out backpack)
+                return _cachedBackpacks.TryGetValue(userId, out backpack)
                     ? backpack
                     : null;
             }
@@ -976,7 +976,7 @@ namespace Oxide.Plugins
             {
                 var cachedContainersByUserId = new Dictionary<ulong, ItemContainer>();
 
-                foreach (var entry in _backpacks)
+                foreach (var entry in _cachedBackpacks)
                 {
                     var container = entry.Value.GetContainer();
                     if (container != null)
@@ -1034,7 +1034,7 @@ namespace Oxide.Plugins
                 // This improves compatibility with plugins such as Wipe Data Cleaner which reset the file to `{}`.
                 backpack.OwnerId = userId;
 
-                _backpacks[userId] = backpack;
+                _cachedBackpacks[userId] = backpack;
 
                 return backpack;
             }
@@ -1051,7 +1051,7 @@ namespace Oxide.Plugins
 
             public void SaveAndKillCachedBackpacks()
             {
-                foreach (var backpack in _backpacks.Values)
+                foreach (var backpack in _cachedBackpacks.Values)
                 {
                     backpack.SaveAndKill();
                 }
@@ -1059,12 +1059,81 @@ namespace Oxide.Plugins
 
             public void RemoveFromCache(Backpack backpack)
             {
-                _backpacks.Remove(backpack.OwnerId);
+                _cachedBackpacks.Remove(backpack.OwnerId);
             }
 
             public void ClearCache()
             {
-                _backpacks.Clear();
+                _cachedBackpacks.Clear();
+            }
+
+            public void CleanupAllNetworkControllers()
+            {
+                foreach (var backpack in _cachedBackpacks.Values)
+                {
+                    backpack.NetworkController?.RemoveAllSubscribers();
+                }
+            }
+        }
+
+        #endregion
+
+        #region Backpack Networking
+
+        private class BackpackNetworkController
+        {
+            public Network.Visibility.Group NetworkGroup { get; private set; }
+
+            public BackpackNetworkController(uint networkGroupId)
+            {
+                NetworkGroup = new Network.Visibility.Group(null, networkGroupId);
+            }
+
+            public void AddSubscriber(BasePlayer player)
+            {
+                if (player.Connection == null || NetworkGroup.subscribers.Contains(player.Connection))
+                    return;
+
+                // Send the client a message letting them know they are subscribed to the group.
+                ServerMgr.OnEnterVisibility(player.Connection, NetworkGroup);
+
+                // Send the client a snapshot of every entity currently in the group.
+                foreach (var networkable in NetworkGroup.networkables)
+                {
+                    (networkable.handler as BaseNetworkable).SendAsSnapshot(player.Connection);
+                }
+
+                // Subscribe the client to the group so they get future entity updates.
+                // For example, when an item enters the backpack that has an associated entity.
+                NetworkGroup.AddSubscriber(player.Connection);
+            }
+
+            public void RemoveSubscriber(BasePlayer player)
+            {
+                if (player.Connection == null)
+                    return;
+
+                RemoveSubscriber(player.Connection);
+            }
+
+            public void RemoveAllSubscribers()
+            {
+                if (NetworkGroup.subscribers.Count == 0)
+                    return;
+
+                foreach (var subscriber in NetworkGroup.subscribers.ToArray())
+                {
+                    RemoveSubscriber(subscriber);
+                }
+            }
+
+            private void RemoveSubscriber(Connection connection)
+            {
+                // Unsubscribe the client from the group so they don't get future entity updates.
+                NetworkGroup.RemoveSubscriber(connection);
+
+                // Send the client a message so they kill all client-side entities in the group.
+                ServerMgr.OnLeaveVisibility(connection, NetworkGroup);
             }
         }
 
@@ -1095,8 +1164,10 @@ namespace Oxide.Plugins
             private StorageContainer _storageContainer;
             private ItemContainer _itemContainer;
             private List<BasePlayer> _looters = new List<BasePlayer>();
-            private BasePlayer _lastLooter;
             private bool _dirty = false;
+
+            [JsonIgnore]
+            public BackpackNetworkController NetworkController { get; private set; }
 
             [JsonIgnore]
             public bool ProcessedRestrictedItems { get; private set; }
@@ -1119,6 +1190,7 @@ namespace Oxide.Plugins
             ~Backpack()
             {
                 KillContainer();
+                NetworkController?.RemoveAllSubscribers();
             }
 
             public IPlayer FindOwnerPlayer() => _instance.covalence.Players.FindPlayerById(OwnerIdString);
@@ -1168,6 +1240,10 @@ namespace Oxide.Plugins
                 containerEntity.limitNetworking = true;
                 containerEntity.EnableSaving(false);
                 containerEntity.Spawn();
+
+                // Must change the network group after spawning,
+                // or else vanilla UpdateNetworkGroup will switch it to a positional network group.
+                containerEntity.net.SwitchGroup(NetworkController.NetworkGroup);
 
                 containerEntity.inventory.allowedContents = ItemContainer.ContentsType.Generic;
                 containerEntity.inventory.capacity = capacity;
@@ -1221,6 +1297,9 @@ namespace Oxide.Plugins
                 if (_storageContainer != null)
                     return;
 
+                if (NetworkController == null)
+                    NetworkController = _instance._backpackManager.CreateNetworkController();
+
                 _storageContainer = SpawnStorageContainer(GetAllowedCapacity());
                 _itemContainer = _storageContainer.inventory;
 
@@ -1248,14 +1327,6 @@ namespace Oxide.Plugins
                 // This avoids unnecessary CanBackpackAcceptItem hooks calls on initial creation.
                 _itemContainer.canAcceptItem += this.CanAcceptItem;
                 _itemContainer.onDirty += this.MarkDirty;
-            }
-
-            private void TerminateContainerForLastLooter()
-            {
-                if (_storageContainer == null || _lastLooter == null || _lastLooter.Connection == null)
-                    return;
-
-                TerminateEntityOnClient(_storageContainer, _lastLooter.Connection);
             }
 
             private void DisassociateEntity(Item item)
@@ -1288,8 +1359,10 @@ namespace Oxide.Plugins
                 }
             }
 
-            public void KillContainer()
+            private void KillContainer()
             {
+                ForceCloseAllLooters();
+
                 if (_itemContainer != null)
                 {
                     foreach (var item in _itemContainer.itemList)
@@ -1298,14 +1371,11 @@ namespace Oxide.Plugins
                     }
                 }
 
-                ForceCloseAllLooters();
-                TerminateContainerForLastLooter();
-
-                if (_storageContainer == null || _storageContainer.IsDestroyed)
-                    return;
-
-                _instance._backpackManager.UnregisterContainer(_itemContainer);
-                _storageContainer.Kill();
+                if (_storageContainer != null && !_storageContainer.IsDestroyed)
+                {
+                    _instance._backpackManager.UnregisterContainer(_itemContainer);
+                    _storageContainer.Kill();
+                }
             }
 
             public void SaveAndKill()
@@ -1320,6 +1390,7 @@ namespace Oxide.Plugins
                     return;
 
                 EnsureContainer();
+                NetworkController.AddSubscriber(looter);
 
                 // Only drop items when the owner is opening the backpack.
                 if (looter.userID == OwnerId)
@@ -1330,23 +1401,6 @@ namespace Oxide.Plugins
 
                 if (!_looters.Contains(looter))
                     _looters.Add(looter);
-
-                if (_lastLooter != looter)
-                {
-                    // There's one edge case with this, which is that if two players are looting a backpack,
-                    // the container will be destroyed for the previous looter (only possible if one of the players is admin).
-                    // This can be improved in the future, but it's very minor impact,
-                    // as it only disallows right-clicking items into the backpack until reopened.
-                    TerminateContainerForLastLooter();
-
-                    // The client must be sent a snapshot of the container entity in order to use right-click to move items into it.
-                    _storageContainer.SendAsSnapshot(looter.Connection);
-
-                    // We track the last looter so that we can explicitly terminate the container later.
-                    // If we don't terminate the container on the client at some point,
-                    // then containers could potentially build up on clients (if reloading the plugin often).
-                    _lastLooter = looter;
-                }
 
                 _storageContainer.PlayerOpenLoot(looter, _storageContainer.panelName, doPositionChecks: false);
 
@@ -1439,7 +1493,7 @@ namespace Oxide.Plugins
                 ProcessedRestrictedItems = true;
             }
 
-            public void ForceCloseAllLooters()
+            private void ForceCloseAllLooters()
             {
                 if (_looters.Count == 0)
                     return;
@@ -1453,6 +1507,13 @@ namespace Oxide.Plugins
             public void OnClosed(BasePlayer looter)
             {
                 _looters.Remove(looter);
+
+                // Clean up the subscription immediately if admin stopped looting.
+                // This avoids having to clean up the admin subscriptions some other way which would add complexity.
+                if (looter.userID != OwnerId)
+                {
+                    NetworkController?.RemoveSubscriber(looter);
+                }
             }
 
             private void ForceCloseLooter(BasePlayer looter)
