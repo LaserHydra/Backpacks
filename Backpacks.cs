@@ -15,7 +15,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "LaserHydra", "3.6.3")]
+    [Info("Backpacks", "LaserHydra", "3.7.0")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : RustPlugin
     {
