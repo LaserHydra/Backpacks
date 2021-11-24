@@ -1,6 +1,6 @@
 ## Features
 
-**Backpacks** allows players to have backpacks that provide them with extra inventory space.
+Allows players to have backpacks that provide them with extra inventory space.
 
 - Customizable capacity per player
 - Option to drop or erase contents on death
@@ -18,10 +18,11 @@ Please consider donating to support me and help me put more time into my plugins
 
 - `/backpack` -- open your own backpack
 - `/backpackgui` -- toggle whether you can see the backpack GUI button
-- `/viewbackpack <name or id>` -- open another player's backpack **[Admin Command]**
+- `/viewbackpack <name or id>` -- open another player's backpack (requires `backpacks.admin` permission)
 
 ## Console Commands
 
+- `backpack.open` -- open your backpack (for key bind, also invoked by the GUI button)
 - `backpack.fetch <item short name or id> <amount>` -- fetch an item from your backpack
 
 ## Server Commands
@@ -30,10 +31,10 @@ Please consider donating to support me and help me put more time into my plugins
 
 ## Permissions
 
-- `backpacks.admin` -- required for `/viewbackpack` command
-- `backpacks.gui` -- required to use GUI button
+- `backpacks.admin` -- required to use the `/viewbackpack` command
+- `backpacks.gui` -- required to see GUI button
 - `backpacks.use` -- required to open your own backpack
-- `backpacks.use.1 - 7` -- gives player access to a certain amount of inventory rows overwriting the configured default size *(e.g. backpacks.use.3 gives them 3 rows of item space; still requires backpacks.use)*
+- `backpacks.use.1 - 7` -- gives player access to a certain amount of inventory rows, overriding the configured default size *(e.g. backpacks.use.3 gives them 3 rows of item space; still requires backpacks.use)*
 - `backpacks.fetch` -- required to use the `backpack.fetch` command
 - `backpacks.keepondeath` -- exempts player from having their backpack erased or dropped on death
 - `backpacks.keeponwipe` -- exempts player from having their backpack erased on map wipe
@@ -77,11 +78,13 @@ Note: When using the item whitelist, the blacklist is ignored.
 #### Backpack icon customization
 
 Alternative backpacks images:
-[right-side](https://i.imgur.com/h1HQEAB.png)
-[left-side](https://i.imgur.com/wLR9Z6V.png)
-[universal](https://i.imgur.com/5RE9II5.png)
 
-Left-side button coordinates
+- [Right-side](https://i.imgur.com/h1HQEAB.png)
+- [Left-side](https://i.imgur.com/wLR9Z6V.png)
+- [Universal](https://i.imgur.com/5RE9II5.png)
+
+Left-side button coordinates:
+
 ```json
     "GUI Button Position": {
       "Anchors Min": "0.5 0.0",
@@ -112,6 +115,10 @@ Left-side button coordinates
   "Toggled Backpack GUI": "Toggled backpack GUI button."
 }
 ```
+
+## Known limitations
+
+Paintable entities, photos, pagers, mobile phones, and cassettes will lose their data on map wipe. There are currently no plans to persist this data across wipes, but such a feature can be considered upon request.
 
 ## Developer API
 
