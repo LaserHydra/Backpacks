@@ -1,5 +1,4 @@
-﻿using Network;
-using Newtonsoft.Json;
+﻿using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Oxide.Core;
 using Oxide.Core.Libraries.Covalence;
@@ -178,7 +177,7 @@ namespace Oxide.Plugins
             if (backpack == null)
                 return;
 
-            backpack.NetworkController?.RemoveSubscriber(player);
+            backpack.NetworkController?.Unsubscribe(player);
 
             if (!_config.SaveBackpacksOnServerSave)
             {
@@ -262,6 +261,23 @@ namespace Oxide.Plugins
         private void OnPlayerSleepEnded(BasePlayer player) => CreateGUI(player);
 
         private void OnPlayerSleep(BasePlayer player) => DestroyGUI(player);
+
+        private void OnNetworkSubscriptionsUpdate(Network.Networkable networkable, List<Network.Visibility.Group> groupsToAdd, List<Network.Visibility.Group> groupsToRemove)
+        {
+            if (groupsToRemove == null)
+                return;
+
+            for (var i = groupsToRemove.Count - 1; i >= 0; i--)
+            {
+                var group = groupsToRemove[i];
+                if (_backpackManager.IsBackpackNetworkGroup(group))
+                {
+                    // Prevent automatically unsubscribing from backpack network groups.
+                    // This allows the subscriptions to persist while players move around.
+                    groupsToRemove.Remove(group);
+                }
+            }
+        }
 
         #endregion
 
@@ -904,6 +920,11 @@ namespace Oxide.Plugins
             private readonly Dictionary<ulong, Backpack> _cachedBackpacks = new Dictionary<ulong, Backpack>();
             private readonly Dictionary<ItemContainer, Backpack> _backpackContainers = new Dictionary<ItemContainer, Backpack>();
 
+            public bool IsBackpackNetworkGroup(Network.Visibility.Group group)
+            {
+                return group.ID >= StartNetworkGroupId && group.ID < _nextNetworkGroupId;
+            }
+
             public BackpackNetworkController CreateNetworkController()
             {
                 return new BackpackNetworkController(_nextNetworkGroupId++);
@@ -1100,7 +1121,7 @@ namespace Oxide.Plugins
             {
                 foreach (var backpack in _cachedBackpacks.Values)
                 {
-                    backpack.NetworkController?.RemoveAllSubscribers();
+                    backpack.NetworkController?.UnsubscribeAll();
                 }
                 _nextNetworkGroupId = StartNetworkGroupId;
             }
@@ -1114,56 +1135,67 @@ namespace Oxide.Plugins
         {
             public Network.Visibility.Group NetworkGroup { get; private set; }
 
+            private List<BasePlayer> _subscribers = new List<BasePlayer>(1);
+
             public BackpackNetworkController(uint networkGroupId)
             {
                 NetworkGroup = new Network.Visibility.Group(null, networkGroupId);
             }
 
-            public void AddSubscriber(BasePlayer player)
+            public void Subscribe(BasePlayer player)
             {
-                if (player.Connection == null || NetworkGroup.subscribers.Contains(player.Connection))
+                if (player.Connection == null || _subscribers.Contains(player))
                     return;
+
+                _subscribers.Add(player);
 
                 // Send the client a message letting them know they are subscribed to the group.
                 ServerMgr.OnEnterVisibility(player.Connection, NetworkGroup);
 
                 // Send the client a snapshot of every entity currently in the group.
+                // Don't use the entity queue for this because it could be cleared which could cause updates to be missed.
                 foreach (var networkable in NetworkGroup.networkables)
                 {
                     (networkable.handler as BaseNetworkable).SendAsSnapshot(player.Connection);
                 }
 
-                // Subscribe the client to the group so they get future entity updates.
-                // For example, when an item enters the backpack that has an associated entity.
-                NetworkGroup.AddSubscriber(player.Connection);
-            }
-
-            public void RemoveSubscriber(BasePlayer player)
-            {
-                if (player.Connection == null)
-                    return;
-
-                RemoveSubscriber(player.Connection);
-            }
-
-            public void RemoveAllSubscribers()
-            {
-                if (NetworkGroup.subscribers.Count == 0)
-                    return;
-
-                foreach (var subscriber in NetworkGroup.subscribers.ToArray())
+                if (!NetworkGroup.subscribers.Contains(player.Connection))
                 {
-                    RemoveSubscriber(subscriber);
+                    // Register the client with the group so that entities added to it will be automatically sent to the client.
+                    NetworkGroup.subscribers.Add(player.Connection);
+                }
+
+                var subscriber = player.net.subscriber;
+                if (!subscriber.subscribed.Contains(NetworkGroup))
+                {
+                    // Register the group with the client so that ShouldNetworkTo() returns true in SendNetworkUpdate().
+                    // This covers cases such as toggling a pager's silent mode.
+                    subscriber.subscribed.Add(NetworkGroup);
                 }
             }
 
-            private void RemoveSubscriber(Connection connection)
+            public void Unsubscribe(BasePlayer player)
             {
-                // Unsubscribe the client from the group so they don't get future entity updates.
-                NetworkGroup.RemoveSubscriber(connection);
+                if (!_subscribers.Remove(player))
+                    return;
+
+                if (player.Connection == null)
+                    return;
+
+                // Unregister the client from the group so they don't get future entity updates.
+                NetworkGroup.subscribers.Remove(player.Connection);
+                player.net.subscriber.subscribed.Remove(NetworkGroup);
 
                 // Send the client a message so they kill all client-side entities in the group.
-                ServerMgr.OnLeaveVisibility(connection, NetworkGroup);
+                ServerMgr.OnLeaveVisibility(player.Connection, NetworkGroup);
+            }
+
+            public void UnsubscribeAll()
+            {
+                for (var i = _subscribers.Count - 1; i >= 0; i--)
+                {
+                    Unsubscribe(_subscribers[i]);
+                }
             }
         }
 
@@ -1221,7 +1253,7 @@ namespace Oxide.Plugins
             ~Backpack()
             {
                 KillContainer();
-                NetworkController?.RemoveAllSubscribers();
+                NetworkController?.UnsubscribeAll();
             }
 
             public IPlayer FindOwnerPlayer() => _instance.covalence.Players.FindPlayerById(OwnerIdString);
@@ -1245,7 +1277,7 @@ namespace Oxide.Plugins
                     return;
 
                 EnsureContainer();
-                NetworkController.AddSubscriber(looter);
+                NetworkController.Subscribe(looter);
 
                 // Only drop items when the owner is opening the backpack.
                 if (looter.userID == OwnerId)
@@ -1270,7 +1302,7 @@ namespace Oxide.Plugins
                 // This avoids having to clean up the admin subscriptions some other way which would add complexity.
                 if (looter.userID != OwnerId)
                 {
-                    NetworkController?.RemoveSubscriber(looter);
+                    NetworkController?.Unsubscribe(looter);
                 }
             }
 
@@ -1444,6 +1476,9 @@ namespace Oxide.Plugins
                         var associatedEntity = BaseNetworkable.serverEntities.Find(item.instanceData.subEntity) as BaseEntity;
                         if (associatedEntity != null && associatedEntity.HasParent())
                         {
+                            // Disable networking of the entity while it has no parent to reduce unnecessary server load.
+                            associatedEntity.limitNetworking = true;
+
                             // Unparent the associated entity so it's not killed when its parent is.
                             // For example, a CassetteRecorder would normally kill its child Cassette.
                             associatedEntity.SetParent(null);
@@ -1539,13 +1574,18 @@ namespace Oxide.Plugins
                 containerEntity.baseProtection = _instance._immortalProtection;
                 containerEntity.panelName = ResizableLootPanelName;
 
-                containerEntity.limitNetworking = true;
+                // Temporarily disable networking to prevent initially sending the entity to clients based on the positional network group.
+                containerEntity._limitedNetworking = true;
+
                 containerEntity.EnableSaving(false);
                 containerEntity.Spawn();
 
                 // Must change the network group after spawning,
                 // or else vanilla UpdateNetworkGroup will switch it to a positional network group.
                 containerEntity.net.SwitchGroup(NetworkController.NetworkGroup);
+
+                // Re-enable networking now that the entity is in the correct network group.
+                containerEntity._limitedNetworking = false;
 
                 containerEntity.inventory.allowedContents = ItemContainer.ContentsType.Generic;
                 containerEntity.inventory.capacity = capacity;
@@ -1833,9 +1873,16 @@ namespace Oxide.Plugins
                         dataInt = DataInt,
                     };
 
-                    if (AssociatedEntityId != 0 && BaseNetworkable.serverEntities.Find(AssociatedEntityId) != null)
+                    if (AssociatedEntityId != 0)
                     {
-                        item.instanceData.subEntity = AssociatedEntityId;
+                        var associatedEntity = BaseNetworkable.serverEntities.Find(AssociatedEntityId);
+                        if (associatedEntity != null)
+                        {
+                            // Re-enable networking since it's disabled when the entity is disassociated.
+                            associatedEntity._limitedNetworking = false;
+
+                            item.instanceData.subEntity = AssociatedEntityId;
+                        }
                     }
                 }
 
