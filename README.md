@@ -143,6 +143,17 @@ Plugins can call this API to get all existing backpack containers. This can be u
 Dictionary<ulong, ItemContainer> API_GetExistingBackpacks()
 ```
 
+### API_GetBackpackOwnerId
+
+Plugins can call this API to determine whether a given `ItemContainer` is a backpack, as well as the owner of that backpack.
+
+- When the return value is `0`, the container is **not** a backpack.
+- When the return value is non-`0`, it represents the Steam ID of the backpack's owner.
+
+```csharp
+ulong API_GetBackpackOwnerId(ItemContainer container)
+```
+
 ## Developer Hooks
 
 ### CanOpenBackpack

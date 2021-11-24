@@ -302,6 +302,11 @@ namespace Oxide.Plugins
             return _backpackManager.Drop(player.userID, player.transform.position);
         }
 
+        private ulong API_GetBackpackOwnerId(ItemContainer container)
+        {
+            return _backpackManager.GetCachedBackpackForContainer(container)?.OwnerId ?? 0;
+        }
+
         #endregion
 
         #region Commands
