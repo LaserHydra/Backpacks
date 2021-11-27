@@ -122,97 +122,115 @@ Paintable entities, photos, pagers, mobile phones, and cassettes will lose their
 
 ## Developer API
 
-### API_DropBackpack
+### API_GetBackpackContainer
 
-Plugins can call this API to drop a player's backpack at their current position. This can be used, for example, to only drop the player's backpack when they die in a PvP zone.
+```csharp
+ItemContainer API_GetBackpackContainer(ulong backpackOwnerID)
+```
+
+Returns a reference to the underlying `ItemContainer` of a player's backpack. Returns `null` if the player essentially has no backpack (no data file and no backpack in-memory).
+
+Notes:
+- This will create the container entity if it doesn't exist. This can add load to the server, so it's recommended to use this API only if the other API methods do not meet your needs. For example, if you want to know only the quantity of an item in the player's backpack, you can use `API_GetBackpackItemAmount` which can count the items without creating the container.
+- You should avoid caching the container because several events may cause the backpack's underlying container to be replaced or deleted, which would make the cached reference useless.
+
+### API_GetBackpackItemAmount
+
+```csharp
+int API_GetBackpackItemAmount(ulong backpackOwnerID, int itemId)
+```
+
+Returns the quantity of a given item in the player's backpack. Returns `0` if the player has no backpack. This API is more performant than `API_GetBackpackContainer` because it does not require creating the backpack container.
+
+### API_DropBackpack
 
 ```csharp
 DroppedItemContainer API_DropBackpack(BasePlayer player)
 ```
 
+Drop the player's backpack at their current position. This can be used, for example, to only drop the player's backpack when they die in a PvP zone.
+
 Note: This intentionally ignores the player's `backpacks.keepondeath` permission in order to provide maximum flexibility to other plugins, so it's recommended that other plugins provide a similar permission to allow exemptions.
 
 ### API_EraseBackpack
-
-Plugins can call this API to erase the contents of a specific player's backpack.
 
 ```csharp
 void API_EraseBackpack(ulong backpackOwnerID)
 ```
 
+Erases the contents of a specific player's backpack.
+
 Note: This cannot be blocked by the `CanEraseBackpack` hook.
 
-### API_GetExistingBackpacks
-
-Plugins can call this API to get all existing backpack containers. This can be used, for example, to allow item cleaner plugins to ignore items in backpacks.
-
-```csharp
-Dictionary<ulong, ItemContainer> API_GetExistingBackpacks()
-```
-
 ### API_GetBackpackOwnerId
-
-Plugins can call this API to determine whether a given `ItemContainer` is a backpack, as well as the owner of that backpack.
-
-- When the return value is `0`, the container is **not** a backpack.
-- When the return value is non-`0`, it represents the Steam ID of the backpack's owner.
 
 ```csharp
 ulong API_GetBackpackOwnerId(ItemContainer container)
 ```
 
+- Returns the Steam ID of the backpack owner if the `ItemContainer` is a backpack.
+- Returns `0` if the `ItemContainer` is **not** a backpack.
+
+### API_GetExistingBackpacks
+
+```csharp
+Dictionary<ulong, ItemContainer> API_GetExistingBackpacks()
+```
+
+Returns all backpack containers that are cached in the plugin's memory, keyed by the Steam IDs of the backpack owners. This was originally contributed so that item cleaner plugins could determine which items were in backpacks in order to ignore them. However, as of Backpacks v3.7.0, all item cleaner plugins should automatically be compatible if they verify that the container has a valid `entityOwner`.
+
 ## Developer Hooks
 
 ### CanOpenBackpack
-
-Called when a player tries to open a backpack.
-Returning a string will cancel backpack opening and send the string as a chat message to the player trying to open the backpack.
 
 ```csharp
 string CanOpenBackpack(BasePlayer player, ulong backpackOwnerID)
 ```
 
-### OnBackpackOpened
+Called when a player tries to open a backpack.
+Returning a string will cancel backpack opening and send the string as a chat message to the player trying to open the backpack.
 
-Called when a player successfully opened a backpack.
-No return behaviour.
+### OnBackpackOpened
 
 ```csharp
 void OnBackpackOpened(BasePlayer player, ulong backpackOwnerID, ItemContainer backpackContainer)
 ```
 
-### OnBackpackClosed
+- Called when a player successfully opens a backpack.
+- No return behaviour.
 
-Called when a player closed a backpack.
-No return behaviour.
+### OnBackpackClosed
 
 ```csharp
 void OnBackpackClosed(BasePlayer player, ulong backpackOwnerID, ItemContainer backpackContainer)
 ```
 
-### CanBackpackAcceptItem
+- Called when a player closes a backpack.
+- No return behaviour.
 
-Called when a player tries to move an item into a backpack.
-Returning false prevents the item being moved.
+### CanBackpackAcceptItem
 
 ```csharp
 bool CanBackpackAcceptItem(ulong backpackOwnerID, ItemContainer backpackContainer, Item item)
 ```
 
-### CanDropBackpack
+- Called when a player tries to move an item into a backpack.
+- Returning `false` prevents the item being moved.
 
-Called when a player dies and the "Drop on Death" option is set to true.
-Returning false prevents the backpack dropping.
+### CanDropBackpack
 
 ```csharp
 bool CanDropBackpack(ulong backpackOwnerID, Vector3 position)
 ```
 
-### CanEraseBackpack
+- Called when a player dies while the `"Drop on Death (true/false)"` option is set to `true`.
+- Returning `false` prevents the backpack from dropping.
 
-Called when a player dies and the "Erase on Death" option is set to true.
-Returning false prevents the backpack being erased.
+### CanEraseBackpack
 
 ```csharp
 bool CanEraseBackpack(ulong backpackOwnerID)
 ```
+
+- Called when a player dies while the `"Erase on Death (true/false)"` option is set to `true`.
+- Returning `false` prevents the backpack from being erased.

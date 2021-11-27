@@ -307,6 +307,16 @@ namespace Oxide.Plugins
             return _backpackManager.GetCachedBackpackForContainer(container)?.OwnerId ?? 0;
         }
 
+        private ItemContainer API_GetBackpackContainer(ulong ownerId)
+        {
+            return _backpackManager.GetBackpackIfExists(ownerId)?.GetContainer(ensureContainer: true);
+        }
+
+        private int API_GetBackpackItemAmount(ulong ownerId, int itemId)
+        {
+            return _backpackManager.GetBackpackIfExists(ownerId)?.GetItemQuantity(itemId) ?? 0;
+        }
+
         #endregion
 
         #region Commands
@@ -1274,7 +1284,13 @@ namespace Oxide.Plugins
                 return _instance._config.BackpackSize;
             }
 
-            public ItemContainer GetContainer() => _itemContainer;
+            public ItemContainer GetContainer(bool ensureContainer = false)
+            {
+                if (ensureContainer)
+                    EnsureContainer();
+
+                return _itemContainer;
+            }
 
             public void Open(BasePlayer looter)
             {
@@ -1425,8 +1441,16 @@ namespace Oxide.Plugins
 
             public int GetItemQuantity(int itemID)
             {
-                EnsureContainer();
-                return _itemContainer.FindItemsByItemID(itemID).Sum(item => item.amount);
+                if (_itemContainer != null)
+                    return _itemContainer.GetAmount(itemID, onlyUsableAmounts: false);
+
+                var count = 0;
+                foreach (var itemData in ItemDataCollection)
+                {
+                    if (itemData.ID == itemID)
+                        count += itemData.Amount;
+                }
+                return count;
             }
 
             public int MoveItemsToPlayerInventory(BasePlayer player, int itemID, int desiredAmount)
