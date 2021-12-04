@@ -15,7 +15,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "LaserHydra", "3.7.0")]
+    [Info("Backpacks", "LaserHydra", "3.7.1")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : RustPlugin
     {
@@ -1074,13 +1074,15 @@ namespace Oxide.Plugins
 
                 TryMigrateData(fileName);
 
-                Backpack backpack;
-                LoadData(out backpack, fileName);
+                Backpack backpack = null;
+                if (HasBackpackFile(userId))
+                {
+                    LoadData(out backpack, fileName);
+                }
 
+                // Note: Even if the user has a backpack file, the file contents may be null in some edge cases.
                 if (backpack == null)
                 {
-                    // Sometimes backpack data files can become corrupt, which will be represented as null.
-                    // When that happens, simply create a new one.
                     backpack = new Backpack(userId);
                 }
 
