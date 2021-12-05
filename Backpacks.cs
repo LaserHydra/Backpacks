@@ -15,7 +15,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "LaserHydra", "3.7.1")]
+    [Info("Backpacks", "LaserHydra", "3.7.2")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : RustPlugin
     {
@@ -40,10 +40,6 @@ namespace Oxide.Plugins
 
         private readonly BackpackManager _backpackManager = new BackpackManager();
         private Dictionary<string, ushort> _backpackSizePermissions = new Dictionary<string, ushort>();
-
-        private readonly DynamicHookSubscriber<BasePlayer> _backpackLooters = new DynamicHookSubscriber<BasePlayer>(
-            nameof(OnLootEntityEnd)
-        );
 
         private ProtectionProperties _immortalProtection;
         private string _cachedUI;
@@ -84,8 +80,6 @@ namespace Oxide.Plugins
                 .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
 
             _storedData = StoredData.Load();
-
-            _backpackLooters.UnsubscribeAll();
 
             Unsubscribe(nameof(OnPlayerSleep));
             Unsubscribe(nameof(OnPlayerSleepEnded));
@@ -184,15 +178,6 @@ namespace Oxide.Plugins
                 backpack.SaveAndKill();
                 _backpackManager.RemoveFromCache(backpack);
             }
-        }
-
-        private void OnLootEntityEnd(BasePlayer player, StorageContainer storageContainer)
-        {
-            var backpack = _backpackManager.GetCachedBackpackForContainer(storageContainer.inventory);
-            if (backpack == null)
-                return;
-
-            _backpackManager.OnBackpackClosed(backpack, player);
         }
 
         // Handle player death by normal means.
@@ -885,45 +870,6 @@ namespace Oxide.Plugins
 
         #endregion
 
-        #region Dynamic Hook Subscriber
-
-        private class DynamicHookSubscriber<T>
-        {
-            private HashSet<T> _list = new HashSet<T>();
-            private string[] _hookNames;
-
-            public DynamicHookSubscriber(params string[] hookNames)
-            {
-                _hookNames = hookNames;
-            }
-
-            public void Add(T item)
-            {
-                if (_list.Add(item) && _list.Count == 1)
-                    SubscribeAll();
-            }
-
-            public void Remove(T item)
-            {
-                if (_list.Remove(item) && _list.Count == 0)
-                    UnsubscribeAll();
-            }
-
-            public void SubscribeAll()
-            {
-                foreach (var hookName in _hookNames)
-                    _instance.Subscribe(hookName);
-            }
-
-            public void UnsubscribeAll()
-            {
-                foreach (var hookName in _hookNames)
-                    _instance.Unsubscribe(hookName);
-            }
-        }
-
-        #endregion
-
         #region Backpack Manager
 
         private class BackpackManager
@@ -1052,20 +998,7 @@ namespace Oxide.Plugins
 
             public void OpenBackpack(ulong backpackOwnerId, BasePlayer looter)
             {
-                _instance._backpackLooters.Add(looter);
                 GetBackpack(backpackOwnerId).Open(looter);
-            }
-
-            public void OnBackpackClosed(Backpack backpack, BasePlayer looter)
-            {
-                _instance._backpackLooters.Remove(looter);
-                backpack.OnClosed(looter);
-				Interface.CallHook("OnBackpackClosed", looter, backpack.OwnerId, backpack.GetContainer());
-
-                if (!_instance._config.SaveBackpacksOnServerSave)
-                {
-                    backpack.SaveData();
-                }
             }
 
             private Backpack Load(ulong userId)
@@ -1235,6 +1168,32 @@ namespace Oxide.Plugins
                 {
                     Physics.IgnoreCollision(_collider, collision.collider);
                 }
+            }
+        }
+
+        private class BackpackCloseListener : EntityComponent<StorageContainer>
+        {
+            private Backpack _backpack;
+
+            public void SetBackpack(Backpack backpack)
+            {
+                _backpack = backpack;
+            }
+
+            // Called via `entity.SendMessage("PlayerStoppedLooting", player)` in PlayerLoot.Clear().
+            private void PlayerStoppedLooting(BasePlayer looter)
+            {
+                _instance?.TrackStart();
+
+                _backpack.OnClosed(looter);
+				Interface.CallHook("OnBackpackClosed", looter, _backpack.OwnerId, _backpack.GetContainer());
+
+                if (_instance != null && !_instance._config.SaveBackpacksOnServerSave)
+                {
+                    _backpack.SaveData();
+                }
+
+                _instance?.TrackEnd();
             }
         }
 
@@ -1601,6 +1560,8 @@ namespace Oxide.Plugins
 
                 foreach (var collider in containerEntity.GetComponentsInChildren<Collider>())
                     UnityEngine.Object.DestroyImmediate(collider);
+
+                containerEntity.gameObject.AddComponent<BackpackCloseListener>().SetBackpack(this);
 
                 containerEntity.baseProtection = _instance._immortalProtection;
                 containerEntity.panelName = ResizableLootPanelName;
