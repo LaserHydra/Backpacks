@@ -83,17 +83,6 @@ Alternative backpacks images:
 - [Left-side](https://i.imgur.com/wLR9Z6V.png)
 - [Universal](https://i.imgur.com/5RE9II5.png)
 
-Left-side button coordinates:
-
-```json
-    "GUI Button Position": {
-      "Anchors Min": "0.5 0.0",
-      "Anchors Max": "0.5 0.0",
-      "Offsets Min": "-265 18",
-      "Offsets Max": "-205 78"
-    }
-```
-
 ## Localization
 
 ```json
@@ -113,6 +102,29 @@ Left-side button coordinates:
   "Items Fetched": "Fetched {0} \"{1}\" from backpack.",
   "Fetch Failed": "Couldn't fetch \"{0}\" from backpack. Inventory may be full.",
   "Toggled Backpack GUI": "Toggled backpack GUI button."
+}
+```
+
+## FAQ
+
+#### Why are backpacks not dropping when players die?
+
+There are three possible reasons backpacks won't drop.
+
+1. The configuration option `"Drop on Death (true/false)"` is `false`.
+2. Players have the `backpacks.keepondeath` permission.
+3. Another plugin prevented the backpack from dropping via the `CanDropBackpack` hook. Arena plugins will often do this for players in the arena.
+
+#### How do I move the backpack button to the left side of the hotbar?
+
+Replace the `"GUI Button Position"` section of the plugin configuration with the following.
+
+```json
+"GUI Button Position": {
+  "Anchors Min": "0.5 0.0",
+  "Anchors Max": "0.5 0.0",
+  "Offsets Min": "-265 18",
+  "Offsets Max": "-205 78"
 }
 ```
 
