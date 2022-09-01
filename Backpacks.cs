@@ -15,14 +15,14 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "LaserHydra", "3.7.2")]
+    [Info("Backpacks", "LaserHydra", "3.8.0")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : RustPlugin
     {
         #region Fields
 
         private const ushort MinSize = 1;
-        private const ushort MaxSize = 7;
+        private const ushort MaxSize = 8;
         private const ushort SlotsPerRow = 6;
         private const string GUIPanelName = "BackpacksUI";
 
@@ -756,11 +756,20 @@ namespace Oxide.Plugins
         {
             private ushort _backpackSize = 1;
 
-            [JsonProperty("Backpack Size (1-7 Rows)")]
+            [JsonProperty("Backpack Size (1-8 Rows)")]
             public ushort BackpackSize
             {
                 get { return _backpackSize; }
                 set { _backpackSize = (ushort) Mathf.Clamp(value, MinSize, MaxSize); }
+            }
+
+            [JsonProperty("Backpack Size (1-7 Rows)")]
+            public ushort BackpackSizeDeprecated
+            {
+                set
+                {
+                    BackpackSize = value;
+                }
             }
 
             [JsonProperty("Drop on Death (true/false)")]

@@ -34,7 +34,7 @@ Please consider donating to support me and help me put more time into my plugins
 - `backpacks.admin` -- required to use the `/viewbackpack` command
 - `backpacks.gui` -- required to see GUI button
 - `backpacks.use` -- required to open your own backpack
-- `backpacks.use.1 - 7` -- gives player access to a certain amount of inventory rows, overriding the configured default size *(e.g. backpacks.use.3 gives them 3 rows of item space; still requires backpacks.use)*
+- `backpacks.use.1 - 8` -- gives player access to a certain amount of inventory rows, overriding the configured default size *(e.g. backpacks.use.3 gives them 3 rows of item space; still requires backpacks.use)*
 - `backpacks.fetch` -- required to use the `backpack.fetch` command
 - `backpacks.keepondeath` -- exempts player from having their backpack erased or dropped on death
 - `backpacks.keeponwipe` -- exempts player from having their backpack erased on map wipe
@@ -69,7 +69,7 @@ Please consider donating to support me and help me put more time into my plugins
   "Softcore": {
     "Reclaim Fraction": 0.5
   },
-  "Backpack Size (1-7 Rows)": 1
+  "Backpack Size (1-8 Rows)": 1
 }
 ```
 
