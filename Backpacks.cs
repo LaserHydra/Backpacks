@@ -247,13 +247,25 @@ namespace Oxide.Plugins
         private void OnUserPermissionGranted(string userId, string perm)
         {
             if (perm.Equals(GUIPermission))
-                CreateGUI(BasePlayer.Find(userId));
+            {
+                var player = BasePlayer.Find(userId);
+                if (player != null)
+                {
+                    CreateGUI(BasePlayer.Find(userId));
+                }
+            }
         }
 
         private void OnUserPermissionRevoked(string userId, string perm)
         {
             if (perm.Equals(GUIPermission) && !permission.UserHasPermission(userId, GUIPermission))
-                DestroyGUI(BasePlayer.Find(userId));
+            {
+                var player = BasePlayer.Find(userId);
+                if (player != null)
+                {
+                    DestroyGUI(player);
+                }
+            }
         }
 
         private void OnPlayerConnected(BasePlayer player) => CreateGUI(player);
