@@ -66,6 +66,8 @@ namespace Oxide.Plugins
 
         private void Init()
         {
+            _config.Init(this);
+
             permission.RegisterPermission(UsagePermission, this);
             permission.RegisterPermission(GUIPermission, this);
             permission.RegisterPermission(FetchPermission, this);
@@ -927,16 +929,20 @@ namespace Oxide.Plugins
             public bool SaveBackpacksOnServerSave = false;
 
             [JsonProperty("Use Blacklist (true/false)")]
-            public bool UseBlacklist = false;
+            private bool UseDenylist = false;
 
             [JsonProperty("Blacklisted Items (Item Shortnames)")]
-            public HashSet<string> BlacklistedItems = new HashSet<string>();
+            private string[] DenylistItemShortNames = new string[]
+            {
+                "autoturret",
+                "lmg.m249",
+            };
 
             [JsonProperty("Use Whitelist (true/false)")]
-            public bool UseWhitelist = false;
+            private bool UseAllowlist = false;
 
             [JsonProperty("Whitelisted Items (Item Shortnames)")]
-            public HashSet<string> WhitelistedItems = new HashSet<string>();
+            private string[] AllowedItemShortNames = new string[0];
 
             [JsonProperty("Minimum Despawn Time (Seconds)")]
             public float MinimumDespawnTime = 300;
@@ -984,31 +990,61 @@ namespace Oxide.Plugins
             }
 
             [JsonIgnore]
-            public bool ItemRestrictionEnabled => UseWhitelist || UseBlacklist;
+            public bool ItemRestrictionEnabled => UseAllowlist || UseDenylist;
+
+            [JsonIgnore]
+            private HashSet<int> _disallowedItemIds = new HashSet<int>();
+
+            [JsonIgnore]
+            private HashSet<int> _allowedItemIds = new HashSet<int>();
+
+            public void Init(Backpacks plugin)
+            {
+                if (UseDenylist)
+                {
+                    foreach (var itemShortName in DenylistItemShortNames)
+                    {
+                        var itemDefinition = ItemManager.FindItemDefinition(itemShortName);
+                        if (itemDefinition != null)
+                        {
+                            _disallowedItemIds.Add(itemDefinition.itemid);
+                        }
+                        else
+                        {
+                            plugin.PrintWarning($"Invalid item short name in config: {itemShortName}");
+                        }
+                    }
+                }
+                else if (UseAllowlist)
+                {
+                    foreach (var itemShortName in AllowedItemShortNames)
+                    {
+                        var itemDefinition = ItemManager.FindItemDefinition(itemShortName);
+                        if (itemDefinition != null)
+                        {
+                            _allowedItemIds.Add(itemDefinition.itemid);
+                        }
+                        else
+                        {
+                            plugin.PrintWarning($"Invalid item short name in config: {itemShortName}");
+                        }
+                    }
+                }
+            }
 
             public bool IsRestrictedItem(Item item)
             {
-                if (UseWhitelist)
-                    return !WhitelistedItems.Contains(item.info.shortname);
+                if (UseAllowlist)
+                    return !_allowedItemIds.Contains(item.info.itemid);
 
-                if (UseBlacklist)
-                    return BlacklistedItems.Contains(item.info.shortname);
+                if (UseDenylist)
+                    return _disallowedItemIds.Contains(item.info.itemid);
 
                 return false;
             }
         }
 
-        private Configuration GetDefaultConfig()
-        {
-            return new Configuration
-            {
-                BlacklistedItems = new HashSet<string>
-                {
-                    "autoturret",
-                    "lmg.m249",
-                },
-            };
-        }
+        private Configuration GetDefaultConfig() => new Configuration();
 
         #region Configuration Helpers
 
