@@ -1635,7 +1635,7 @@ namespace Oxide.Plugins
 
             private StorageContainer SpawnStorageContainer(int capacity)
             {
-                var storageEntity = GameManager.server.CreateEntity(CoffinPrefab, new Vector3(0, -50, 0));
+                var storageEntity = GameManager.server.CreateEntity(CoffinPrefab, new Vector3(0, -500, 0));
                 if (storageEntity == null)
                     return null;
 
@@ -1645,6 +1645,8 @@ namespace Oxide.Plugins
                     UnityEngine.Object.Destroy(storageEntity);
                     return null;
                 }
+
+                containerEntity.SetFlag(BaseEntity.Flags.Disabled, true);
 
                 UnityEngine.Object.DestroyImmediate(containerEntity.GetComponent<DestroyOnGroundMissing>());
                 UnityEngine.Object.DestroyImmediate(containerEntity.GetComponent<GroundWatch>());
