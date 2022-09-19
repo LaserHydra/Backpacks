@@ -1642,7 +1642,7 @@ namespace Oxide.Plugins
                 var containerEntity = storageEntity as StorageContainer;
                 if (containerEntity == null)
                 {
-                    UnityEngine.Object.Destroy(storageEntity);
+                    UnityEngine.Object.Destroy(storageEntity.gameObject);
                     return null;
                 }
 
