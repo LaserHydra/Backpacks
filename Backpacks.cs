@@ -112,12 +112,13 @@ namespace Oxide.Plugins
         {
             UnityEngine.Object.Destroy(_immortalProtection);
 
-            _storedData.Save();
             _backpackManager.SaveAndKillCachedBackpacks();
             _backpackManager.CleanupAllNetworkControllers();
 
             foreach (var player in BasePlayer.activePlayerList)
+            {
                 DestroyGUI(player);
+            }
         }
 
         private void OnNewSave(string filename)
@@ -655,14 +656,13 @@ namespace Oxide.Plugins
                 return;
             }
 
-            if (_storedData.PlayersWithDisabledGUI.Contains(player.userID))
+            var enabledNow = _storedData.ToggleGuiButtonPreference(player.userID, _config.GUI.EnabledByDefault);
+            if (enabledNow)
             {
-                _storedData.PlayersWithDisabledGUI.Remove(player.userID);
                 CreateGUI(player);
             }
             else
             {
-                _storedData.PlayersWithDisabledGUI.Add(player.userID);
                 DestroyGUI(player);
             }
 
@@ -695,6 +695,12 @@ namespace Oxide.Plugins
             return int.TryParse(wipeNumberString, out wipeNumber)
                 ? wipeNumber
                 : 0;
+        }
+
+        private bool ShouldDisplayGuiButton(BasePlayer player)
+        {
+            return _storedData.GetGuiButtonPreference(player.userID)
+                ?? _config.GUI.EnabledByDefault;
         }
 
         private IPlayer FindPlayer(string nameOrID, out string failureMessage)
@@ -790,7 +796,7 @@ namespace Oxide.Plugins
             if (!permission.UserHasPermission(player.UserIDString, GUIPermission))
                 return;
 
-            if (_storedData.PlayersWithDisabledGUI.Contains(player.userID))
+            if (!ShouldDisplayGuiButton(player))
                 return;
 
             CuiHelper.DestroyUi(player, GUIPanelName);
@@ -955,6 +961,9 @@ namespace Oxide.Plugins
 
             public class GUIButton
             {
+                [JsonProperty("Enabled by default (for players with permission)")]
+                public bool EnabledByDefault = true;
+
                 [JsonProperty("Skin Id")]
                 public ulong SkinId;
 
@@ -1175,10 +1184,42 @@ namespace Oxide.Plugins
             }
 
             [JsonProperty("PlayersWithDisabledGUI")]
-            public HashSet<ulong> PlayersWithDisabledGUI = new HashSet<ulong>();
+            private HashSet<ulong> DeprecatedPlayersWithDisabledGUI
+            {
+                set
+                {
+                    foreach (var playerId in value)
+                    {
+                        EnabledGuiPreference[playerId] = false;
+                    }
+                }
+            }
 
-            public void Save() =>
+            [JsonProperty("PlayerGuiPreferences")]
+            private Dictionary<ulong, bool> EnabledGuiPreference = new Dictionary<ulong, bool>();
+
+            public bool? GetGuiButtonPreference(ulong userId)
+            {
+                bool guiEnabled;
+                return EnabledGuiPreference.TryGetValue(userId, out guiEnabled)
+                    ? guiEnabled as bool?
+                    : null;
+            }
+
+            public bool ToggleGuiButtonPreference(ulong userId, bool defaultEnabled)
+            {
+                var enabledNow = !(GetGuiButtonPreference(userId) ?? defaultEnabled);
+
+                EnabledGuiPreference[userId] = enabledNow;
+                Save();
+
+                return enabledNow;
+            }
+
+            public void Save()
+            {
                 Interface.Oxide.DataFileSystem.WriteObject(nameof(Backpacks), this);
+            }
         }
 
         #endregion

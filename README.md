@@ -53,6 +53,7 @@ Allows players to have backpacks that provide them with extra inventory space.
   "Whitelisted Items (Item Shortnames)": [],
   "Minimum Despawn Time (Seconds)": 300.0,
   "GUI Button": {
+    "Enabled by default (for players with permission)": true,
     "Skin Id": 0,
     "Image": "https://i.imgur.com/CyF0QNV.png",
     "Background Color": "0.969 0.922 0.882 0.035",
