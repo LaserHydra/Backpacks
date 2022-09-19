@@ -35,6 +35,9 @@ namespace Oxide.Plugins
         private const string BackpackPrefab = "assets/prefabs/misc/item drop/item_drop_backpack.prefab";
         private const string ResizableLootPanelName = "generic_resizable";
 
+        private static readonly object True = true;
+        private static readonly object False = false;
+
         private readonly BackpackManager _backpackManager;
         private Dictionary<string, ushort> _backpackSizePermissions = new Dictionary<string, ushort>();
 
@@ -295,6 +298,7 @@ namespace Oxide.Plugins
                     [nameof(GetBackpackOwnerId)] = new Func<ItemContainer, ulong>(GetBackpackOwnerId),
                     [nameof(GetBackpackContainer)] = new Func<ulong, ItemContainer>(GetBackpackContainer),
                     [nameof(GetBackpackItemAmount)] = new Func<ulong, int, ulong, int>(GetBackpackItemAmount),
+                    [nameof(OpenBackpack)] = new Func<BasePlayer, ulong, bool>(OpenBackpack),
                 };
             }
 
@@ -330,6 +334,16 @@ namespace Oxide.Plugins
             public int GetBackpackItemAmount(ulong ownerId, int itemId, ulong skinId)
             {
                 return _backpackManager.GetBackpackIfExists(ownerId)?.GetItemQuantity(itemId, skinId) ?? 0;
+            }
+
+            public bool OpenBackpack(BasePlayer player, ulong ownerId)
+            {
+                if (ownerId == 0)
+                {
+                    ownerId = player.userID;
+                }
+
+                return _backpackManager.OpenBackpack(ownerId, player);
             }
         }
 
@@ -373,6 +387,12 @@ namespace Oxide.Plugins
         public int API_GetBackpackItemAmount(ulong ownerId, int itemId, ulong skinId = 0)
         {
             return _api.GetBackpackItemAmount(ownerId, itemId, skinId);
+        }
+
+        [HookMethod(nameof(API_OpenBackpack))]
+        public object API_OpenBackpack(BasePlayer player, ulong ownerId = 0)
+        {
+            return BooleanNoAlloc(_api.OpenBackpack(player, ownerId));
         }
 
         #endregion
@@ -611,6 +631,11 @@ namespace Oxide.Plugins
         #endregion
 
         #region Helper Methods
+
+        private object BooleanNoAlloc(bool value)
+        {
+            return value ? True : False;
+        }
 
         private int DetermineWipeNumber()
         {
@@ -1084,9 +1109,9 @@ namespace Oxide.Plugins
                 return GetBackpackIfExists(userId)?.Drop(position);
             }
 
-            public void OpenBackpack(ulong backpackOwnerId, BasePlayer looter)
+            public bool OpenBackpack(ulong backpackOwnerId, BasePlayer looter)
             {
-                GetBackpack(backpackOwnerId).Open(looter);
+                return GetBackpack(backpackOwnerId).Open(looter);
             }
 
             private Backpack Load(ulong userId)
@@ -1349,10 +1374,10 @@ namespace Oxide.Plugins
                 return _itemContainer;
             }
 
-            public void Open(BasePlayer looter)
+            public bool Open(BasePlayer looter)
             {
                 if (!Plugin.VerifyCanOpenBackpack(looter, OwnerId))
-                    return;
+                    return false;
 
                 EnsureContainer();
                 NetworkController.Subscribe(looter);
@@ -1370,6 +1395,7 @@ namespace Oxide.Plugins
                 _storageContainer.PlayerOpenLoot(looter, _storageContainer.panelName, doPositionChecks: false);
 
                 Interface.CallHook("OnBackpackOpened", looter, OwnerId, _storageContainer.inventory);
+                return true;
             }
 
             public void OnClosed(BasePlayer looter)

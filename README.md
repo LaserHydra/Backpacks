@@ -191,6 +191,17 @@ Dictionary<ulong, ItemContainer> API_GetExistingBackpacks()
 
 Returns all backpack containers that are cached in the plugin's memory, keyed by the Steam IDs of the backpack owners. This was originally contributed so that item cleaner plugins could determine which items were in backpacks in order to ignore them. However, as of Backpacks v3.7.0, all item cleaner plugins should automatically be compatible if they verify that the container has a valid `entityOwner`.
 
+### API_OpenBackpack
+
+```csharp
+object API_OpenBackpack(BasePlayer player, ulong backpackOwnerID = 0)
+```
+
+- Makes the specified player open the specified owner's backpack.
+- If `ownerId` is `0`, the player will open their own backpack.
+- Returns `true` if successful.
+- Returns `false` if unsuccessful.
+
 ## Developer Hooks
 
 ### CanOpenBackpack
