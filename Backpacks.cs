@@ -489,7 +489,7 @@ namespace Oxide.Plugins
                 ? 0.1f
                 // Key binds automatically pass the "True" argument at the end.
                 // Can open instantly since not looting and chat is assumed to be closed.
-                : arg.Args?.LastOrDefault() == "True"
+                : IsKeyBindArg(arg.Args?.LastOrDefault())
                 ? 0f
                 // Not opening via key bind, so the chat window may be open.
                 // Must delay in case the chat is still closing or else the loot panel may close instantly.
@@ -669,12 +669,17 @@ namespace Oxide.Plugins
 
         #region Helper Methods
 
-        private object BooleanNoAlloc(bool value)
+        private static bool IsKeyBindArg(string arg)
+        {
+            return arg == "True";
+        }
+
+        private static object BooleanNoAlloc(bool value)
         {
             return value ? True : False;
         }
 
-        private int DetermineWipeNumber()
+        private static int DetermineWipeNumber()
         {
             var saveName = World.SaveFileName;
 
