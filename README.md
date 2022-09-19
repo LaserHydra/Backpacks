@@ -10,10 +10,6 @@ Allows players to have backpacks that provide them with extra inventory space.
 
 **Note:** To bind a key to open the backpack, use: `bind b backpack.open` in your F1 client console.
 
-## Donations
-
-Please consider donating to support me and help me put more time into my plugins. You can donate, by clicking [here](https://laserhydra.com/).
-
 ## Chat Commands
 
 - `/backpack` -- open your own backpack
