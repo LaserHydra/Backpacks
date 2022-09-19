@@ -1654,6 +1654,8 @@ namespace Oxide.Plugins
                 foreach (var collider in containerEntity.GetComponentsInChildren<Collider>())
                     UnityEngine.Object.DestroyImmediate(collider);
 
+                containerEntity.CancelInvoke(containerEntity.DecayTick);
+
                 containerEntity.gameObject.AddComponent<BackpackCloseListener>().SetBackpack(this);
 
                 containerEntity.baseProtection = _instance._immortalProtection;
