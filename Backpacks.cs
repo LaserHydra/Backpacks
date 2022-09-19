@@ -124,11 +124,20 @@ namespace Oxide.Plugins
 
             _backpackManager.ClearCache();
 
-            IEnumerable<string> fileNames = Interface.Oxide.DataFileSystem.GetFiles(Name)
-                .Select(fn => {
-                    return fn.Split(Path.DirectorySeparatorChar).Last()
-                        .Replace(".json", string.Empty);
-                });
+            IEnumerable<string> fileNames;
+            try
+            {
+                fileNames = Interface.Oxide.DataFileSystem.GetFiles(Name)
+                    .Select(fn => {
+                        return fn.Split(Path.DirectorySeparatorChar).Last()
+                            .Replace(".json", string.Empty);
+                    });
+            }
+            catch (DirectoryNotFoundException)
+            {
+                // No backpacks to clear.
+                return;
+            }
 
             int skippedBackpacks = 0;
 
