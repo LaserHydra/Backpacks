@@ -57,6 +57,7 @@ Please consider donating to support me and help me put more time into my plugins
   "Whitelisted Items (Item Shortnames)": [],
   "Minimum Despawn Time (Seconds)": 300.0,
   "GUI Button": {
+    "Skin Id": 0,
     "Image": "https://i.imgur.com/CyF0QNV.png",
     "Background Color": "0.969 0.922 0.882 0.035",
     "GUI Button Position": {

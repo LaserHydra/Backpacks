@@ -35,6 +35,8 @@ namespace Oxide.Plugins
         private const string BackpackPrefab = "assets/prefabs/misc/item drop/item_drop_backpack.prefab";
         private const string ResizableLootPanelName = "generic_resizable";
 
+        private const int SaddleBagItemId = 1400460850;
+
         private static readonly object True = true;
         private static readonly object False = false;
 
@@ -801,17 +803,17 @@ namespace Oxide.Plugins
                     Parent = "Hud.Menu",
                     Components =
                     {
+                        new CuiRawImageComponent
+                        {
+                            Color = _config.GUI.Color,
+                            Sprite = "assets/content/ui/ui.background.tiletex.psd",
+                        },
                         new CuiRectTransformComponent
                         {
                             AnchorMin = _config.GUI.GUIButtonPosition.AnchorsMin,
                             AnchorMax = _config.GUI.GUIButtonPosition.AnchorsMax,
                             OffsetMin = _config.GUI.GUIButtonPosition.OffsetsMin,
                             OffsetMax = _config.GUI.GUIButtonPosition.OffsetsMax
-                        },
-                        new CuiRawImageComponent
-                        {
-                            Color = _config.GUI.Color,
-                            Sprite = "assets/content/ui/ui.background.tiletex.psd",
                         },
                     },
                 });
@@ -820,16 +822,29 @@ namespace Oxide.Plugins
                 {
                     Parent = GUIPanelName,
                     Components = {
-                        new CuiRawImageComponent { Url = _config.GUI.Image },
-                        new CuiRectTransformComponent { AnchorMin = "0 0", AnchorMax = "1 1" }
+                        _config.GUI.SkinId != 0
+                            ? new CuiImageComponent { ItemId = SaddleBagItemId, SkinId = _config.GUI.SkinId }
+                            : new CuiRawImageComponent { Url = _config.GUI.Image } as ICuiComponent,
+                        new CuiRectTransformComponent
+                        {
+                            AnchorMin = "0 0",
+                            AnchorMax = "1 1",
+                        },
                     }
                 });
 
                 cuiElements.Add(new CuiButton
                 {
-                    Button = { Command = "backpack.open", Color = "0 0 0 0" },
-                    RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
-                    Text = { Text = "" }
+                    Button =
+                    {
+                        Command = "backpack.open",
+                        Color = "0 0 0 0",
+                    },
+                    RectTransform =
+                    {
+                        AnchorMin = "0 0",
+                        AnchorMax = "1 1",
+                    },
                 }, GUIPanelName);
 
                 _cachedUI = CuiHelper.ToJson(cuiElements);
@@ -957,6 +972,9 @@ namespace Oxide.Plugins
 
             public class GUIButton
             {
+                [JsonProperty("Skin Id")]
+                public ulong SkinId;
+
                 [JsonProperty("Image")]
                 public string Image = "https://i.imgur.com/CyF0QNV.png";
 
