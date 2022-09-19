@@ -1895,6 +1895,9 @@ namespace Oxide.Plugins
             [JsonProperty("Text", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public string Text;
 
+            [JsonProperty("Flags", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            public Item.Flag Flags;
+
             [JsonProperty("AssociatedEntityId", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public uint AssociatedEntityId;
 
@@ -1959,6 +1962,8 @@ namespace Oxide.Plugins
                     }
                 }
 
+                item.flags |= Flags;
+
                 BaseProjectile.Magazine magazine = item.GetHeldEntity()?.GetComponent<BaseProjectile>()?.primaryMagazine;
                 FlameThrower flameThrower = item.GetHeldEntity()?.GetComponent<FlameThrower>();
 
@@ -2017,7 +2022,8 @@ namespace Oxide.Plugins
                 DataInt = item.instanceData?.dataInt ?? 0,
                 AssociatedEntityId = item.instanceData?.subEntity ?? 0,
                 Name = item.name,
-                Text = item.text
+                Text = item.text,
+                Flags = item.flags,
             };
         }
 
