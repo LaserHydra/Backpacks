@@ -10,9 +10,6 @@ using System.IO;
 using System.Linq;
 using UnityEngine;
 
-// TODO: Re-implement visual backpack
-// TODO: Try to simulate a dropped item container as item container sourceEntity to customize the loot text.
-
 namespace Oxide.Plugins
 {
     [Info("Backpacks", "LaserHydra", "3.8.0")]
