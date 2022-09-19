@@ -793,20 +793,30 @@ namespace Oxide.Plugins
 
             if (_cachedUI == null)
             {
-                var elements = new CuiElementContainer();
-                var BackpacksUIPanel = elements.Add(new CuiPanel
-                {
-                    Image = { Color = _config.GUI.Color },
-                    RectTransform = {
-                        AnchorMin = _config.GUI.GUIButtonPosition.AnchorsMin,
-                        AnchorMax = _config.GUI.GUIButtonPosition.AnchorsMax,
-                        OffsetMin = _config.GUI.GUIButtonPosition.OffsetsMin,
-                        OffsetMax = _config.GUI.GUIButtonPosition.OffsetsMax
-                    },
-                    CursorEnabled = false
-                }, "Overlay", GUIPanelName);
+                var cuiElements = new CuiElementContainer();
 
-                elements.Add(new CuiElement
+                cuiElements.Add(new CuiElement
+                {
+                    Name = GUIPanelName,
+                    Parent = "Hud.Menu",
+                    Components =
+                    {
+                        new CuiRectTransformComponent
+                        {
+                            AnchorMin = _config.GUI.GUIButtonPosition.AnchorsMin,
+                            AnchorMax = _config.GUI.GUIButtonPosition.AnchorsMax,
+                            OffsetMin = _config.GUI.GUIButtonPosition.OffsetsMin,
+                            OffsetMax = _config.GUI.GUIButtonPosition.OffsetsMax
+                        },
+                        new CuiRawImageComponent
+                        {
+                            Color = _config.GUI.Color,
+                            Sprite = "assets/content/ui/ui.background.tiletex.psd",
+                        },
+                    },
+                });
+
+                cuiElements.Add(new CuiElement
                 {
                     Parent = GUIPanelName,
                     Components = {
@@ -815,14 +825,14 @@ namespace Oxide.Plugins
                     }
                 });
 
-                elements.Add(new CuiButton
+                cuiElements.Add(new CuiButton
                 {
                     Button = { Command = "backpack.open", Color = "0 0 0 0" },
                     RectTransform = { AnchorMin = "0 0", AnchorMax = "1 1" },
                     Text = { Text = "" }
-                }, BackpacksUIPanel);
+                }, GUIPanelName);
 
-                _cachedUI = CuiHelper.ToJson(elements);
+                _cachedUI = CuiHelper.ToJson(cuiElements);
             }
 
             CuiHelper.AddUi(player, _cachedUI);
@@ -947,26 +957,27 @@ namespace Oxide.Plugins
 
             public class GUIButton
             {
-                [JsonProperty(PropertyName = "Image")]
+                [JsonProperty("Image")]
                 public string Image = "https://i.imgur.com/CyF0QNV.png";
 
-                [JsonProperty(PropertyName = "Background color (RGBA format)")]
-                public string Color = "1 0.96 0.88 0.15";
+                [JsonProperty("Background Color")]
+                public string Color = "0.969 0.922 0.882 0.035";
 
-                [JsonProperty(PropertyName = "GUI Button Position")]
+                [JsonProperty("GUI Button Position")]
                 public Position GUIButtonPosition = new Position();
+
                 public class Position
                 {
-                    [JsonProperty(PropertyName = "Anchors Min")]
+                    [JsonProperty("Anchors Min")]
                     public string AnchorsMin = "0.5 0.0";
 
-                    [JsonProperty(PropertyName = "Anchors Max")]
+                    [JsonProperty("Anchors Max")]
                     public string AnchorsMax = "0.5 0.0";
 
-                    [JsonProperty(PropertyName = "Offsets Min")]
+                    [JsonProperty("Offsets Min")]
                     public string OffsetsMin = "185 18";
 
-                    [JsonProperty(PropertyName = "Offsets Max")]
+                    [JsonProperty("Offsets Max")]
                     public string OffsetsMax = "245 78";
                 }
             }

@@ -58,7 +58,7 @@ Please consider donating to support me and help me put more time into my plugins
   "Minimum Despawn Time (Seconds)": 300.0,
   "GUI Button": {
     "Image": "https://i.imgur.com/CyF0QNV.png",
-    "Background color (RGBA format)": "1 0.96 0.88 0.15",
+    "Background Color": "0.969 0.922 0.882 0.035",
     "GUI Button Position": {
       "Anchors Min": "0.5 0.0",
       "Anchors Max": "0.5 0.0",
