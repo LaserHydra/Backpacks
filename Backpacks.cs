@@ -894,30 +894,7 @@ namespace Oxide.Plugins
 
         #region Configuration
 
-        protected override void LoadConfig()
-        {
-            base.LoadConfig();
-            _config = Config.ReadObject<Configuration>();
-            SaveConfig();
-        }
-
-        protected override void SaveConfig() => Config.WriteObject(_config);
-
-        protected override void LoadDefaultConfig()
-        {
-            _config = new Configuration
-            {
-                BlacklistedItems = new HashSet<string>
-                {
-                    "autoturret",
-                    "lmg.m249"
-                }
-            };
-
-            SaveConfig();
-        }
-
-        private class Configuration
+        private class Configuration : BaseConfiguration
         {
             private ushort _backpackSize = 1;
 
@@ -1020,6 +997,128 @@ namespace Oxide.Plugins
                 return false;
             }
         }
+
+        private Configuration GetDefaultConfig()
+        {
+            return new Configuration
+            {
+                BlacklistedItems = new HashSet<string>
+                {
+                    "autoturret",
+                    "lmg.m249",
+                },
+            };
+        }
+
+        #region Configuration Helpers
+
+        [JsonObject(MemberSerialization.OptIn)]
+        private class BaseConfiguration
+        {
+            [JsonIgnore]
+            public bool UsingDefaults = false;
+
+            public string ToJson() => JsonConvert.SerializeObject(this);
+
+            public Dictionary<string, object> ToDictionary() => JsonHelper.Deserialize(ToJson()) as Dictionary<string, object>;
+        }
+
+        private static class JsonHelper
+        {
+            public static object Deserialize(string json) => ToObject(JToken.Parse(json));
+
+            private static object ToObject(JToken token)
+            {
+                switch (token.Type)
+                {
+                    case JTokenType.Object:
+                        return token.Children<JProperty>()
+                                    .ToDictionary(prop => prop.Name,
+                                                  prop => ToObject(prop.Value));
+
+                    case JTokenType.Array:
+                        return token.Select(ToObject).ToList();
+
+                    default:
+                        return ((JValue)token).Value;
+                }
+            }
+        }
+
+        private bool MaybeUpdateConfig(BaseConfiguration config)
+        {
+            var currentWithDefaults = config.ToDictionary();
+            var currentRaw = Config.ToDictionary(x => x.Key, x => x.Value);
+            return MaybeUpdateConfigSection(currentWithDefaults, currentRaw);
+        }
+
+        private bool MaybeUpdateConfigSection(Dictionary<string, object> currentWithDefaults, Dictionary<string, object> currentRaw)
+        {
+            bool changed = false;
+
+            foreach (var key in currentWithDefaults.Keys)
+            {
+                object currentRawValue;
+                if (currentRaw.TryGetValue(key, out currentRawValue))
+                {
+                    var defaultDictValue = currentWithDefaults[key] as Dictionary<string, object>;
+                    var currentDictValue = currentRawValue as Dictionary<string, object>;
+
+                    if (defaultDictValue != null)
+                    {
+                        if (currentDictValue == null)
+                        {
+                            currentRaw[key] = currentWithDefaults[key];
+                            changed = true;
+                        }
+                        else if (MaybeUpdateConfigSection(defaultDictValue, currentDictValue))
+                            changed = true;
+                    }
+                }
+                else
+                {
+                    currentRaw[key] = currentWithDefaults[key];
+                    changed = true;
+                }
+            }
+
+            return changed;
+        }
+
+        protected override void LoadDefaultConfig() => _config = GetDefaultConfig();
+
+        protected override void LoadConfig()
+        {
+            base.LoadConfig();
+            try
+            {
+                _config = Config.ReadObject<Configuration>();
+                if (_config == null)
+                {
+                    throw new JsonException();
+                }
+
+                if (MaybeUpdateConfig(_config))
+                {
+                    PrintWarning("Configuration appears to be outdated; updating and saving");
+                    SaveConfig();
+                }
+            }
+            catch (Exception e)
+            {
+                PrintError(e.Message);
+                PrintWarning($"Configuration file {Name}.json is invalid; using defaults");
+                LoadDefaultConfig();
+            }
+        }
+
+        protected override void SaveConfig()
+        {
+            Puts($"Configuration changes saved to {Name}.json");
+            Config.WriteObject(_config, true);
+        }
+
+        #endregion
 
         #endregion
 
