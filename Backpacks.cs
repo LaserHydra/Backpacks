@@ -45,12 +45,18 @@ namespace Oxide.Plugins
         private string _cachedUI;
 
         private static Backpacks _instance;
+        private ApiInstance _api;
         private Configuration _config;
         private StoredData _storedData;
         private int _wipeNumber;
 
         [PluginReference]
         private Plugin Arena, EventManager;
+
+        public Backpacks()
+        {
+            _api = new ApiInstance(this);
+        }
 
         #endregion
 
@@ -277,38 +283,103 @@ namespace Oxide.Plugins
 
         #region API
 
-        private Dictionary<ulong, ItemContainer> API_GetExistingBackpacks()
+        private class ApiInstance
         {
-            return _backpackManager.GetAllCachedContainers();
+            public Dictionary<string, object> _apiWrapper { get; private set; }
+
+            private Backpacks _plugin;
+            private BackpackManager _backpackManager => _plugin._backpackManager;
+
+            public ApiInstance(Backpacks plugin)
+            {
+                _plugin = plugin;
+
+                _apiWrapper = new Dictionary<string, object>
+                {
+                    [nameof(GetExistingBackpacks)] = new Func<Dictionary<ulong, ItemContainer>>(GetExistingBackpacks),
+                    [nameof(EraseBackpack)] = new Action<ulong>(EraseBackpack),
+                    [nameof(DropBackpack)] = new Func<BasePlayer, DroppedItemContainer>(DropBackpack),
+                    [nameof(GetBackpackOwnerId)] = new Func<ItemContainer, ulong>(GetBackpackOwnerId),
+                    [nameof(GetBackpackContainer)] = new Func<ulong, ItemContainer>(GetBackpackContainer),
+                    [nameof(GetBackpackItemAmount)] = new Func<ulong, int, ulong, int>(GetBackpackItemAmount),
+                };
+            }
+
+            public Dictionary<ulong, ItemContainer> GetExistingBackpacks()
+            {
+                return _backpackManager.GetAllCachedContainers();
+            }
+
+            public void EraseBackpack(ulong userId)
+            {
+                _backpackManager.TryEraseForPlayer(userId);
+            }
+
+            public DroppedItemContainer DropBackpack(BasePlayer player)
+            {
+                var backpack = _backpackManager.GetBackpackIfExists(player.userID);
+                if (backpack == null)
+                    return null;
+
+                return _backpackManager.Drop(player.userID, player.transform.position);
+            }
+
+            public ulong GetBackpackOwnerId(ItemContainer container)
+            {
+                return _backpackManager.GetCachedBackpackForContainer(container)?.OwnerId ?? 0;
+            }
+
+            public ItemContainer GetBackpackContainer(ulong ownerId)
+            {
+                return _backpackManager.GetBackpackIfExists(ownerId)?.GetContainer(ensureContainer: true);
+            }
+
+            public int GetBackpackItemAmount(ulong ownerId, int itemId, ulong skinId)
+            {
+                return _backpackManager.GetBackpackIfExists(ownerId)?.GetItemQuantity(itemId, skinId) ?? 0;
+            }
         }
 
-        private void API_EraseBackpack(ulong userId)
+        [HookMethod(nameof(API_GetApi))]
+        public Dictionary<string, object> API_GetApi()
         {
-            _backpackManager.TryEraseForPlayer(userId);
+            return _api._apiWrapper;
         }
 
-        private DroppedItemContainer API_DropBackpack(BasePlayer player)
+        [HookMethod(nameof(API_GetExistingBackpacks))]
+        public Dictionary<ulong, ItemContainer> API_GetExistingBackpacks()
         {
-            var backpack = _backpackManager.GetBackpackIfExists(player.userID);
-            if (backpack == null)
-                return null;
-
-            return _backpackManager.Drop(player.userID, player.transform.position);
+            return _api.GetExistingBackpacks();
         }
 
-        private ulong API_GetBackpackOwnerId(ItemContainer container)
+        [HookMethod(nameof(API_EraseBackpack))]
+        public void API_EraseBackpack(ulong userId)
         {
-            return _backpackManager.GetCachedBackpackForContainer(container)?.OwnerId ?? 0;
+            _api.EraseBackpack(userId);
         }
 
-        private ItemContainer API_GetBackpackContainer(ulong ownerId)
+        [HookMethod(nameof(API_DropBackpack))]
+        public DroppedItemContainer API_DropBackpack(BasePlayer player)
         {
-            return _backpackManager.GetBackpackIfExists(ownerId)?.GetContainer(ensureContainer: true);
+            return _api.DropBackpack(player);
         }
 
-        private int API_GetBackpackItemAmount(ulong ownerId, int itemId)
+        [HookMethod(nameof(API_GetBackpackOwnerId))]
+        public ulong API_GetBackpackOwnerId(ItemContainer container)
         {
-            return _backpackManager.GetBackpackIfExists(ownerId)?.GetItemQuantity(itemId) ?? 0;
+            return _api.GetBackpackOwnerId(container);
+        }
+
+        [HookMethod(nameof(API_GetBackpackContainer))]
+        public ItemContainer API_GetBackpackContainer(ulong ownerId)
+        {
+            return _api.GetBackpackContainer(ownerId);
+        }
+
+        [HookMethod(nameof(API_GetBackpackItemAmount))]
+        public int API_GetBackpackItemAmount(ulong ownerId, int itemId, ulong skinId = 0)
+        {
+            return _api.GetBackpackItemAmount(ownerId, itemId, skinId);
         }
 
         #endregion
@@ -1418,7 +1489,7 @@ namespace Oxide.Plugins
                 KillContainer();
             }
 
-            public int GetItemQuantity(int itemID)
+            public int GetItemQuantity(int itemID, ulong skinId = 0)
             {
                 if (_itemContainer != null)
                     return _itemContainer.GetAmount(itemID, onlyUsableAmounts: false);
@@ -1426,8 +1497,13 @@ namespace Oxide.Plugins
                 var count = 0;
                 foreach (var itemData in ItemDataCollection)
                 {
-                    if (itemData.ID == itemID)
-                        count += itemData.Amount;
+                    if (itemData.ID != itemID)
+                        continue;
+
+                    if (skinId != 0 && itemData.Skin != skinId)
+                        continue;
+
+                    count += itemData.Amount;
                 }
                 return count;
             }

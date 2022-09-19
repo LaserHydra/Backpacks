@@ -149,7 +149,7 @@ Notes:
 ### API_GetBackpackItemAmount
 
 ```csharp
-int API_GetBackpackItemAmount(ulong backpackOwnerID, int itemId)
+int API_GetBackpackItemAmount(ulong backpackOwnerID, int itemId, ulong skinId = 0)
 ```
 
 Returns the quantity of a given item in the player's backpack. Returns `0` if the player has no backpack. This API is more performant than `API_GetBackpackContainer` because it does not require creating the backpack container.
