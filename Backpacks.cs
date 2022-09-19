@@ -50,6 +50,7 @@ namespace Oxide.Plugins
         private Configuration _config;
         private StoredData _storedData;
         private int _wipeNumber;
+        private HashSet<ulong> _uiViewers = new HashSet<ulong>();
 
         [PluginReference]
         private Plugin Arena, EventManager;
@@ -799,7 +800,8 @@ namespace Oxide.Plugins
             if (!ShouldDisplayGuiButton(player))
                 return;
 
-            CuiHelper.DestroyUi(player, GUIPanelName);
+            DestroyGUI(player);
+            _uiViewers.Add(player.userID);
 
             if (_cachedUI == null)
             {
@@ -863,6 +865,9 @@ namespace Oxide.Plugins
 
         private void DestroyGUI(BasePlayer player)
         {
+            if (!_uiViewers.Remove(player.userID))
+                return;
+
             CuiHelper.DestroyUi(player, GUIPanelName);
         }
 
