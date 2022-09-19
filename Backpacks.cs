@@ -1765,52 +1765,55 @@ namespace Oxide.Plugins
 
         public class ItemData
         {
+            [JsonProperty("ID")]
             public int ID;
+
+            [JsonProperty("Position")]
             public int Position = -1;
 
-            [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+            [JsonProperty("Amount")]
             public int Amount;
 
-            [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+            [JsonProperty("IsBlueprint", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public bool IsBlueprint;
 
-            [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+            [JsonProperty("BlueprintTarget", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public int BlueprintTarget;
 
-            [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+            [JsonProperty("Skin", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public ulong Skin;
 
-            [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+            [JsonProperty("Fuel", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public float Fuel;
 
-            [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+            [JsonProperty("FlameFuel", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public int FlameFuel;
 
-            [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+            [JsonProperty("Condition", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public float Condition;
 
-            [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+            [JsonProperty("MaxCondition", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public float MaxCondition = -1;
 
-            [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+            [JsonProperty("Ammo", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public int Ammo;
 
-            [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+            [JsonProperty("AmmoType", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public int AmmoType;
 
-            [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+            [JsonProperty("DataInt", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public int DataInt;
 
-            [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+            [JsonProperty("Name", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public string Name;
 
-            [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+            [JsonProperty("Text", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public string Text;
 
-            [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+            [JsonProperty("AssociatedEntityId", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public uint AssociatedEntityId;
 
-            [JsonProperty(DefaultValueHandling = DefaultValueHandling.Ignore)]
+            [JsonProperty("Contents", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public List<ItemData> Contents = new List<ItemData>();
 
             public Item ToItem()
@@ -1834,25 +1837,42 @@ namespace Oxide.Plugins
                 item.condition = Condition;
 
                 if (MaxCondition != -1)
-                    item.maxCondition = MaxCondition;
-
-                if (Contents != null)
                 {
-                    if (Contents.Count > 0)
+                    item.maxCondition = MaxCondition;
+                }
+
+                if (Name != null)
+                {
+                    item.name = Name;
+                }
+
+                if (Contents?.Count > 0)
+                {
+                    if (item.contents == null)
                     {
-                        if (item.contents == null)
+                        item.contents = new ItemContainer();
+                        item.contents.ServerInitialize(null, Contents.Count);
+                        item.contents.GiveUID();
+                        item.contents.parent = item;
+                    }
+                    else
+                    {
+                        item.contents.capacity = Math.Max(item.contents.capacity, Contents.Count);
+                    }
+
+                    foreach (var contentItem in Contents)
+                    {
+                        var childItem = contentItem.ToItem();
+                        if (childItem == null)
+                            continue;
+
+                        if (!childItem.MoveToContainer(item.contents, childItem.position)
+                            && !childItem.MoveToContainer(item.contents))
                         {
-                            item.contents = new ItemContainer();
-                            item.contents.ServerInitialize(null, Contents.Count);
-                            item.contents.GiveUID();
-                            item.contents.parent = item;
+                            childItem.Remove();
                         }
-                        foreach (var contentItem in Contents)
-                            contentItem.ToItem()?.MoveToContainer(item.contents);
                     }
                 }
-                else
-                    item.contents = null;
 
                 BaseProjectile.Magazine magazine = item.GetHeldEntity()?.GetComponent<BaseProjectile>()?.primaryMagazine;
                 FlameThrower flameThrower = item.GetHeldEntity()?.GetComponent<FlameThrower>();
@@ -1864,7 +1884,9 @@ namespace Oxide.Plugins
                 }
 
                 if (flameThrower != null)
+                {
                     flameThrower.ammo = FlameFuel;
+                }
 
                 if (DataInt > 0 || AssociatedEntityId != 0)
                 {
@@ -1888,9 +1910,6 @@ namespace Oxide.Plugins
                 }
 
                 item.text = Text;
-
-                if (Name != null)
-                    item.name = Name;
 
                 return item;
             }
