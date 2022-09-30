@@ -14,7 +14,7 @@ namespace Oxide.Plugins
 {
     [Info("Backpacks", "LaserHydra", "3.8.0")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
-    internal class Backpacks : RustPlugin
+    internal class Backpacks : CovalencePlugin
     {
         #region Fields
 
@@ -236,7 +236,7 @@ namespace Oxide.Plugins
             {
                 foreach (IPlayer player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
                 {
-                    if (!permission.UserHasPermission(player.Id, GUIPermission))
+                    if (!player.HasPermission(GUIPermission))
                     {
                         DestroyGUI(player.Object as BasePlayer);
                     }
@@ -454,232 +454,151 @@ namespace Oxide.Plugins
 
         #region Commands
 
-        [ChatCommand("backpack")]
-        private void OpenBackpackChatCommand(BasePlayer player, string cmd, string[] args)
+        [Command("backpack", "backpack.open")]
+        private void OpenBackpackCommand(IPlayer player, string cmd, string[] args)
         {
-            if (!player.CanInteract())
+            BasePlayer basePlayer;
+            if (!VerifyPlayer(player, out basePlayer)
+                || !basePlayer.CanInteract()
+                || !VerifyHasPermission(player, UsagePermission))
                 return;
 
-            if (!permission.UserHasPermission(player.UserIDString, UsagePermission))
-            {
-                PrintToChat(player, lang.GetMessage("No Permission", this, player.UserIDString));
-                return;
-            }
-
-            player.EndLooting();
-
-            // Must delay opening in case the chat is still closing or the loot panel may close instantly.
-            timer.Once(0.5f, () => _backpackManager.OpenBackpack(player.userID, player));
-        }
-
-        [ConsoleCommand("backpack.open")]
-        private void OpenBackpackConsoleCommand(ConsoleSystem.Arg arg)
-        {
-            BasePlayer player = arg.Player();
-
-            if (player == null || !player.CanInteract())
-                return;
-
-            if (!permission.UserHasPermission(player.UserIDString, UsagePermission))
-            {
-                PrintToChat(player, lang.GetMessage("No Permission", this, player.UserIDString));
-                return;
-            }
-
-            var lootingContainer = player.inventory.loot.containers.FirstOrDefault();
+            var lootingContainer = basePlayer.inventory.loot.containers.FirstOrDefault();
             if (lootingContainer != null && _backpackManager.GetCachedBackpackForContainer(lootingContainer) != null)
             {
-                player.EndLooting();
-                // HACK: Send empty respawn information to fully close the player inventory (toggle backpack closed)
-                player.ClientRPCPlayer(null, player, "OnRespawnInformation");
+                basePlayer.EndLooting();
+                // HACK: Send empty respawn information to fully close the player inventory (toggle backpack closed).
+                basePlayer.ClientRPCPlayer(null, basePlayer, "OnRespawnInformation");
                 return;
             }
 
-            var wasLooting = player.inventory.loot.IsLooting();
-            if (wasLooting)
-            {
-                player.EndLooting();
-                player.inventory.loot.SendImmediate();
-            }
-
-            // Need a short delay when looting so the client doesn't reuse the previously drawn generic_resizable loot panel.
-            var delaySeconds = wasLooting
-                ? 0.1f
-                // Key binds automatically pass the "True" argument at the end.
-                // Can open instantly since not looting and chat is assumed to be closed.
-                : IsKeyBindArg(arg.Args?.LastOrDefault())
-                ? 0f
-                // Not opening via key bind, so the chat window may be open.
-                // Must delay in case the chat is still closing or else the loot panel may close instantly.
-                : 0.1f;
-
-            timer.Once(delaySeconds, () => _backpackManager.OpenBackpack(player.userID, player));
+            OpenBackpack(basePlayer, fromKeyBind: IsKeyBindArg(args.LastOrDefault()));
         }
 
-        [ConsoleCommand("backpack.fetch")]
-        private void FetchBackpackItemConsoleCommand(ConsoleSystem.Arg arg)
+        [Command("backpack.fetch")]
+        private void FetchBackpackCommand(IPlayer player, string cmd, string[] args)
         {
-            BasePlayer player = arg.Player();
-
-            if (player == null || !player.CanInteract())
+            BasePlayer basePlayer;
+            if (!VerifyPlayer(player, out basePlayer)
+                || !basePlayer.CanInteract()
+                || !VerifyHasPermission(player, FetchPermission))
                 return;
 
-            if (!permission.UserHasPermission(player.UserIDString, FetchPermission))
+            if (args.Length < 2)
             {
-                PrintToChat(player, lang.GetMessage("No Permission", this, player.UserIDString));
-                return;
-            }
-
-            if (!arg.HasArgs(2))
-            {
-                PrintToConsole(player, lang.GetMessage("Backpack Fetch Syntax", this, player.UserIDString));
+                player.Reply(GetMessage(player, "Backpack Fetch Syntax"));
                 return;
             }
 
-            if (!VerifyCanOpenBackpack(player, player.userID))
+            if (!VerifyCanOpenBackpack(basePlayer, basePlayer.userID))
                 return;
 
-            string[] args = arg.Args;
-            string itemArg = args[0];
-            int itemID;
-
-            ItemDefinition itemDefinition = ItemManager.FindItemDefinition(itemArg);
-            if (itemDefinition != null)
-            {
-                itemID = itemDefinition.itemid;
-            }
-            else
-            {
-                // User may have provided an itemID instead of item short name
-                if (!int.TryParse(itemArg, out itemID))
-                {
-                    PrintToChat(player, lang.GetMessage("Invalid Item", this, player.UserIDString));
-                    return;
-                }
-
-                itemDefinition = ItemManager.FindItemDefinition(itemID);
-
-                if (itemDefinition == null)
-                {
-                    PrintToChat(player, lang.GetMessage("Invalid Item", this, player.UserIDString));
-                    return;
-                }
-            }
+            ItemDefinition itemDefinition;
+            if (!VerifyValidItem(player, args[0], out itemDefinition))
+                return;
 
             int desiredAmount;
-            if (!int.TryParse(args[1], out desiredAmount))
+            if (!int.TryParse(args[1], out desiredAmount) || desiredAmount < 1)
             {
-                PrintToChat(player, lang.GetMessage("Invalid Item Amount", this, player.UserIDString));
+                player.Reply(GetMessage(player, "Invalid Item Amount"));
                 return;
             }
 
-            if (desiredAmount < 1)
-            {
-                PrintToChat(player, lang.GetMessage("Invalid Item Amount", this, player.UserIDString));
-                return;
-            }
+            var itemLocalizedName = itemDefinition.displayName.translated;
+            var backpack = _backpackManager.GetBackpack(basePlayer.userID);
 
-            string itemLocalizedName = itemDefinition.displayName.translated;
-            Backpack backpack = _backpackManager.GetBackpack(player.userID);
-
-            int quantityInBackpack = backpack.GetItemQuantity(itemID);
-
+            var quantityInBackpack = backpack.GetItemQuantity(itemDefinition.itemid);
             if (quantityInBackpack == 0)
             {
-                PrintToChat(player, lang.GetMessage("Item Not In Backpack", this, player.UserIDString), itemLocalizedName);
+                player.Reply(string.Format(GetMessage(player, "Item Not In Backpack"), itemLocalizedName));
                 return;
             }
 
             if (desiredAmount > quantityInBackpack)
+            {
                 desiredAmount = quantityInBackpack;
-
-            int amountTransferred = backpack.MoveItemsToPlayerInventory(player, itemID, desiredAmount);
-
-            if (amountTransferred > 0)
-            {
-                PrintToChat(player, lang.GetMessage("Items Fetched", this, player.UserIDString), amountTransferred, itemLocalizedName);
             }
-            else
-            {
-                PrintToChat(player, lang.GetMessage("Fetch Failed", this, player.UserIDString), itemLocalizedName);
-            }
-        }
 
-        [ConsoleCommand("backpack.erase")]
-        private void EraseBackpackServerCommand(ConsoleSystem.Arg arg)
-        {
-            BasePlayer player = arg.Player();
-            if (player != null)
+            var amountTransferred = backpack.MoveItemsToPlayerInventory(basePlayer, itemDefinition.itemid, desiredAmount);
+            if (amountTransferred <= 0)
             {
-                // Only allowed as a server command.
+                player.Reply(string.Format(GetMessage(player, "Fetch Failed"), itemLocalizedName));
                 return;
             }
 
-            var args = arg.Args;
+            player.Reply(string.Format(GetMessage(player, "Items Fetched"), amountTransferred, itemLocalizedName));
+        }
+
+        [Command("backpack.erase")]
+        private void EraseBackpackCommand(IPlayer player, string cmd, string[] args)
+        {
+            if (!player.IsServer)
+                return;
 
             ulong userId;
-            if (!arg.HasArgs(1) || !ulong.TryParse(args[0], out userId))
+            if (args.Length < 1 || !ulong.TryParse(args[0], out userId))
             {
-                PrintWarning($"Syntax: {arg.cmd.FullName} <id>");
+                player.Reply($"Syntax: {cmd} <id>");
                 return;
             }
 
-            if (_backpackManager.TryEraseForPlayer(userId))
-                PrintWarning($"Erased backpack for player {userId}.");
-            else
-                PrintWarning($"Player {userId} has no backpack to erase.");
+            if (!_backpackManager.TryEraseForPlayer(userId))
+            {
+                LogWarning($"Player {userId} has no backpack to erase.");
+                return;
+            }
+
+            LogWarning($"Erased backpack for player {userId}.");
         }
 
-        [ChatCommand("viewbackpack")]
-        private void ViewBackpack(BasePlayer player, string cmd, string[] args)
+        [Command("viewbackpack")]
+        private void ViewBackpackCommand(IPlayer player, string cmd, string[] args)
         {
-            if (!permission.UserHasPermission(player.UserIDString, AdminPermission))
-            {
-                PrintToChat(player, lang.GetMessage("No Permission", this, player.UserIDString));
+            BasePlayer basePlayer;
+            if (!VerifyPlayer(player, out basePlayer)
+                || !VerifyHasPermission(player, AdminPermission))
                 return;
-            }
 
-            if (args.Length != 1)
+            if (args.Length < 1)
             {
-                PrintToChat(player, lang.GetMessage("View Backpack Syntax", this, player.UserIDString));
+                player.Reply(GetMessage(player, "View Backpack Syntax"));
                 return;
             }
 
             string failureMessage;
-            IPlayer targetPlayer = FindPlayer(args[0], out failureMessage);
+            IPlayer targetPlayer = FindPlayer(player, args[0], out failureMessage);
 
             if (targetPlayer == null)
             {
-                PrintToChat(player, failureMessage);
+                player.Reply(failureMessage);
                 return;
             }
 
             BasePlayer targetBasePlayer = targetPlayer.Object as BasePlayer;
             ulong backpackOwnerId = targetBasePlayer?.userID ?? ulong.Parse(targetPlayer.Id);
 
-            timer.Once(0.5f, () => _backpackManager.OpenBackpack(backpackOwnerId, player));
+            OpenBackpack(basePlayer, backpackOwnerId, IsKeyBindArg(args.LastOrDefault()));
         }
 
-        [ChatCommand("backpackgui")]
-        private void ToggleBackpackGUI(BasePlayer player, string cmd, string[] args)
+        [Command("backpackgui")]
+        private void ToggleBackpackGUI(IPlayer player, string cmd, string[] args)
         {
-            if (!permission.UserHasPermission(player.UserIDString, GUIPermission))
-            {
-                PrintToChat(player, lang.GetMessage("No Permission", this, player.UserIDString));
+            BasePlayer basePlayer;
+            if (!VerifyPlayer(player, out basePlayer)
+                || !VerifyHasPermission(player, GUIPermission))
                 return;
-            }
 
-            var enabledNow = _storedData.ToggleGuiButtonPreference(player.userID, _config.GUI.EnabledByDefault);
+            var enabledNow = _storedData.ToggleGuiButtonPreference(basePlayer.userID, _config.GUI.EnabledByDefault);
             if (enabledNow)
             {
-                CreateGUI(player);
+                CreateGUI(basePlayer);
             }
             else
             {
-                DestroyGUI(player);
+                DestroyGUI(basePlayer);
             }
 
-            PrintToChat(player, lang.GetMessage("Toggled Backpack GUI", this, player.UserIDString));
+            player.Reply(GetMessage(player, "Toggled Backpack GUI"));
         }
 
         #endregion
@@ -696,6 +615,23 @@ namespace Oxide.Plugins
             return value ? True : False;
         }
 
+        private static float CalculateOpenDelay(bool wasLooting, bool fromKeyBind = false)
+        {
+            if (wasLooting)
+            {
+                // Need a short delay when looting so the client doesn't reuse the previously drawn generic_resizable loot panel.
+                return 0.1f;
+            }
+
+            // Can open instantly since not looting and chat is assumed to be closed.
+            if (fromKeyBind)
+                return 0;
+
+            // Not opening via key bind, so the chat window may be open.
+            // Must delay in case the chat is still closing or else the loot panel may close instantly.
+            return 0.1f;
+        }
+
         private static int DetermineWipeNumber()
         {
             var saveName = World.SaveFileName;
@@ -710,13 +646,42 @@ namespace Oxide.Plugins
                 : 0;
         }
 
+        private void OpenBackpack(BasePlayer looter, ulong ownerId = 0, bool fromKeyBind = false)
+        {
+            if (ownerId == 0)
+            {
+                ownerId = looter.userID;
+            }
+
+            var wasLooting = looter.inventory.loot.IsLooting();
+            if (wasLooting)
+            {
+                looter.EndLooting();
+                looter.inventory.loot.SendImmediate();
+            }
+
+            var delaySeconds = CalculateOpenDelay(wasLooting, fromKeyBind);
+            if (delaySeconds > 0)
+            {
+                // Copy variables to avoid a heap allocation for the closure when this block doesn't run.
+                var looter2 = looter;
+                var ownerId2 = ownerId;
+                var delaySeconds2 = delaySeconds;
+
+                timer.Once(delaySeconds2, () => _backpackManager.OpenBackpack(ownerId2, looter2));
+                return;
+            }
+
+            _backpackManager.OpenBackpack(ownerId, looter);
+        }
+
         private bool ShouldDisplayGuiButton(BasePlayer player)
         {
             return _storedData.GetGuiButtonPreference(player.userID)
                 ?? _config.GUI.EnabledByDefault;
         }
 
-        private IPlayer FindPlayer(string nameOrID, out string failureMessage)
+        private IPlayer FindPlayer(IPlayer requester, string nameOrID, out string failureMessage)
         {
             failureMessage = string.Empty;
 
@@ -726,7 +691,9 @@ namespace Oxide.Plugins
                 IPlayer player = covalence.Players.All.FirstOrDefault(p => p.Id == nameOrID);
 
                 if (player == null)
-                    failureMessage = string.Format(lang.GetMessage("User ID not Found", this), nameOrID);
+                {
+                    failureMessage = string.Format(GetMessage(requester, "User ID not Found"), nameOrID);
+                }
 
                 return player;
             }
@@ -739,13 +706,15 @@ namespace Oxide.Plugins
                     return player;
 
                 if (player.Name.ToLower().Contains(nameOrID.ToLower()))
+                {
                     foundPlayers.Add(player);
+                }
             }
 
             switch (foundPlayers.Count)
             {
                 case 0:
-                    failureMessage = string.Format(lang.GetMessage("User Name not Found", this), nameOrID);
+                    failureMessage = string.Format(GetMessage(requester, "User Name not Found"), nameOrID);
                     return null;
 
                 case 1:
@@ -753,23 +722,66 @@ namespace Oxide.Plugins
 
                 default:
                     string names = string.Join(", ", foundPlayers.Select(p => p.Name).ToArray());
-                    failureMessage = string.Format(lang.GetMessage("Multiple Players Found", this), names);
+                    failureMessage = string.Format(GetMessage(requester, "Multiple Players Found"), names);
                     return null;
             }
+        }
+
+        private bool VerifyPlayer(IPlayer player, out BasePlayer basePlayer)
+        {
+            if (player.IsServer)
+            {
+                basePlayer = null;
+                return false;
+            }
+
+            basePlayer = player.Object as BasePlayer;
+            return true;
+        }
+
+        private bool VerifyHasPermission(IPlayer player, string perm)
+        {
+            if (player.HasPermission(perm))
+                return true;
+
+            player.Reply(GetMessage(player, "No Permission"));
+            return false;
+        }
+
+        private bool VerifyValidItem(IPlayer player, string itemArg, out ItemDefinition itemDefinition)
+        {
+            itemDefinition = ItemManager.FindItemDefinition(itemArg);
+            if (itemDefinition != null)
+                return true;
+
+            // User may have provided an itemID instead of item short name
+            int itemID;
+            if (!int.TryParse(itemArg, out itemID))
+            {
+                player.Reply(GetMessage(player, "Invalid Item"));
+                return false;
+            }
+
+            itemDefinition = ItemManager.FindItemDefinition(itemID);
+            if (itemDefinition != null)
+                return true;
+
+            player.Reply(GetMessage(player, "Invalid Item"));
+            return false;
         }
 
         private bool VerifyCanOpenBackpack(BasePlayer looter, ulong ownerId)
         {
             if (IsPlayingEvent(looter))
             {
-                PrintToChat(looter, lang.GetMessage("May Not Open Backpack In Event", this, looter.UserIDString));
+                looter.ChatMessage(GetMessage(looter, "May Not Open Backpack In Event"));
                 return false;
             }
 
             var hookResult = ExposedHooks.CanOpenBackpack(looter, ownerId);
             if (hookResult != null && hookResult is string)
             {
-                PrintToChat(looter, hookResult as string);
+                looter.ChatMessage(hookResult as string);
                 return false;
             }
 
@@ -1726,7 +1738,7 @@ namespace Oxide.Plugins
 
                 if (itemsDroppedOrGivenToPlayer > 0)
                 {
-                    Plugin.PrintToChat(receiver, Plugin.lang.GetMessage("Blacklisted Items Removed", Plugin, receiver.UserIDString));
+                    receiver.ChatMessage(Plugin.GetMessage(receiver, "Blacklisted Items Removed"));
                 }
 
                 _processedRestrictedItems = true;
@@ -1777,7 +1789,7 @@ namespace Oxide.Plugins
 
                 if (itemsDroppedOrGivenToPlayer > 0)
                 {
-                    Plugin.PrintToChat(receiver, Plugin.lang.GetMessage("Backpack Over Capacity", Plugin, receiver.UserIDString));
+                    receiver.ChatMessage(Plugin.GetMessage(receiver, "Backpack Over Capacity"));
                 }
             }
 
@@ -2305,6 +2317,15 @@ namespace Oxide.Plugins
         #endregion
 
         #region Localization
+
+        private string GetMessage(string playerId, string langKey) =>
+            lang.GetMessage(langKey, this, playerId);
+
+        private string GetMessage(IPlayer player, string langKey) =>
+            GetMessage(player.Id, langKey);
+
+        private string GetMessage(BasePlayer basePlayer, string langKey) =>
+            GetMessage(basePlayer.UserIDString, langKey);
 
         protected override void LoadDefaultMessages()
         {
