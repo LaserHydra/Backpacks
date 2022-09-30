@@ -891,356 +891,6 @@ namespace Oxide.Plugins
 
         #endregion
 
-        #region Localization
-
-        protected override void LoadDefaultMessages()
-        {
-            lang.RegisterMessages(new Dictionary<string, string>
-            {
-                ["No Permission"] = "You don't have permission to use this command.",
-                ["May Not Open Backpack In Event"] = "You may not open a backpack while participating in an event!",
-                ["View Backpack Syntax"] = "Syntax: /viewbackpack <name or id>",
-                ["User ID not Found"] = "Could not find player with ID '{0}'",
-                ["User Name not Found"] = "Could not find player with name '{0}'",
-                ["Multiple Players Found"] = "Multiple matching players found:\n{0}",
-                ["Backpack Over Capacity"] = "Your backpack was over capacity. Overflowing items were added to your inventory or dropped.",
-                ["Blacklisted Items Removed"] = "Your backpack contained blacklisted items. They have been added to your inventory or dropped.",
-                ["Backpack Fetch Syntax"] = "Syntax: backpack.fetch <item short name or id> <amount>",
-                ["Invalid Item"] = "Invalid Item Name or ID.",
-                ["Invalid Item Amount"] = "Item amount must be an integer greater than 0.",
-                ["Item Not In Backpack"] = "Item \"{0}\" not found in backpack.",
-                ["Items Fetched"] = "Fetched {0} \"{1}\" from backpack.",
-                ["Fetch Failed"] = "Couldn't fetch \"{0}\" from backpack. Inventory may be full.",
-                ["Toggled Backpack GUI"] = "Toggled backpack GUI button.",
-            }, this);
-        }
-
-        #endregion
-
-        #region Configuration
-
-        private class Configuration : BaseConfiguration
-        {
-            private ushort _backpackSize = 1;
-
-            [JsonProperty("Backpack Size (1-8 Rows)")]
-            public ushort BackpackSize
-            {
-                get { return _backpackSize; }
-                set { _backpackSize = (ushort) Mathf.Clamp(value, MinSize, MaxSize); }
-            }
-
-            [JsonProperty("Backpack Size (1-7 Rows)")]
-            public ushort BackpackSizeDeprecated
-            {
-                set
-                {
-                    BackpackSize = value;
-                }
-            }
-
-            [JsonProperty("Drop on Death (true/false)")]
-            public bool DropOnDeath = true;
-
-            [JsonProperty("Erase on Death (true/false)")]
-            public bool EraseOnDeath = false;
-
-            [JsonProperty("Clear Backpacks on Map-Wipe (true/false)")]
-            public bool ClearBackpacksOnWipe = false;
-
-            [JsonProperty("Only Save Backpacks on Server-Save (true/false)")]
-            public bool SaveBackpacksOnServerSave = false;
-
-            [JsonProperty("Use Blacklist (true/false)")]
-            private bool UseDenylist = false;
-
-            [JsonProperty("Blacklisted Items (Item Shortnames)")]
-            private string[] DenylistItemShortNames = new string[]
-            {
-                "autoturret",
-                "lmg.m249",
-            };
-
-            [JsonProperty("Use Whitelist (true/false)")]
-            private bool UseAllowlist = false;
-
-            [JsonProperty("Whitelisted Items (Item Shortnames)")]
-            private string[] AllowedItemShortNames = new string[0];
-
-            [JsonProperty("Minimum Despawn Time (Seconds)")]
-            public float MinimumDespawnTime = 300;
-
-            [JsonProperty("GUI Button")]
-            public GUIButton GUI = new GUIButton();
-
-            [JsonProperty("Softcore")]
-            public SoftcoreOptions Softcore = new SoftcoreOptions();
-
-            public class GUIButton
-            {
-                [JsonProperty("Enabled by default (for players with permission)")]
-                public bool EnabledByDefault = true;
-
-                [JsonProperty("Skin Id")]
-                public ulong SkinId;
-
-                [JsonProperty("Image")]
-                public string Image = "https://i.imgur.com/CyF0QNV.png";
-
-                [JsonProperty("Background Color")]
-                public string Color = "0.969 0.922 0.882 0.035";
-
-                [JsonProperty("GUI Button Position")]
-                public Position GUIButtonPosition = new Position();
-
-                public class Position
-                {
-                    [JsonProperty("Anchors Min")]
-                    public string AnchorsMin = "0.5 0.0";
-
-                    [JsonProperty("Anchors Max")]
-                    public string AnchorsMax = "0.5 0.0";
-
-                    [JsonProperty("Offsets Min")]
-                    public string OffsetsMin = "185 18";
-
-                    [JsonProperty("Offsets Max")]
-                    public string OffsetsMax = "245 78";
-                }
-            }
-
-            public class SoftcoreOptions
-            {
-                [JsonProperty("Reclaim Fraction")]
-                public float ReclaimFraction = 0.5f;
-            }
-
-            [JsonIgnore]
-            public bool ItemRestrictionEnabled => UseAllowlist || UseDenylist;
-
-            [JsonIgnore]
-            private HashSet<int> _disallowedItemIds = new HashSet<int>();
-
-            [JsonIgnore]
-            private HashSet<int> _allowedItemIds = new HashSet<int>();
-
-            public void Init(Backpacks plugin)
-            {
-                if (UseDenylist)
-                {
-                    foreach (var itemShortName in DenylistItemShortNames)
-                    {
-                        var itemDefinition = ItemManager.FindItemDefinition(itemShortName);
-                        if (itemDefinition != null)
-                        {
-                            _disallowedItemIds.Add(itemDefinition.itemid);
-                        }
-                        else
-                        {
-                            plugin.PrintWarning($"Invalid item short name in config: {itemShortName}");
-                        }
-                    }
-                }
-                else if (UseAllowlist)
-                {
-                    foreach (var itemShortName in AllowedItemShortNames)
-                    {
-                        var itemDefinition = ItemManager.FindItemDefinition(itemShortName);
-                        if (itemDefinition != null)
-                        {
-                            _allowedItemIds.Add(itemDefinition.itemid);
-                        }
-                        else
-                        {
-                            plugin.PrintWarning($"Invalid item short name in config: {itemShortName}");
-                        }
-                    }
-                }
-            }
-
-            public bool IsRestrictedItem(Item item)
-            {
-                if (UseAllowlist)
-                    return !_allowedItemIds.Contains(item.info.itemid);
-
-                if (UseDenylist)
-                    return _disallowedItemIds.Contains(item.info.itemid);
-
-                return false;
-            }
-        }
-
-        private Configuration GetDefaultConfig() => new Configuration();
-
-        #region Configuration Helpers
-
-        [JsonObject(MemberSerialization.OptIn)]
-        private class BaseConfiguration
-        {
-            [JsonIgnore]
-            public bool UsingDefaults = false;
-
-            public string ToJson() => JsonConvert.SerializeObject(this);
-
-            public Dictionary<string, object> ToDictionary() => JsonHelper.Deserialize(ToJson()) as Dictionary<string, object>;
-        }
-
-        private static class JsonHelper
-        {
-            public static object Deserialize(string json) => ToObject(JToken.Parse(json));
-
-            private static object ToObject(JToken token)
-            {
-                switch (token.Type)
-                {
-                    case JTokenType.Object:
-                        return token.Children<JProperty>()
-                                    .ToDictionary(prop => prop.Name,
-                                                  prop => ToObject(prop.Value));
-
-                    case JTokenType.Array:
-                        return token.Select(ToObject).ToList();
-
-                    default:
-                        return ((JValue)token).Value;
-                }
-            }
-        }
-
-        private bool MaybeUpdateConfig(BaseConfiguration config)
-        {
-            var currentWithDefaults = config.ToDictionary();
-            var currentRaw = Config.ToDictionary(x => x.Key, x => x.Value);
-            return MaybeUpdateConfigSection(currentWithDefaults, currentRaw);
-        }
-
-        private bool MaybeUpdateConfigSection(Dictionary<string, object> currentWithDefaults, Dictionary<string, object> currentRaw)
-        {
-            bool changed = false;
-
-            foreach (var key in currentWithDefaults.Keys)
-            {
-                object currentRawValue;
-                if (currentRaw.TryGetValue(key, out currentRawValue))
-                {
-                    var defaultDictValue = currentWithDefaults[key] as Dictionary<string, object>;
-                    var currentDictValue = currentRawValue as Dictionary<string, object>;
-
-                    if (defaultDictValue != null)
-                    {
-                        if (currentDictValue == null)
-                        {
-                            currentRaw[key] = currentWithDefaults[key];
-                            changed = true;
-                        }
-                        else if (MaybeUpdateConfigSection(defaultDictValue, currentDictValue))
-                            changed = true;
-                    }
-                }
-                else
-                {
-                    currentRaw[key] = currentWithDefaults[key];
-                    changed = true;
-                }
-            }
-
-            return changed;
-        }
-
-        protected override void LoadDefaultConfig() => _config = GetDefaultConfig();
-
-        protected override void LoadConfig()
-        {
-            base.LoadConfig();
-            try
-            {
-                _config = Config.ReadObject<Configuration>();
-                if (_config == null)
-                {
-                    throw new JsonException();
-                }
-
-                if (MaybeUpdateConfig(_config))
-                {
-                    PrintWarning("Configuration appears to be outdated; updating and saving");
-                    SaveConfig();
-                }
-            }
-            catch (Exception e)
-            {
-                PrintError(e.Message);
-                PrintWarning($"Configuration file {Name}.json is invalid; using defaults");
-                LoadDefaultConfig();
-            }
-        }
-
-        protected override void SaveConfig()
-        {
-            Puts($"Configuration changes saved to {Name}.json");
-            Config.WriteObject(_config, true);
-        }
-
-        #endregion
-
-        #endregion
-
-        #region Stored Data
-
-        private class StoredData
-        {
-            public static StoredData Load()
-            {
-                var data = Interface.Oxide.DataFileSystem.ReadObject<StoredData>(nameof(Backpacks));
-                if (data == null)
-                {
-                    Interface.Oxide.LogWarning($"Data file {nameof(Backpacks)}.json is invalid. Creating new data file.");
-                    data = new StoredData();
-                    data.Save();
-                }
-                return data;
-            }
-
-            [JsonProperty("PlayersWithDisabledGUI")]
-            private HashSet<ulong> DeprecatedPlayersWithDisabledGUI
-            {
-                set
-                {
-                    foreach (var playerId in value)
-                    {
-                        EnabledGuiPreference[playerId] = false;
-                    }
-                }
-            }
-
-            [JsonProperty("PlayerGuiPreferences")]
-            private Dictionary<ulong, bool> EnabledGuiPreference = new Dictionary<ulong, bool>();
-
-            public bool? GetGuiButtonPreference(ulong userId)
-            {
-                bool guiEnabled;
-                return EnabledGuiPreference.TryGetValue(userId, out guiEnabled)
-                    ? guiEnabled as bool?
-                    : null;
-            }
-
-            public bool ToggleGuiButtonPreference(ulong userId, bool defaultEnabled)
-            {
-                var enabledNow = !(GetGuiButtonPreference(userId) ?? defaultEnabled);
-
-                EnabledGuiPreference[userId] = enabledNow;
-                Save();
-
-                return enabledNow;
-            }
-
-            public void Save()
-            {
-                Interface.Oxide.DataFileSystem.WriteObject(nameof(Backpacks), this);
-            }
-        }
-
-        #endregion
-
         #region Backpack Manager
 
         private class BackpackManager
@@ -2326,6 +1976,356 @@ namespace Oxide.Plugins
                 Text = item.text,
                 Flags = item.flags,
             };
+        }
+
+        #endregion
+
+        #region Stored Data
+
+        private class StoredData
+        {
+            public static StoredData Load()
+            {
+                var data = Interface.Oxide.DataFileSystem.ReadObject<StoredData>(nameof(Backpacks));
+                if (data == null)
+                {
+                    Interface.Oxide.LogWarning($"Data file {nameof(Backpacks)}.json is invalid. Creating new data file.");
+                    data = new StoredData();
+                    data.Save();
+                }
+                return data;
+            }
+
+            [JsonProperty("PlayersWithDisabledGUI")]
+            private HashSet<ulong> DeprecatedPlayersWithDisabledGUI
+            {
+                set
+                {
+                    foreach (var playerId in value)
+                    {
+                        EnabledGuiPreference[playerId] = false;
+                    }
+                }
+            }
+
+            [JsonProperty("PlayerGuiPreferences")]
+            private Dictionary<ulong, bool> EnabledGuiPreference = new Dictionary<ulong, bool>();
+
+            public bool? GetGuiButtonPreference(ulong userId)
+            {
+                bool guiEnabled;
+                return EnabledGuiPreference.TryGetValue(userId, out guiEnabled)
+                    ? guiEnabled as bool?
+                    : null;
+            }
+
+            public bool ToggleGuiButtonPreference(ulong userId, bool defaultEnabled)
+            {
+                var enabledNow = !(GetGuiButtonPreference(userId) ?? defaultEnabled);
+
+                EnabledGuiPreference[userId] = enabledNow;
+                Save();
+
+                return enabledNow;
+            }
+
+            public void Save()
+            {
+                Interface.Oxide.DataFileSystem.WriteObject(nameof(Backpacks), this);
+            }
+        }
+
+        #endregion
+
+        #region Configuration
+
+        private class Configuration : BaseConfiguration
+        {
+            private ushort _backpackSize = 1;
+
+            [JsonProperty("Backpack Size (1-8 Rows)")]
+            public ushort BackpackSize
+            {
+                get { return _backpackSize; }
+                set { _backpackSize = (ushort) Mathf.Clamp(value, MinSize, MaxSize); }
+            }
+
+            [JsonProperty("Backpack Size (1-7 Rows)")]
+            public ushort BackpackSizeDeprecated
+            {
+                set
+                {
+                    BackpackSize = value;
+                }
+            }
+
+            [JsonProperty("Drop on Death (true/false)")]
+            public bool DropOnDeath = true;
+
+            [JsonProperty("Erase on Death (true/false)")]
+            public bool EraseOnDeath = false;
+
+            [JsonProperty("Clear Backpacks on Map-Wipe (true/false)")]
+            public bool ClearBackpacksOnWipe = false;
+
+            [JsonProperty("Only Save Backpacks on Server-Save (true/false)")]
+            public bool SaveBackpacksOnServerSave = false;
+
+            [JsonProperty("Use Blacklist (true/false)")]
+            private bool UseDenylist = false;
+
+            [JsonProperty("Blacklisted Items (Item Shortnames)")]
+            private string[] DenylistItemShortNames = new string[]
+            {
+                "autoturret",
+                "lmg.m249",
+            };
+
+            [JsonProperty("Use Whitelist (true/false)")]
+            private bool UseAllowlist = false;
+
+            [JsonProperty("Whitelisted Items (Item Shortnames)")]
+            private string[] AllowedItemShortNames = new string[0];
+
+            [JsonProperty("Minimum Despawn Time (Seconds)")]
+            public float MinimumDespawnTime = 300;
+
+            [JsonProperty("GUI Button")]
+            public GUIButton GUI = new GUIButton();
+
+            [JsonProperty("Softcore")]
+            public SoftcoreOptions Softcore = new SoftcoreOptions();
+
+            public class GUIButton
+            {
+                [JsonProperty("Enabled by default (for players with permission)")]
+                public bool EnabledByDefault = true;
+
+                [JsonProperty("Skin Id")]
+                public ulong SkinId;
+
+                [JsonProperty("Image")]
+                public string Image = "https://i.imgur.com/CyF0QNV.png";
+
+                [JsonProperty("Background Color")]
+                public string Color = "0.969 0.922 0.882 0.035";
+
+                [JsonProperty("GUI Button Position")]
+                public Position GUIButtonPosition = new Position();
+
+                public class Position
+                {
+                    [JsonProperty("Anchors Min")]
+                    public string AnchorsMin = "0.5 0.0";
+
+                    [JsonProperty("Anchors Max")]
+                    public string AnchorsMax = "0.5 0.0";
+
+                    [JsonProperty("Offsets Min")]
+                    public string OffsetsMin = "185 18";
+
+                    [JsonProperty("Offsets Max")]
+                    public string OffsetsMax = "245 78";
+                }
+            }
+
+            public class SoftcoreOptions
+            {
+                [JsonProperty("Reclaim Fraction")]
+                public float ReclaimFraction = 0.5f;
+            }
+
+            [JsonIgnore]
+            public bool ItemRestrictionEnabled => UseAllowlist || UseDenylist;
+
+            [JsonIgnore]
+            private HashSet<int> _disallowedItemIds = new HashSet<int>();
+
+            [JsonIgnore]
+            private HashSet<int> _allowedItemIds = new HashSet<int>();
+
+            public void Init(Backpacks plugin)
+            {
+                if (UseDenylist)
+                {
+                    foreach (var itemShortName in DenylistItemShortNames)
+                    {
+                        var itemDefinition = ItemManager.FindItemDefinition(itemShortName);
+                        if (itemDefinition != null)
+                        {
+                            _disallowedItemIds.Add(itemDefinition.itemid);
+                        }
+                        else
+                        {
+                            plugin.PrintWarning($"Invalid item short name in config: {itemShortName}");
+                        }
+                    }
+                }
+                else if (UseAllowlist)
+                {
+                    foreach (var itemShortName in AllowedItemShortNames)
+                    {
+                        var itemDefinition = ItemManager.FindItemDefinition(itemShortName);
+                        if (itemDefinition != null)
+                        {
+                            _allowedItemIds.Add(itemDefinition.itemid);
+                        }
+                        else
+                        {
+                            plugin.PrintWarning($"Invalid item short name in config: {itemShortName}");
+                        }
+                    }
+                }
+            }
+
+            public bool IsRestrictedItem(Item item)
+            {
+                if (UseAllowlist)
+                    return !_allowedItemIds.Contains(item.info.itemid);
+
+                if (UseDenylist)
+                    return _disallowedItemIds.Contains(item.info.itemid);
+
+                return false;
+            }
+        }
+
+        private Configuration GetDefaultConfig() => new Configuration();
+
+        #region Configuration Helpers
+
+        [JsonObject(MemberSerialization.OptIn)]
+        private class BaseConfiguration
+        {
+            [JsonIgnore]
+            public bool UsingDefaults = false;
+
+            public string ToJson() => JsonConvert.SerializeObject(this);
+
+            public Dictionary<string, object> ToDictionary() => JsonHelper.Deserialize(ToJson()) as Dictionary<string, object>;
+        }
+
+        private static class JsonHelper
+        {
+            public static object Deserialize(string json) => ToObject(JToken.Parse(json));
+
+            private static object ToObject(JToken token)
+            {
+                switch (token.Type)
+                {
+                    case JTokenType.Object:
+                        return token.Children<JProperty>()
+                                    .ToDictionary(prop => prop.Name,
+                                                  prop => ToObject(prop.Value));
+
+                    case JTokenType.Array:
+                        return token.Select(ToObject).ToList();
+
+                    default:
+                        return ((JValue)token).Value;
+                }
+            }
+        }
+
+        private bool MaybeUpdateConfig(BaseConfiguration config)
+        {
+            var currentWithDefaults = config.ToDictionary();
+            var currentRaw = Config.ToDictionary(x => x.Key, x => x.Value);
+            return MaybeUpdateConfigSection(currentWithDefaults, currentRaw);
+        }
+
+        private bool MaybeUpdateConfigSection(Dictionary<string, object> currentWithDefaults, Dictionary<string, object> currentRaw)
+        {
+            bool changed = false;
+
+            foreach (var key in currentWithDefaults.Keys)
+            {
+                object currentRawValue;
+                if (currentRaw.TryGetValue(key, out currentRawValue))
+                {
+                    var defaultDictValue = currentWithDefaults[key] as Dictionary<string, object>;
+                    var currentDictValue = currentRawValue as Dictionary<string, object>;
+
+                    if (defaultDictValue != null)
+                    {
+                        if (currentDictValue == null)
+                        {
+                            currentRaw[key] = currentWithDefaults[key];
+                            changed = true;
+                        }
+                        else if (MaybeUpdateConfigSection(defaultDictValue, currentDictValue))
+                            changed = true;
+                    }
+                }
+                else
+                {
+                    currentRaw[key] = currentWithDefaults[key];
+                    changed = true;
+                }
+            }
+
+            return changed;
+        }
+
+        protected override void LoadDefaultConfig() => _config = GetDefaultConfig();
+
+        protected override void LoadConfig()
+        {
+            base.LoadConfig();
+            try
+            {
+                _config = Config.ReadObject<Configuration>();
+                if (_config == null)
+                {
+                    throw new JsonException();
+                }
+
+                if (MaybeUpdateConfig(_config))
+                {
+                    PrintWarning("Configuration appears to be outdated; updating and saving");
+                    SaveConfig();
+                }
+            }
+            catch (Exception e)
+            {
+                PrintError(e.Message);
+                PrintWarning($"Configuration file {Name}.json is invalid; using defaults");
+                LoadDefaultConfig();
+            }
+        }
+
+        protected override void SaveConfig()
+        {
+            Puts($"Configuration changes saved to {Name}.json");
+            Config.WriteObject(_config, true);
+        }
+
+        #endregion
+
+        #endregion
+
+        #region Localization
+
+        protected override void LoadDefaultMessages()
+        {
+            lang.RegisterMessages(new Dictionary<string, string>
+            {
+                ["No Permission"] = "You don't have permission to use this command.",
+                ["May Not Open Backpack In Event"] = "You may not open a backpack while participating in an event!",
+                ["View Backpack Syntax"] = "Syntax: /viewbackpack <name or id>",
+                ["User ID not Found"] = "Could not find player with ID '{0}'",
+                ["User Name not Found"] = "Could not find player with name '{0}'",
+                ["Multiple Players Found"] = "Multiple matching players found:\n{0}",
+                ["Backpack Over Capacity"] = "Your backpack was over capacity. Overflowing items were added to your inventory or dropped.",
+                ["Blacklisted Items Removed"] = "Your backpack contained blacklisted items. They have been added to your inventory or dropped.",
+                ["Backpack Fetch Syntax"] = "Syntax: backpack.fetch <item short name or id> <amount>",
+                ["Invalid Item"] = "Invalid Item Name or ID.",
+                ["Invalid Item Amount"] = "Item amount must be an integer greater than 0.",
+                ["Item Not In Backpack"] = "Item \"{0}\" not found in backpack.",
+                ["Items Fetched"] = "Fetched {0} \"{1}\" from backpack.",
+                ["Fetch Failed"] = "Couldn't fetch \"{0}\" from backpack. Inventory may be full.",
+                ["Toggled Backpack GUI"] = "Toggled backpack GUI button.",
+            }, this);
         }
 
         #endregion
