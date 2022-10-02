@@ -56,6 +56,7 @@ Allows players to have backpacks that provide them with extra inventory space.
     "Enabled by default (for players with permission)": true,
     "Skin Id": 0,
     "Image": "https://i.imgur.com/CyF0QNV.png",
+    "Image content (base64)": "",
     "Background Color": "0.969 0.922 0.882 0.035",
     "GUI Button Position": {
       "Anchors Min": "0.5 0.0",

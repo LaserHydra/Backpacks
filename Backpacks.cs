@@ -52,6 +52,8 @@ namespace Oxide.Plugins
         private StoredData _storedData;
         private int _wipeNumber;
         private HashSet<ulong> _uiViewers = new HashSet<ulong>();
+        private uint _iconFileId;
+        private string _iconFileIdString;
 
         [PluginReference]
         private Plugin Arena, EventManager;
@@ -103,6 +105,16 @@ namespace Oxide.Plugins
             _immortalProtection.name = "BackpacksProtection";
             _immortalProtection.Add(1);
 
+            if (!string.IsNullOrWhiteSpace(_config.GUI.ImageContentBase64))
+            {
+                _iconFileId = FileStorage.server.Store(
+                    Convert.FromBase64String(_config.GUI.ImageContentBase64),
+                    FileStorage.Type.png,
+                    CommunityEntity.ServerInstance.net.ID
+                );
+                _iconFileIdString = _iconFileId.ToString();
+            }
+
             foreach (var player in BasePlayer.activePlayerList)
                 CreateGUI(player);
 
@@ -113,6 +125,11 @@ namespace Oxide.Plugins
         private void Unload()
         {
             UnityEngine.Object.Destroy(_immortalProtection);
+
+            if (_iconFileId != 0)
+            {
+                FileStorage.server.RemoveAllByEntity(_iconFileId);
+            }
 
             _backpackManager.SaveAndKillCachedBackpacks();
             _backpackManager.CleanupAllNetworkControllers();
@@ -853,13 +870,17 @@ namespace Oxide.Plugins
                     },
                 });
 
+                var imageComponent = _iconFileId != 0
+                    ? new CuiRawImageComponent { Png = _iconFileIdString }
+                    : _config.GUI.SkinId != 0
+                    ? new CuiImageComponent { ItemId = SaddleBagItemId, SkinId = _config.GUI.SkinId }
+                    : new CuiRawImageComponent { Url = _config.GUI.Image } as ICuiComponent;
+
                 cuiElements.Add(new CuiElement
                 {
                     Parent = GUIPanelName,
                     Components = {
-                        _config.GUI.SkinId != 0
-                            ? new CuiImageComponent { ItemId = SaddleBagItemId, SkinId = _config.GUI.SkinId }
-                            : new CuiRawImageComponent { Url = _config.GUI.Image } as ICuiComponent,
+                        imageComponent,
                         new CuiRectTransformComponent
                         {
                             AnchorMin = "0 0",
@@ -2139,6 +2160,9 @@ namespace Oxide.Plugins
 
                 [JsonProperty("Image")]
                 public string Image = "https://i.imgur.com/CyF0QNV.png";
+
+                [JsonProperty("Image content (base64)")]
+                public string ImageContentBase64 = "";
 
                 [JsonProperty("Background Color")]
                 public string Color = "0.969 0.922 0.882 0.035";
