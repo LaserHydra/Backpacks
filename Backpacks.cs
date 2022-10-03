@@ -41,22 +41,22 @@ namespace Oxide.Plugins
         private static readonly object False = false;
 
         private readonly BackpackManager _backpackManager;
-        private readonly BoxedValueCache<ulong> _userIdCache = new BoxedValueCache<ulong>();
+        private readonly ValueObjectCache<ulong> _ulongObjectCache = new ValueObjectCache<ulong>();
         private Dictionary<string, ushort> _backpackSizePermissions = new Dictionary<string, ushort>();
 
         private ProtectionProperties _immortalProtection;
         private string _cachedUI;
 
-        private ApiInstance _api;
+        private readonly ApiInstance _api;
         private Configuration _config;
         private StoredData _storedData;
         private int _wipeNumber;
-        private HashSet<ulong> _uiViewers = new HashSet<ulong>();
+        private readonly HashSet<ulong> _uiViewers = new HashSet<ulong>();
         private uint _iconFileId;
         private string _iconFileIdString;
 
         [PluginReference]
-        private Plugin Arena, EventManager;
+        private readonly Plugin Arena, EventManager;
 
         public Backpacks()
         {
@@ -80,7 +80,7 @@ namespace Oxide.Plugins
             permission.RegisterPermission(KeepOnWipePermission, this);
             permission.RegisterPermission(NoBlacklistPermission, this);
 
-            for (ushort size = MinSize; size <= MaxSize; size++)
+            for (var size = MinSize; size <= MaxSize; size++)
             {
                 var sizePermission = $"{UsagePermission}.{size}";
                 permission.RegisterPermission(sizePermission, this);
@@ -165,7 +165,7 @@ namespace Oxide.Plugins
                 return;
             }
 
-            int skippedBackpacks = 0;
+            var skippedBackpacks = 0;
 
             foreach (var fileName in fileNames)
             {
@@ -184,7 +184,7 @@ namespace Oxide.Plugins
                 backpack.SaveData(ignoreDirty: true);
             }
 
-            string skippedBackpacksMessage = skippedBackpacks > 0 ? $", except {skippedBackpacks} due to being exempt" : string.Empty;
+            var skippedBackpacksMessage = skippedBackpacks > 0 ? $", except {skippedBackpacks} due to being exempt" : string.Empty;
             PrintWarning($"New save created. All backpacks were cleared{skippedBackpacksMessage}. Players with the '{KeepOnWipePermission}' permission are exempt. Clearing backpacks can be disabled for all players in the configuration file.");
         }
 
@@ -241,7 +241,7 @@ namespace Oxide.Plugins
         {
             if (perm.Equals(GUIPermission))
             {
-                foreach (IPlayer player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
+                foreach (var player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
                 {
                     CreateGUI(player.Object as BasePlayer);
                 }
@@ -252,7 +252,7 @@ namespace Oxide.Plugins
         {
             if (perm.Equals(GUIPermission))
             {
-                foreach (IPlayer player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
+                foreach (var player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
                 {
                     if (!player.HasPermission(GUIPermission))
                     {
@@ -317,16 +317,16 @@ namespace Oxide.Plugins
 
         private class ApiInstance
         {
-            public Dictionary<string, object> _apiWrapper { get; private set; }
+            public readonly Dictionary<string, object> ApiWrapper;
 
-            private Backpacks _plugin;
+            private readonly Backpacks _plugin;
             private BackpackManager _backpackManager => _plugin._backpackManager;
 
             public ApiInstance(Backpacks plugin)
             {
                 _plugin = plugin;
 
-                _apiWrapper = new Dictionary<string, object>
+                ApiWrapper = new Dictionary<string, object>
                 {
                     [nameof(GetExistingBackpacks)] = new Func<Dictionary<ulong, ItemContainer>>(GetExistingBackpacks),
                     [nameof(EraseBackpack)] = new Action<ulong>(EraseBackpack),
@@ -386,7 +386,7 @@ namespace Oxide.Plugins
         [HookMethod(nameof(API_GetApi))]
         public Dictionary<string, object> API_GetApi()
         {
-            return _api._apiWrapper;
+            return _api.ApiWrapper;
         }
 
         [HookMethod(nameof(API_GetExistingBackpacks))]
@@ -410,7 +410,7 @@ namespace Oxide.Plugins
         [HookMethod(nameof(API_GetBackpackOwnerId))]
         public object API_GetBackpackOwnerId(ItemContainer container)
         {
-            return _userIdCache.Get(_api.GetBackpackOwnerId(container));
+            return _ulongObjectCache.Get(_api.GetBackpackOwnerId(container));
         }
 
         [HookMethod(nameof(API_GetBackpackContainer))]
@@ -439,32 +439,32 @@ namespace Oxide.Plugins
         {
             public static object CanOpenBackpack(Backpacks plugin, BasePlayer looter, ulong ownerId)
             {
-                return Interface.CallHook("CanOpenBackpack", looter, plugin._userIdCache.Get(ownerId));
+                return Interface.CallHook("CanOpenBackpack", looter, plugin._ulongObjectCache.Get(ownerId));
             }
 
             public static void OnBackpackClosed(Backpacks plugin, BasePlayer looter, ulong ownerId, ItemContainer container)
             {
-                Interface.CallHook("OnBackpackClosed", looter, plugin._userIdCache.Get(ownerId), container);
+                Interface.CallHook("OnBackpackClosed", looter, plugin._ulongObjectCache.Get(ownerId), container);
             }
 
             public static void OnBackpackOpened(Backpacks plugin, BasePlayer looter, ulong ownerId, ItemContainer container)
             {
-                Interface.CallHook("OnBackpackOpened", looter, plugin._userIdCache.Get(ownerId), container);
+                Interface.CallHook("OnBackpackOpened", looter, plugin._ulongObjectCache.Get(ownerId), container);
             }
 
             public static object CanDropBackpack(Backpacks plugin, ulong ownerId, Vector3 position)
             {
-                return Interface.CallHook("CanDropBackpack", plugin._userIdCache.Get(ownerId), position);
+                return Interface.CallHook("CanDropBackpack", plugin._ulongObjectCache.Get(ownerId), position);
             }
 
             public static object CanEraseBackpack(Backpacks plugin, ulong ownerId)
             {
-                return Interface.CallHook("CanEraseBackpack", plugin._userIdCache.Get(ownerId));
+                return Interface.CallHook("CanEraseBackpack", plugin._ulongObjectCache.Get(ownerId));
             }
 
             public static object CanBackpackAcceptItem(Backpacks plugin, ulong ownerId, ItemContainer container, Item item)
             {
-                return Interface.CallHook("CanBackpackAcceptItem", plugin._userIdCache.Get(ownerId), container, item);
+                return Interface.CallHook("CanBackpackAcceptItem", plugin._ulongObjectCache.Get(ownerId), container, item);
             }
         }
 
@@ -562,11 +562,11 @@ namespace Oxide.Plugins
 
             if (!_backpackManager.TryEraseForPlayer(userId))
             {
-                LogWarning($"Player {userId} has no backpack to erase.");
+                LogWarning($"Player {userId.ToString()} has no backpack to erase.");
                 return;
             }
 
-            LogWarning($"Erased backpack for player {userId}.");
+            LogWarning($"Erased backpack for player {userId.ToString()}.");
         }
 
         [Command("viewbackpack")]
@@ -718,7 +718,7 @@ namespace Oxide.Plugins
 
             var foundPlayers = new List<IPlayer>();
 
-            foreach (IPlayer player in covalence.Players.All)
+            foreach (var player in covalence.Players.All)
             {
                 if (player.Name.Equals(nameOrID, StringComparison.InvariantCultureIgnoreCase))
                     return player;
@@ -809,7 +809,7 @@ namespace Oxide.Plugins
         private bool IsPlayingEvent(BasePlayer player)
         {
             // Multiple event/arena plugins define the isEventPlayer method as a standard.
-            var isPlaying = Interface.Call("isEventPlayer", player);
+            var isPlaying = Interface.CallHook("isEventPlayer", player);
             if (isPlaying is bool && (bool)isPlaying)
                 return true;
 
@@ -925,11 +925,11 @@ namespace Oxide.Plugins
 
         #endregion
 
-        #region Boxed Value Cache
+        #region Value Object Cache
 
-        private class BoxedValueCache<T> where T : struct
+        private class ValueObjectCache<T> where T : struct
         {
-            private Dictionary<T, object> _cache = new Dictionary<T, object>();
+            private readonly Dictionary<T, object> _cache = new Dictionary<T, object>();
 
             public object Get(T val)
             {
@@ -949,30 +949,7 @@ namespace Oxide.Plugins
 
         private class BackpackManager
         {
-            private const uint StartNetworkGroupId = 10000000;
-
-            private Backpacks _plugin;
-            private uint _nextNetworkGroupId = StartNetworkGroupId;
-
-            private readonly Dictionary<ulong, Backpack> _cachedBackpacks = new Dictionary<ulong, Backpack>();
-            private readonly Dictionary<ItemContainer, Backpack> _backpackContainers = new Dictionary<ItemContainer, Backpack>();
-
-            public BackpackManager(Backpacks plugin)
-            {
-                _plugin = plugin;
-            }
-
-            public bool IsBackpackNetworkGroup(Network.Visibility.Group group)
-            {
-                return group.ID >= StartNetworkGroupId && group.ID < _nextNetworkGroupId;
-            }
-
-            public BackpackNetworkController CreateNetworkController()
-            {
-                return new BackpackNetworkController(_nextNetworkGroupId++);
-            }
-
-            private static string GetBackpackPath(ulong userId) => $"{nameof(Backpacks)}/{userId}";
+            public static string DetermineBackpackPath(ulong userId) => $"{nameof(Backpacks)}/{userId.ToString()}";
 
             // Data migration from v2.x.x to v3.x.x
             private static bool TryMigrateData(string fileName)
@@ -1006,6 +983,42 @@ namespace Oxide.Plugins
                 return false;
             }
 
+            private const uint StartNetworkGroupId = 10000000;
+
+            private readonly Backpacks _plugin;
+            private uint _nextNetworkGroupId = StartNetworkGroupId;
+
+            private readonly Dictionary<ulong, Backpack> _cachedBackpacks = new Dictionary<ulong, Backpack>();
+            private readonly Dictionary<ulong, string> _backpackPathCache = new Dictionary<ulong, string>();
+            private readonly Dictionary<ItemContainer, Backpack> _backpackContainers = new Dictionary<ItemContainer, Backpack>();
+
+            public BackpackManager(Backpacks plugin)
+            {
+                _plugin = plugin;
+            }
+
+            public bool IsBackpackNetworkGroup(Network.Visibility.Group group)
+            {
+                return group.ID >= StartNetworkGroupId && group.ID < _nextNetworkGroupId;
+            }
+
+            public BackpackNetworkController CreateNetworkController()
+            {
+                return new BackpackNetworkController(_nextNetworkGroupId++);
+            }
+
+            private string GetBackpackPath(ulong userId)
+            {
+                string filepath;
+                if (!_backpackPathCache.TryGetValue(userId, out filepath))
+                {
+                    filepath = DetermineBackpackPath(userId);
+                    _backpackPathCache[userId] = filepath;
+                }
+
+                return filepath;
+            }
+
             public bool HasBackpackFile(ulong userId)
             {
                 return Interface.Oxide.DataFileSystem.ExistsDatafile(GetBackpackPath(userId));
@@ -1021,11 +1034,7 @@ namespace Oxide.Plugins
 
             public Backpack GetBackpack(ulong userId)
             {
-                var backpack = GetCachedBackpack(userId);
-                if (backpack != null)
-                    return backpack;
-
-                return Load(userId);
+                return GetCachedBackpack(userId) ?? Load(userId);
             }
 
             public Backpack GetBackpackIfExists(ulong userId)
@@ -1165,9 +1174,9 @@ namespace Oxide.Plugins
 
         private class BackpackNetworkController
         {
-            public Network.Visibility.Group NetworkGroup { get; private set; }
+            public readonly Network.Visibility.Group NetworkGroup;
 
-            private List<BasePlayer> _subscribers = new List<BasePlayer>(1);
+            private readonly List<BasePlayer> _subscribers = new List<BasePlayer>(1);
 
             public BackpackNetworkController(uint networkGroupId)
             {
@@ -1286,9 +1295,9 @@ namespace Oxide.Plugins
         {
             private StorageContainer _storageContainer;
             private ItemContainer _itemContainer;
-            private List<BasePlayer> _looters = new List<BasePlayer>();
+            private readonly List<BasePlayer> _looters = new List<BasePlayer>();
             private bool _processedRestrictedItems;
-            private bool _dirty = false;
+            private bool _dirty;
 
             [JsonIgnore]
             public Backpacks Plugin;
@@ -1297,7 +1306,10 @@ namespace Oxide.Plugins
             public BackpackNetworkController NetworkController { get; private set; }
 
             [JsonIgnore]
-            public string OwnerIdString { get; private set; }
+            private readonly string _ownerIdString;
+            
+            [JsonIgnore]
+            private readonly string _filepath;
 
             [JsonProperty("OwnerID")]
             public ulong OwnerId { get; set; }
@@ -1308,11 +1320,12 @@ namespace Oxide.Plugins
             [JsonProperty("Items")]
             public List<ItemData> ItemDataCollection = new List<ItemData>();
 
-            public Backpack(Backpacks plugin, ulong ownerId) : base()
+            public Backpack(Backpacks plugin, ulong ownerId)
             {
                 Plugin = plugin;
                 OwnerId = ownerId;
-                OwnerIdString = OwnerId.ToString();
+                _ownerIdString = OwnerId.ToString();
+                _filepath = BackpackManager.DetermineBackpackPath(OwnerId);
             }
 
             ~Backpack()
@@ -1321,13 +1334,13 @@ namespace Oxide.Plugins
                 NetworkController?.UnsubscribeAll();
             }
 
-            public IPlayer FindOwnerPlayer() => Plugin.covalence.Players.FindPlayerById(OwnerIdString);
+            public IPlayer FindOwnerPlayer() => Plugin.covalence.Players.FindPlayerById(_ownerIdString);
 
             public ushort GetAllowedSize()
             {
                 foreach(var kvp in Plugin._backpackSizePermissions)
                 {
-                    if (Plugin.permission.UserHasPermission(OwnerIdString, kvp.Key))
+                    if (Plugin.permission.UserHasPermission(_ownerIdString, kvp.Key))
                         return kvp.Value;
                 }
 
@@ -1384,8 +1397,7 @@ namespace Oxide.Plugins
                 if (_storageContainer == null && ItemDataCollection.Count == 0)
                     return null;
 
-                object hookResult = ExposedHooks.CanDropBackpack(Plugin, OwnerId, position);
-
+                var hookResult = ExposedHooks.CanDropBackpack(Plugin, OwnerId, position);
                 if (hookResult is bool && (bool)hookResult == false)
                     return null;
 
@@ -1397,7 +1409,7 @@ namespace Oxide.Plugins
                 if (_itemContainer.itemList.Count == 0)
                     return null;
 
-                DroppedItemContainer container = GameManager.server.CreateEntity(BackpackPrefab, position, Quaternion.identity) as DroppedItemContainer;
+                var container = GameManager.server.CreateEntity(BackpackPrefab, position, Quaternion.identity) as DroppedItemContainer;
 
                 container.gameObject.AddComponent<NoRagdollCollision>();
 
@@ -1411,7 +1423,7 @@ namespace Oxide.Plugins
                 container.inventory.entityOwner = container;
                 container.inventory.SetFlag(ItemContainer.Flag.NoItemInput, true);
 
-                foreach (Item item in _itemContainer.itemList.ToArray())
+                foreach (var item in _itemContainer.itemList.ToArray())
                 {
                     if (!item.MoveToContainer(container.inventory))
                     {
@@ -1439,8 +1451,7 @@ namespace Oxide.Plugins
 
                 if (!force)
                 {
-                    object hookResult = ExposedHooks.CanEraseBackpack(Plugin, OwnerId);
-
+                    var hookResult = ExposedHooks.CanEraseBackpack(Plugin, OwnerId);
                     if (hookResult is bool && (bool)hookResult == false)
                         return;
                 }
@@ -1475,12 +1486,10 @@ namespace Oxide.Plugins
                 // There is possibly no container if wiping a backpack on server wipe.
                 if (_itemContainer != null)
                 {
-                    ItemDataCollection = _itemContainer.itemList
-                        .Select(ItemData.FromItem)
-                        .ToList();
+                    ItemDataCollection = ItemData.FromItemList(_itemContainer.itemList);
                 }
 
-                Backpacks.SaveData(this, $"{nameof(Backpacks)}/{OwnerId}");
+                Backpacks.SaveData(this, _filepath);
                 _dirty = false;
             }
 
@@ -1513,21 +1522,21 @@ namespace Oxide.Plugins
             {
                 EnsureContainer();
 
-                List<Item> matchingItemStacks = _itemContainer.FindItemsByItemID(itemID);
-                int amountTransferred = 0;
+                var matchingItemStacks = _itemContainer.FindItemsByItemID(itemID);
+                var amountTransferred = 0;
 
                 foreach (Item itemStack in matchingItemStacks)
                 {
-                    int remainingDesiredAmount = desiredAmount - amountTransferred;
-                    Item itemToTransfer = (itemStack.amount > remainingDesiredAmount) ? itemStack.SplitItem(remainingDesiredAmount) : itemStack;
-                    int initialStackAmount = itemToTransfer.amount;
+                    var remainingDesiredAmount = desiredAmount - amountTransferred;
+                    var itemToTransfer = (itemStack.amount > remainingDesiredAmount) ? itemStack.SplitItem(remainingDesiredAmount) : itemStack;
+                    var initialStackAmount = itemToTransfer.amount;
 
-                    bool transferFullySucceeded = player.inventory.GiveItem(itemToTransfer);
+                    var transferFullySucceeded = player.inventory.GiveItem(itemToTransfer);
                     amountTransferred += initialStackAmount;
 
                     if (!transferFullySucceeded)
                     {
-                        int amountRemainingInStack = itemToTransfer.amount;
+                        var amountRemainingInStack = itemToTransfer.amount;
 
                         // Decrement the amountTransferred by the amount remaining in the stack
                         // Since earlier we incremented it by the full stack amount
@@ -1690,26 +1699,17 @@ namespace Oxide.Plugins
                 // Restricted items will be dropped when the owner opens the backpack.
                 if (Plugin._config.ItemRestrictionEnabled
                     && _processedRestrictedItems
-                    && !Plugin.permission.UserHasPermission(OwnerIdString, NoBlacklistPermission)
+                    && !Plugin.permission.UserHasPermission(_ownerIdString, NoBlacklistPermission)
                     && Plugin._config.IsRestrictedItem(item))
                 {
                     return false;
                 }
 
-                object hookResult = ExposedHooks.CanBackpackAcceptItem(Plugin, OwnerId, _itemContainer, item);
+                var hookResult = ExposedHooks.CanBackpackAcceptItem(Plugin, OwnerId, _itemContainer, item);
                 if (hookResult is bool && (bool)hookResult == false)
                     return false;
 
                 return true;
-            }
-
-            private bool CanAcceptItem(Item item, int amount)
-            {
-                // Explicitly track hook time so server owners can be informed of the cost.
-                Plugin.TrackStart();
-                var result = ShouldAcceptItem(item);
-                Plugin.TrackEnd();
-                return result;
             }
 
             private void EnsureContainer()
@@ -1718,7 +1718,9 @@ namespace Oxide.Plugins
                     return;
 
                 if (NetworkController == null)
+                {
                     NetworkController = Plugin._backpackManager.CreateNetworkController();
+                }
 
                 _storageContainer = SpawnStorageContainer(GetAllowedCapacity());
                 _itemContainer = _storageContainer.inventory;
@@ -1739,13 +1741,23 @@ namespace Oxide.Plugins
                     if (item != null)
                     {
                         if (!item.MoveToContainer(_itemContainer, item.position))
+                        {
                             item.Remove();
+                        }
                     }
                 }
 
                 // Apply the item filter only after filling the container initially.
                 // This avoids unnecessary CanBackpackAcceptItem hooks calls on initial creation.
-                _itemContainer.canAcceptItem += this.CanAcceptItem;
+                _itemContainer.canAcceptItem += (item, amount) =>
+                {
+                    // Explicitly track hook time so server owners can be informed of the cost.
+                    Plugin.TrackStart();
+                    var result = ShouldAcceptItem(item);
+                    Plugin.TrackEnd();
+                    return result;
+                };
+
                 _itemContainer.onDirty += () => _dirty = true;
             }
 
@@ -1758,7 +1770,7 @@ namespace Oxide.Plugins
                 if (_processedRestrictedItems)
                     return;
 
-                if (Plugin.permission.UserHasPermission(OwnerIdString, NoBlacklistPermission))
+                if (Plugin.permission.UserHasPermission(_ownerIdString, NoBlacklistPermission))
                 {
                     // Don't process item restrictions while the player has the noblacklist permission.
                     // Setting this flag allows the item restrictions to be processed again in case the noblacklist permission is revoked.
@@ -1786,6 +1798,31 @@ namespace Oxide.Plugins
                 _processedRestrictedItems = true;
             }
 
+            private List<Item> GetItemsBeyondCapacity(List<Item> itemList, int allowedCapacity)
+            {
+                // Item order is preserved so that compaction is more deterministic
+                // Basically, items earlier in the backpack are more likely to stay in the backpack
+                itemList.Sort((a, b) => a.position.CompareTo(b.position));
+
+                for (var i = 0; i < itemList.Count; i++)
+                {
+                    var item = itemList[i];
+                    if (item.position >= allowedCapacity)
+                    {
+                        // Since the list is sorted, the first time an item is found beyond the allowed capacity, every
+                        // item after that will also be beyond allowed capacity.
+                        var itemsBeyondCapacity = new List<Item>();
+                        for (var j = i; j < itemList.Count; j++)
+                        {
+                            itemsBeyondCapacity.Add(itemList[j]);
+                        }
+                        return itemsBeyondCapacity;
+                    }
+                }
+
+                return null;
+            }
+
             private void MaybeAdjustCapacityAndHandleOverflow(BasePlayer receiver)
             {
                 var allowedCapacity = GetAllowedCapacity();
@@ -1802,10 +1839,9 @@ namespace Oxide.Plugins
 
                 // Item order is preserved so that compaction is more deterministic
                 // Basically, items earlier in the backpack are more likely to stay in the backpack
-                var extraItems = _itemContainer.itemList
-                    .OrderBy(item => item.position)
-                    .Where(item => item.position >= allowedCapacity)
-                    .ToArray();
+                var extraItems = GetItemsBeyondCapacity(_itemContainer.itemList, allowedCapacity);
+                if (extraItems == null)
+                    return;
 
                 // Remove the extra items from the container so the capacity can be reduced
                 foreach (var item in extraItems)
@@ -1841,7 +1877,7 @@ namespace Oxide.Plugins
                 if (softcoreGameMode == null || ReclaimManager.instance == null)
                     return;
 
-                List<Item> reclaimItemList = Facepunch.Pool.GetList<Item>();
+                var reclaimItemList = Facepunch.Pool.GetList<Item>();
                 softcoreGameMode.AddFractionOfContainer(_itemContainer, ref reclaimItemList, Plugin._config.Softcore.ReclaimFraction);
                 if (reclaimItemList.Count > 0)
                 {
@@ -2020,7 +2056,7 @@ namespace Oxide.Plugins
                 MaxCondition = item.maxCondition,
                 Fuel = item.fuel,
                 Skin = item.skin,
-                Contents = item.contents?.itemList?.Select(FromItem).ToList(),
+                Contents = item.contents != null ? FromItemList(item.contents.itemList) : null,
                 FlameFuel = item.GetHeldEntity()?.GetComponent<FlameThrower>()?.ammo ?? 0,
                 IsBlueprint = item.IsBlueprint(),
                 BlueprintTarget = item.blueprintTarget,
@@ -2030,6 +2066,16 @@ namespace Oxide.Plugins
                 Text = item.text,
                 Flags = item.flags,
             };
+            
+            public static List<ItemData> FromItemList(List<Item> itemList)
+            {
+                var itemDataList = new List<ItemData>(itemList.Count);
+                foreach (var childItem in itemList)
+                {
+                    itemDataList.Add(FromItem(childItem));
+                }
+                return itemDataList;
+            }
         }
 
         #endregion
@@ -2101,17 +2147,11 @@ namespace Oxide.Plugins
             public ushort BackpackSize
             {
                 get { return _backpackSize; }
-                set { _backpackSize = (ushort) Mathf.Clamp(value, MinSize, MaxSize); }
+                private set { _backpackSize = (ushort) Mathf.Clamp(value, MinSize, MaxSize); }
             }
 
             [JsonProperty("Backpack Size (1-7 Rows)")]
-            public ushort BackpackSizeDeprecated
-            {
-                set
-                {
-                    BackpackSize = value;
-                }
-            }
+            private ushort DeprecatedBackpackSize { set { BackpackSize = value; } }
 
             [JsonProperty("Drop on Death (true/false)")]
             public bool DropOnDeath = true;
@@ -2196,10 +2236,10 @@ namespace Oxide.Plugins
             public bool ItemRestrictionEnabled => UseAllowlist || UseDenylist;
 
             [JsonIgnore]
-            private HashSet<int> _disallowedItemIds = new HashSet<int>();
+            private readonly HashSet<int> _disallowedItemIds = new HashSet<int>();
 
             [JsonIgnore]
-            private HashSet<int> _allowedItemIds = new HashSet<int>();
+            private readonly HashSet<int> _allowedItemIds = new HashSet<int>();
 
             public void Init(Backpacks plugin)
             {
@@ -2254,10 +2294,7 @@ namespace Oxide.Plugins
         [JsonObject(MemberSerialization.OptIn)]
         private class BaseConfiguration
         {
-            [JsonIgnore]
-            public bool UsingDefaults = false;
-
-            public string ToJson() => JsonConvert.SerializeObject(this);
+            private string ToJson() => JsonConvert.SerializeObject(this);
 
             public Dictionary<string, object> ToDictionary() => JsonHelper.Deserialize(ToJson()) as Dictionary<string, object>;
         }
