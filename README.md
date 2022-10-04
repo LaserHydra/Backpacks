@@ -30,16 +30,32 @@ Allows players to have backpacks that provide them with extra inventory space.
 - `backpacks.admin` -- required to use the `/viewbackpack` command
 - `backpacks.gui` -- required to see GUI button
 - `backpacks.use` -- required to open your own backpack
-- `backpacks.use.1 - 8` -- gives player access to a certain amount of inventory rows, overriding the configured default size *(e.g. backpacks.use.3 gives them 3 rows of item space; still requires backpacks.use)*
+- `backpacks.size.*` -- gives player access to a certain amount of inventory **slots**, overriding the configured default size (e.g. `backpacks.size.18` will give 18 slots of capacity)
+  - **Note:** In order for each size permission to exist, you must first add that size to `"Backpack Permission Sizes"` in the config
+- `backpacks.use.1 - 8` -- (deprecated: use `backpacks.size.<slots>` instead) gives player access to a certain amount of inventory **rows**, overriding the configured default size *(e.g. `backpacks.use.3` gives them 3 rows of item space; still requires backpacks.use)*
 - `backpacks.fetch` -- required to use the `backpack.fetch` command
 - `backpacks.keepondeath` -- exempts player from having their backpack erased or dropped on death
 - `backpacks.keeponwipe` -- exempts player from having their backpack erased on map wipe
 - `backpacks.noblacklist` -- exempts player from item restrictions (blacklist or whitelist)
 
+According to the config, there will be additional permissions such as `backpacks.size`
+
 ## Configuration
 
 ```json
 {
+  "Default Backpack Size": 6,
+  "Backpack Permission Sizes": [
+    6,
+    12,
+    18,
+    24,
+    30,
+    36,
+    42,
+    48
+  ],
+  "Enable Legacy Row Permissions (true/false)": true,
   "Drop on Death (true/false)": true,
   "Erase on Death (true/false)": false,
   "Clear Backpacks on Map-Wipe (true/false)": false,
@@ -67,8 +83,7 @@ Allows players to have backpacks that provide them with extra inventory space.
   },
   "Softcore": {
     "Reclaim Fraction": 0.5
-  },
-  "Backpack Size (1-8 Rows)": 1
+  }
 }
 ```
 

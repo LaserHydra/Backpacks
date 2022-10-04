@@ -18,12 +18,15 @@ namespace Oxide.Plugins
     {
         #region Fields
 
-        private const ushort MinSize = 1;
-        private const ushort MaxSize = 8;
-        private const ushort SlotsPerRow = 6;
+        private const int MinRows = 1;
+        private const int MaxRows = 8;
+        private const int MinCapacity = 1;
+        private const int MaxCapacity = 48;
+        private const int SlotsPerRow = 6;
         private const string GUIPanelName = "BackpacksUI";
 
         private const string UsagePermission = "backpacks.use";
+        private const string SizePermission = "backpacks.size";
         private const string GUIPermission = "backpacks.gui";
         private const string FetchPermission = "backpacks.fetch";
         private const string AdminPermission = "backpacks.admin";
@@ -40,9 +43,9 @@ namespace Oxide.Plugins
         private static readonly object True = true;
         private static readonly object False = false;
 
+        private readonly BackpackCapacityManager _backpackCapacityManager;
         private readonly BackpackManager _backpackManager;
         private readonly ValueObjectCache<ulong> _ulongObjectCache = new ValueObjectCache<ulong>();
-        private Dictionary<string, ushort> _backpackSizePermissions = new Dictionary<string, ushort>();
 
         private ProtectionProperties _immortalProtection;
         private string _cachedUI;
@@ -60,6 +63,7 @@ namespace Oxide.Plugins
 
         public Backpacks()
         {
+            _backpackCapacityManager = new BackpackCapacityManager(this);
             _backpackManager = new BackpackManager(this);
             _api = new ApiInstance(this);
         }
@@ -80,16 +84,7 @@ namespace Oxide.Plugins
             permission.RegisterPermission(KeepOnWipePermission, this);
             permission.RegisterPermission(NoBlacklistPermission, this);
 
-            for (var size = MinSize; size <= MaxSize; size++)
-            {
-                var sizePermission = $"{UsagePermission}.{size}";
-                permission.RegisterPermission(sizePermission, this);
-                _backpackSizePermissions.Add(sizePermission, size);
-            }
-
-            _backpackSizePermissions = _backpackSizePermissions
-                .OrderByDescending(kvp => kvp.Value)
-                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+            _backpackCapacityManager.Init(_config);
 
             _storedData = StoredData.Load();
 
@@ -237,22 +232,30 @@ namespace Oxide.Plugins
                 _backpackManager.Drop(player.userID, player.transform.position);
         }
 
-        private void OnGroupPermissionGranted(string group, string perm)
+        private void OnGroupPermissionGranted(string groupName, string perm)
         {
-            if (perm.Equals(GUIPermission))
+            if (perm.StartsWith(SizePermission) || perm.StartsWith(UsagePermission))
             {
-                foreach (var player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
+                _backpackManager.HandleCapacityPermissionChangedForGroup(groupName);
+            }
+            else if (perm.Equals(GUIPermission))
+            {
+                foreach (var player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, groupName)))
                 {
                     CreateGUI(player.Object as BasePlayer);
                 }
             }
         }
 
-        private void OnGroupPermissionRevoked(string group, string perm)
+        private void OnGroupPermissionRevoked(string groupName, string perm)
         {
-            if (perm.Equals(GUIPermission))
+            if (perm.StartsWith(SizePermission) || perm.StartsWith(UsagePermission))
             {
-                foreach (var player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, group)))
+                _backpackManager.HandleCapacityPermissionChangedForGroup(groupName);
+            }
+            else if (perm.Equals(GUIPermission))
+            {
+                foreach (var player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, groupName)))
                 {
                     if (!player.HasPermission(GUIPermission))
                     {
@@ -264,7 +267,11 @@ namespace Oxide.Plugins
 
         private void OnUserPermissionGranted(string userId, string perm)
         {
-            if (perm.Equals(GUIPermission))
+            if (perm.StartsWith(SizePermission) || perm.StartsWith(UsagePermission))
+            {
+                _backpackManager.HandleCapacityPermissionChangedForUser(userId);
+            }
+            else if (perm.Equals(GUIPermission))
             {
                 var player = BasePlayer.Find(userId);
                 if (player != null)
@@ -276,7 +283,11 @@ namespace Oxide.Plugins
 
         private void OnUserPermissionRevoked(string userId, string perm)
         {
-            if (perm.Equals(GUIPermission) && !permission.UserHasPermission(userId, GUIPermission))
+            if (perm.StartsWith(SizePermission) || perm.StartsWith(UsagePermission))
+            {
+                _backpackManager.HandleCapacityPermissionChangedForUser(userId);
+            }
+            else if (perm.Equals(GUIPermission) && !permission.UserHasPermission(userId, GUIPermission))
             {
                 var player = BasePlayer.Find(userId);
                 if (player != null)
@@ -945,6 +956,85 @@ namespace Oxide.Plugins
 
         #endregion
 
+        #region Backpack Capacity Manager
+
+        private class BackpackSize
+        {
+            public readonly int Capacity;
+            public readonly string Permission;
+
+            public BackpackSize(int capacity, string permission)
+            {
+                Capacity = capacity;
+                Permission = permission;
+            }
+        }
+
+        private class BackpackCapacityManager
+        {
+            private readonly Backpacks _plugin;
+            private Configuration _config;
+            private BackpackSize[] _sortedBackpackSizes;
+
+            public BackpackCapacityManager(Backpacks plugin)
+            {
+                _plugin = plugin;
+            }
+
+            public void Init(Configuration config)
+            {
+                _config = config;
+
+                var backpackSizeList = new List<BackpackSize>();
+
+                if (config.EnableLegacyRowPermissions)
+                {
+                    for (var row = MinRows; row <= MaxRows; row++)
+                    {
+                        var backpackSize = new BackpackSize(row * SlotsPerRow, $"{UsagePermission}.{row.ToString()}");
+                        _plugin.permission.RegisterPermission(backpackSize.Permission, _plugin);
+                        backpackSizeList.Add(backpackSize);
+                    }
+                }
+
+                foreach (var capacity in new HashSet<int>(config.BackpackPermissionSizes))
+                {
+                    backpackSizeList.Add(new BackpackSize(capacity, $"{SizePermission}.{capacity.ToString()}"));
+                }
+
+                backpackSizeList.Sort((a, b) => a.Capacity.CompareTo(b.Capacity));
+                _sortedBackpackSizes = backpackSizeList.ToArray();
+
+                foreach (var backpackSize in _sortedBackpackSizes)
+                {
+                    // The "backpacks.use.X" perms are registered all at once to make them easier to view.
+                    if (backpackSize.Permission.StartsWith(UsagePermission))
+                        continue;
+
+                    _plugin.permission.RegisterPermission(backpackSize.Permission, _plugin);
+                }
+            }
+
+            public int DetermineCapacity(string userIdString)
+            {
+                if (!_plugin.permission.UserHasPermission(userIdString, UsagePermission))
+                    return 0;
+
+                for (var i = _sortedBackpackSizes.Length - 1; i >= 0; i--)
+                {
+                    var backpackSize = _sortedBackpackSizes[i];
+                    if (_plugin.permission.UserHasPermission(userIdString, backpackSize.Permission))
+                    {
+                        return backpackSize.Capacity;
+                    }
+                }
+
+                return _config.DefaultBackpackSize;
+            }
+        }
+
+        #endregion
+
         #region Backpack Manager
 
         private class BackpackManager
@@ -997,6 +1087,30 @@ namespace Oxide.Plugins
                 _plugin = plugin;
             }
 
+            public void HandleCapacityPermissionChangedForGroup(string groupName)
+            {
+                foreach (var backpack in _cachedBackpacks.Values)
+                {
+                    if (!_plugin.permission.UserHasGroup(backpack.OwnerIdString, groupName))
+                        continue;
+
+                    backpack.CapacityNeedsRefresh = true;
+                }
+            }
+
+            public void HandleCapacityPermissionChangedForUser(string userIdString)
+            {
+                ulong userId;
+                if (!ulong.TryParse(userIdString, out userId))
+                    return;
+
+                Backpack backpack;
+                if (!_cachedBackpacks.TryGetValue(userId, out backpack))
+                    return;
+
+                backpack.CapacityNeedsRefresh = true;
+            }
+
             public bool IsBackpackNetworkGroup(Network.Visibility.Group group)
             {
                 return group.ID >= StartNetworkGroupId && group.ID < _nextNetworkGroupId;
@@ -1005,18 +1119,6 @@ namespace Oxide.Plugins
             public BackpackNetworkController CreateNetworkController()
             {
                 return new BackpackNetworkController(_nextNetworkGroupId++);
-            }
-
-            private string GetBackpackPath(ulong userId)
-            {
-                string filepath;
-                if (!_backpackPathCache.TryGetValue(userId, out filepath))
-                {
-                    filepath = DetermineBackpackPath(userId);
-                    _backpackPathCache[userId] = filepath;
-                }
-
-                return filepath;
             }
 
             public bool HasBackpackFile(ulong userId)
@@ -1089,6 +1191,18 @@ namespace Oxide.Plugins
             public bool OpenBackpack(ulong backpackOwnerId, BasePlayer looter)
             {
                 return GetBackpack(backpackOwnerId).Open(looter);
+            }
+
+            private string GetBackpackPath(ulong userId)
+            {
+                string filepath;
+                if (!_backpackPathCache.TryGetValue(userId, out filepath))
+                {
+                    filepath = DetermineBackpackPath(userId);
+                    _backpackPathCache[userId] = filepath;
+                }
+
+                return filepath;
             }
 
             private Backpack Load(ulong userId)
@@ -1291,26 +1405,9 @@ namespace Oxide.Plugins
             }
         }
 
+        [JsonObject(MemberSerialization.OptIn)]
         private class Backpack
         {
-            private StorageContainer _storageContainer;
-            private ItemContainer _itemContainer;
-            private readonly List<BasePlayer> _looters = new List<BasePlayer>();
-            private bool _processedRestrictedItems;
-            private bool _dirty;
-
-            [JsonIgnore]
-            public Backpacks Plugin;
-
-            [JsonIgnore]
-            public BackpackNetworkController NetworkController { get; private set; }
-
-            [JsonIgnore]
-            private readonly string _ownerIdString;
-            
-            [JsonIgnore]
-            private readonly string _filepath;
-
             [JsonProperty("OwnerID")]
             public ulong OwnerId { get; set; }
 
@@ -1320,11 +1417,24 @@ namespace Oxide.Plugins
             [JsonProperty("Items")]
             public List<ItemData> ItemDataCollection = new List<ItemData>();
 
+            public Backpacks Plugin;
+            public BackpackNetworkController NetworkController { get; private set; }
+            public bool CapacityNeedsRefresh = true;
+            public readonly string OwnerIdString;
+
+            private readonly string _filepath;
+            private StorageContainer _storageContainer;
+            private ItemContainer _itemContainer;
+            private readonly List<BasePlayer> _looters = new List<BasePlayer>();
+            private int _capacity;
+            private bool _processedRestrictedItems;
+            private bool _dirty;
+
             public Backpack(Backpacks plugin, ulong ownerId)
             {
                 Plugin = plugin;
                 OwnerId = ownerId;
-                _ownerIdString = OwnerId.ToString();
+                OwnerIdString = OwnerId.ToString();
                 _filepath = BackpackManager.DetermineBackpackPath(OwnerId);
             }
 
@@ -1334,18 +1444,7 @@ namespace Oxide.Plugins
                 NetworkController?.UnsubscribeAll();
             }
 
-            public IPlayer FindOwnerPlayer() => Plugin.covalence.Players.FindPlayerById(_ownerIdString);
-
-            public ushort GetAllowedSize()
-            {
-                foreach(var kvp in Plugin._backpackSizePermissions)
-                {
-                    if (Plugin.permission.UserHasPermission(_ownerIdString, kvp.Key))
-                        return kvp.Value;
-                }
-
-                return Plugin._config.BackpackSize;
-            }
+            public IPlayer FindOwnerPlayer() => Plugin.covalence.Players.FindPlayerById(OwnerIdString);
 
             public ItemContainer GetContainer(bool ensureContainer = false)
             {
@@ -1423,8 +1522,9 @@ namespace Oxide.Plugins
                 container.inventory.entityOwner = container;
                 container.inventory.SetFlag(ItemContainer.Flag.NoItemInput, true);
 
-                foreach (var item in _itemContainer.itemList.ToArray())
+                for (var i = _itemContainer.itemList.Count - 1; i >= 0; i--)
                 {
+                    var item = _itemContainer.itemList[i];
                     if (!item.MoveToContainer(container.inventory))
                     {
                         item.RemoveFromContainer();
@@ -1624,16 +1724,22 @@ namespace Oxide.Plugins
 
             private void ForceCloseAllLooters()
             {
-                if (_looters.Count == 0)
-                    return;
-
-                foreach (BasePlayer looter in _looters.ToArray())
+                for (var i = _looters.Count - 1; i >= 0; i--)
                 {
-                    ForceCloseLooter(looter);
+                    ForceCloseLooter(_looters[i]);
                 }
             }
 
-            private int GetAllowedCapacity() => GetAllowedSize() * SlotsPerRow;
+            private int GetAllowedCapacity()
+            {
+                if (CapacityNeedsRefresh)
+                {
+                    _capacity = Mathf.Clamp(Plugin._backpackCapacityManager.DetermineCapacity(OwnerIdString), MinCapacity, MaxCapacity);
+                    CapacityNeedsRefresh = false;
+                }
+
+                return _capacity;
+            }
 
             private int GetHighestUsedSlot()
             {
@@ -1699,7 +1805,7 @@ namespace Oxide.Plugins
                 // Restricted items will be dropped when the owner opens the backpack.
                 if (Plugin._config.ItemRestrictionEnabled
                     && _processedRestrictedItems
-                    && !Plugin.permission.UserHasPermission(_ownerIdString, NoBlacklistPermission)
+                    && !Plugin.permission.UserHasPermission(OwnerIdString, NoBlacklistPermission)
                     && Plugin._config.IsRestrictedItem(item))
                 {
                     return false;
@@ -1732,7 +1838,7 @@ namespace Oxide.Plugins
                     // Temporarily increase the capacity to allow all items to fit
                     // Extra items will be addressed when the backpack is opened by the owner
                     // If an admin views the backpack in the meantime, it will appear as max capacity
-                    _itemContainer.capacity = MaxSize * SlotsPerRow;
+                    _itemContainer.capacity = MaxCapacity;
                 }
 
                 foreach (var backpackItem in ItemDataCollection)
@@ -1770,7 +1876,7 @@ namespace Oxide.Plugins
                 if (_processedRestrictedItems)
                     return;
 
-                if (Plugin.permission.UserHasPermission(_ownerIdString, NoBlacklistPermission))
+                if (Plugin.permission.UserHasPermission(OwnerIdString, NoBlacklistPermission))
                 {
                     // Don't process item restrictions while the player has the noblacklist permission.
                     // Setting this flag allows the item restrictions to be processed again in case the noblacklist permission is revoked.
@@ -1841,7 +1947,10 @@ namespace Oxide.Plugins
                 // Basically, items earlier in the backpack are more likely to stay in the backpack
                 var extraItems = GetItemsBeyondCapacity(_itemContainer.itemList, allowedCapacity);
                 if (extraItems == null)
+                {
+                    _itemContainer.capacity = allowedCapacity;
                     return;
+                }
 
                 // Remove the extra items from the container so the capacity can be reduced
                 foreach (var item in extraItems)
@@ -2141,17 +2250,20 @@ namespace Oxide.Plugins
 
         private class Configuration : BaseConfiguration
         {
-            private ushort _backpackSize = 1;
+            [JsonProperty("Default Backpack Size")]
+            public int DefaultBackpackSize = 6;
+
+            [JsonProperty("Backpack Permission Sizes")]
+            public int[] BackpackPermissionSizes = new int[] { 6, 12, 18, 24, 30, 36, 42, 48 };
+
+            [JsonProperty("Enable Legacy Row Permissions (true/false)")]
+            public bool EnableLegacyRowPermissions = true;
 
             [JsonProperty("Backpack Size (1-8 Rows)")]
-            public ushort BackpackSize
-            {
-                get { return _backpackSize; }
-                private set { _backpackSize = (ushort) Mathf.Clamp(value, MinSize, MaxSize); }
-            }
+            private int DeprecatedBackpackRows { set { DefaultBackpackSize = value * 6; } }
 
             [JsonProperty("Backpack Size (1-7 Rows)")]
-            private ushort DeprecatedBackpackSize { set { BackpackSize = value; } }
+            private int DeprecatedBackpackSize { set { DefaultBackpackSize = value * 6; } }
 
             [JsonProperty("Drop on Death (true/false)")]
             public bool DropOnDeath = true;
