@@ -1041,38 +1041,6 @@ namespace Oxide.Plugins
         {
             public static string DetermineBackpackPath(ulong userId) => $"{nameof(Backpacks)}/{userId.ToString()}";
 
-            // Data migration from v2.x.x to v3.x.x
-            private static bool TryMigrateData(string fileName)
-            {
-                if (!Interface.Oxide.DataFileSystem.ExistsDatafile(fileName))
-                {
-                    return false;
-                }
-
-                Dictionary<string, object> data;
-                LoadData(out data, fileName);
-                if (data == null)
-                    return false;
-
-                if (data.ContainsKey("ownerID") && data.ContainsKey("Inventory"))
-                {
-                    var inventory = (JObject) data["Inventory"];
-
-                    data["OwnerID"] = data["ownerID"];
-                    data["Items"] = inventory.Value<object>("Items");
-
-                    data.Remove("ownerID");
-                    data.Remove("Inventory");
-                    data.Remove("Size");
-
-                    SaveData(data, fileName);
-
-                    return true;
-                }
-
-                return false;
-            }
-
             private const uint StartNetworkGroupId = 10000000;
 
             private readonly Backpacks _plugin;
@@ -1208,8 +1176,6 @@ namespace Oxide.Plugins
             private Backpack Load(ulong userId)
             {
                 var fileName = GetBackpackPath(userId);
-
-                TryMigrateData(fileName);
 
                 Backpack backpack = null;
                 if (HasBackpackFile(userId))
