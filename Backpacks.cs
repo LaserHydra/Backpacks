@@ -267,6 +267,76 @@ namespace Oxide.Plugins
         #endregion
 
         #region API
+		
+		private bool API_TryInsertBackpackFromJson(ulong userId, string json)
+		{
+			Backpack backpack = Backpack.Get(userId);
+			if (backpack == null)
+			{
+				return false;
+			}
+			
+			backpack.ForceCloseAllLooters();
+			ItemContainer container = backpack.GetContainer();
+			if (container == null || container.itemList == null || container.itemList.Count > 0)
+			{
+				return false;
+			}
+					
+			List<ItemData> itemData = Newtonsoft.Json.JsonConvert.DeserializeObject<List<ItemData>>(json);
+			if (itemData.Count == 0)
+			{
+				return false;
+			}
+			Backpack.TryEraseForPlayer(userId);
+			ItemContainer targetContainer = backpack.GetContainer();
+
+			foreach (var item in itemData)
+			{
+				Item _item = null;
+				try
+				{
+					_item = item.ToItem();
+				}
+				catch (Exception ex)
+				{
+					Puts(ex.Message);
+				}
+				if (_item != null)
+				{
+					_item.MoveToContainer(targetContainer);
+				}
+			}
+			backpack.SaveData();
+			return true;
+		}
+		
+		private string API_TryGetBackpackToJson(ulong userId)
+		{
+			Backpack backpack = Backpack.Get(userId);
+			if (backpack == null)
+			{
+				return string.Empty;
+			}
+			
+			backpack.ForceCloseAllLooters();
+			ItemContainer container = backpack.GetContainer();
+			if (container != null)
+			{
+				if (container.itemList != null)
+				{
+					List<ItemData> itemData = new List<ItemData>();
+					foreach (var item in container.itemList)
+					{
+						ItemData itemData = ItemData.FromItem(item);
+						itemData.Add(itemData);
+					}
+
+					string result = Newtonsoft.Json.JsonConvert.SerializeObject(itemData);
+					return result;
+				}
+			}
+		}
 
         private Dictionary<ulong, ItemContainer> API_GetExistingBackpacks()
         {
