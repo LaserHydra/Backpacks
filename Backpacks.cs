@@ -316,7 +316,7 @@ namespace Oxide.Plugins
 			Backpack backpack = Backpack.Get(userId);
 			if (backpack == null)
 			{
-				return string.Empty;
+				return null;
 			}
 			
 			backpack.ForceCloseAllLooters();
@@ -336,6 +336,8 @@ namespace Oxide.Plugins
 					return result;
 				}
 			}
+			
+			return null;
 		}
 
         private Dictionary<ulong, ItemContainer> API_GetExistingBackpacks()
