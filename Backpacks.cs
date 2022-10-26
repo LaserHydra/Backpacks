@@ -277,8 +277,8 @@ namespace Oxide.Plugins
 			}
 			
 			backpack.ForceCloseAllLooters();
-			ItemContainer container = backpack.GetContainer();
-			if (container == null || container.itemList == null || container.itemList.Count > 0)
+			ItemContainer targetContainer = backpack.GetContainer();
+			if (targetContainer == null || targetContainer.itemList == null || targetContainer.itemList.Count > 0)
 			{
 				return false;
 			}
@@ -289,7 +289,6 @@ namespace Oxide.Plugins
 				return false;
 			}
 			Backpack.TryEraseForPlayer(userId);
-			ItemContainer targetContainer = backpack.GetContainer();
 
 			foreach (var item in itemData)
 			{
