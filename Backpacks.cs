@@ -1,4 +1,4 @@
-﻿using Newtonsoft.Json;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Oxide.Core;
 using Oxide.Core.Libraries.Covalence;
@@ -267,78 +267,78 @@ namespace Oxide.Plugins
         #endregion
 
         #region API
-		
-		private int API_TryInsertBackpackFromJson(ulong userId, string json)
-		{
-						Backpack backpack = Backpack.Get(userId);
-			if (backpack == null)
-			{
-				return -1;
-			}
-			
-			backpack.ForceCloseAllLooters();
-			ItemContainer container = backpack.GetContainer();
-			if (container == null || container.itemList == null || container.itemList.Count > 0)
-			{
-				return -1;
-			}
-					
-			List<ItemData> itemData = Newtonsoft.Json.JsonConvert.DeserializeObject<List<ItemData>>(json);
-			if (itemData.Count == 0)
-			{
-				return 0;
-			}
-			Backpack.TryEraseForPlayer(userId);
-			ItemContainer targetContainer = backpack.GetContainer();
 
-            		int counter = 0;
-			foreach (var item in itemData)
-			{
-				Item _item = null;
-				try
-				{
-					_item = item.ToItem();
-				}
-				catch (Exception ex)
-				{
-					Puts(ex.Message);
-					continue;
-				}
-			    _item.MoveToContainer(targetContainer);
-				counter++;
-			}
-			backpack.SaveData();
-			return counter;
-		}
-		
-		private string API_TryGetBackpackToJson(ulong userId)
-		{
-			Backpack backpack = Backpack.Get(userId);
-			if (backpack == null)
-			{
-				return null;
-			}
-			
-			backpack.ForceCloseAllLooters();
-			ItemContainer container = backpack.GetContainer();
-			if (container != null)
-			{
-				if (container.itemList != null)
-				{
-					List<ItemData> itemData = new List<ItemData>();
-					foreach (var item in container.itemList)
-					{
-						ItemData itemData = ItemData.FromItem(item);
-						itemData.Add(itemData);
-					}
+        private bool API_TryInsertBackpackFromJson(ulong userId, string json)
+        {
+            Backpack backpack = _backpackManager.GetBackpack(userId);
+            if (backpack == null)
+            {
+                return false;
+            }
 
-					string result = Newtonsoft.Json.JsonConvert.SerializeObject(itemData);
-					return result;
-				}
-			}
-			
-			return null;
-		}
+            backpack.ForceCloseAllLooters();
+            ItemContainer container = backpack.GetContainer();
+            if (container == null || container.itemList == null || container.itemList.Count > 0)
+            {
+                return false;
+            }
+
+            List<ItemData> itemData = Newtonsoft.Json.JsonConvert.DeserializeObject<List<ItemData>>(json);
+            if (itemData.Count == 0)
+            {
+                return false;
+            }
+            _backpackManager.TryEraseForPlayer(userId);
+            ItemContainer targetContainer = backpack.GetContainer();
+
+            foreach (var item in itemData)
+            {
+                Item _item = null;
+                try
+                {
+                    _item = item.ToItem();
+                }
+                catch (Exception ex)
+                {
+                    Puts(ex.Message);
+                }
+                if (_item != null)
+                {
+                    _item.MoveToContainer(targetContainer);
+                }
+            }
+            backpack.SaveData();
+            return true;
+        }
+
+        private string API_TryGetBackpackToJson(ulong userId)
+        {            
+            Backpack backpack = _backpackManager.GetBackpack(userId);
+            if (backpack == null)
+            {
+                return null;
+            }
+
+            backpack.ForceCloseAllLooters();
+            ItemContainer container = backpack.GetContainer();
+            if (container != null)
+            {
+                if (container.itemList != null)
+                {
+                    List<ItemData> itemData = new List<ItemData>();
+                    foreach (var item in container.itemList)
+                    {
+                        ItemData _itemData = ItemData.FromItem(item);
+                        itemData.Add(_itemData);
+                    }
+
+                    string result = Newtonsoft.Json.JsonConvert.SerializeObject(itemData);
+                    return result;
+                }
+            }
+
+            return null;
+        }
 
         private Dictionary<ulong, ItemContainer> API_GetExistingBackpacks()
         {
@@ -832,7 +832,7 @@ namespace Oxide.Plugins
             public ushort BackpackSize
             {
                 get { return _backpackSize; }
-                set { _backpackSize = (ushort) Mathf.Clamp(value, MinSize, MaxSize); }
+                set { _backpackSize = (ushort)Mathf.Clamp(value, MinSize, MaxSize); }
             }
 
             [JsonProperty("Backpack Size (1-7 Rows)")]
@@ -989,7 +989,7 @@ namespace Oxide.Plugins
 
                 if (data.ContainsKey("ownerID") && data.ContainsKey("Inventory"))
                 {
-                    var inventory = (JObject) data["Inventory"];
+                    var inventory = (JObject)data["Inventory"];
 
                     data["OwnerID"] = data["ownerID"];
                     data["Items"] = inventory.Value<object>("Items");
@@ -1267,7 +1267,7 @@ namespace Oxide.Plugins
                 _instance?.TrackStart();
 
                 _backpack.OnClosed(looter);
-				Interface.CallHook("OnBackpackClosed", looter, _backpack.OwnerId, _backpack.GetContainer());
+                Interface.CallHook("OnBackpackClosed", looter, _backpack.OwnerId, _backpack.GetContainer());
 
                 if (_instance != null && !_instance._config.SaveBackpacksOnServerSave)
                 {
@@ -1317,7 +1317,7 @@ namespace Oxide.Plugins
 
             public ushort GetAllowedSize()
             {
-                foreach(var kvp in _instance._backpackSizePermissions)
+                foreach (var kvp in _instance._backpackSizePermissions)
                 {
                     if (_instance.permission.UserHasPermission(OwnerIdString, kvp.Key))
                         return kvp.Value;
@@ -1599,7 +1599,7 @@ namespace Oxide.Plugins
                 OnClosed(looter);
             }
 
-            private void ForceCloseAllLooters()
+            public void ForceCloseAllLooters()
             {
                 if (_looters.Count == 0)
                     return;
