@@ -268,28 +268,30 @@ namespace Oxide.Plugins
 
         #region API
 		
-		private bool API_TryInsertBackpackFromJson(ulong userId, string json)
+		private int API_TryInsertBackpackFromJson(ulong userId, string json)
 		{
-			Backpack backpack = Backpack.Get(userId);
+						Backpack backpack = Backpack.Get(userId);
 			if (backpack == null)
 			{
-				return false;
+				return -1;
 			}
 			
 			backpack.ForceCloseAllLooters();
-			ItemContainer targetContainer = backpack.GetContainer();
-			if (targetContainer == null || targetContainer.itemList == null || targetContainer.itemList.Count > 0)
+			ItemContainer container = backpack.GetContainer();
+			if (container == null || container.itemList == null || container.itemList.Count > 0)
 			{
-				return false;
+				return -1;
 			}
 					
 			List<ItemData> itemData = Newtonsoft.Json.JsonConvert.DeserializeObject<List<ItemData>>(json);
 			if (itemData.Count == 0)
 			{
-				return false;
+				return 0;
 			}
 			Backpack.TryEraseForPlayer(userId);
+			ItemContainer targetContainer = backpack.GetContainer();
 
+            		int counter = 0;
 			foreach (var item in itemData)
 			{
 				Item _item = null;
@@ -300,14 +302,13 @@ namespace Oxide.Plugins
 				catch (Exception ex)
 				{
 					Puts(ex.Message);
+					continue;
 				}
-				if (_item != null)
-				{
-					_item.MoveToContainer(targetContainer);
-				}
+			    _item.MoveToContainer(targetContainer);
+				counter++;
 			}
 			backpack.SaveData();
-			return true;
+			return counter;
 		}
 		
 		private string API_TryGetBackpackToJson(ulong userId)
