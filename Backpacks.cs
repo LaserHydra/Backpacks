@@ -366,7 +366,7 @@ namespace Oxide.Plugins
                     [nameof(SumBackpackItems)] = new Func<ulong, Dictionary<string, object>, int>(SumBackpackItems),
                     [nameof(CountBackpackItems)] = new Func<ulong, Dictionary<string, object>, int>(CountBackpackItems),
                     [nameof(TakeBackpackItems)] = new Func<ulong, Dictionary<string, object>, int, List<Item>, int>(TakeBackpackItems),
-                    [nameof(TryDepositItem)] = new Func<ulong, Item, bool>(TryDepositItem),
+                    [nameof(TryDepositBackpackItem)] = new Func<ulong, Item, bool>(TryDepositBackpackItem),
                     [nameof(WriteBackpackContentsFromJson)] = new Action<ulong, string>(WriteBackpackContentsFromJson),
                     [nameof(ReadBackpackContentsAsJson)] = new Func<ulong, string>(ReadBackpackContentsAsJson)
                 };
@@ -440,7 +440,7 @@ namespace Oxide.Plugins
                 return _backpackManager.GetBackpackIfExists(ownerId)?.TakeItems(ref itemQuery, amount, collect) ?? 0;
             }
 
-            public bool TryDepositItem(ulong ownerId, Item item)
+            public bool TryDepositBackpackItem(ulong ownerId, Item item)
             {
                 return _backpackManager.GetBackpack(ownerId).TryDepositItem(item);
             }
@@ -528,10 +528,10 @@ namespace Oxide.Plugins
             return _intObjectCache.Get(_api.TakeBackpackItems(ownerId, dict, amount, collect));
         }
 
-        [HookMethod(nameof(API_TryDepositItem))]
-        public object API_TryDepositItem(ulong ownerId, Item item)
+        [HookMethod(nameof(API_TryDepositBackpackItem))]
+        public object API_TryDepositBackpackItem(ulong ownerId, Item item)
         {
-            return BooleanNoAlloc(_api.TryDepositItem(ownerId, item));
+            return BooleanNoAlloc(_api.TryDepositBackpackItem(ownerId, item));
         }
 
         [HookMethod(nameof(API_WriteBackpackContentsFromJson))]
