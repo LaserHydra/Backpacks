@@ -367,6 +367,8 @@ namespace Oxide.Plugins
                     [nameof(CountBackpackItems)] = new Func<ulong, Dictionary<string, object>, int>(CountBackpackItems),
                     [nameof(TakeBackpackItems)] = new Func<ulong, Dictionary<string, object>, int, List<Item>, int>(TakeBackpackItems),
                     [nameof(TryDepositItem)] = new Func<ulong, Item, bool>(TryDepositItem),
+                    [nameof(WriteBackpackContentsFromJson)] = new Action<ulong, string>(WriteBackpackContentsFromJson),
+                    [nameof(ReadBackpackContentsAsJson)] = new Func<ulong, string>(ReadBackpackContentsAsJson)
                 };
             }
 
@@ -441,6 +443,16 @@ namespace Oxide.Plugins
             public bool TryDepositItem(ulong ownerId, Item item)
             {
                 return _backpackManager.GetBackpack(ownerId).TryDepositItem(item);
+            }
+
+            public void WriteBackpackContentsFromJson(ulong ownerId, string json)
+            {
+                _backpackManager.GetBackpack(ownerId).WriteContentsFromJson(json);
+            }
+
+            public string ReadBackpackContentsAsJson(ulong ownerId)
+            {
+                return _backpackManager.GetBackpackIfExists(ownerId)?.SerializeContentsAsJson();
             }
         }
 
@@ -520,6 +532,18 @@ namespace Oxide.Plugins
         public object API_TryDepositItem(ulong ownerId, Item item)
         {
             return BooleanNoAlloc(_api.TryDepositItem(ownerId, item));
+        }
+
+        [HookMethod(nameof(API_WriteBackpackContentsFromJson))]
+        public void API_WriteBackpackContentsFromJson(ulong ownerId, string json)
+        {
+            _api.WriteBackpackContentsFromJson(ownerId, json);
+        }
+
+        [HookMethod(nameof(API_ReadBackpackContentsAsJson))]
+        public object API_ReadBackpackContentsAsJson(ulong ownerId)
+        {
+            return _api.ReadBackpackContentsAsJson(ownerId);
         }
 
         #endregion
@@ -2988,6 +3012,11 @@ namespace Oxide.Plugins
                     NetworkController = BackpackNetworkController.Create();
                 }
 
+                SetupItemsAndContainers();
+            }
+
+            private void SetupItemsAndContainers()
+            {
                 // Sort the items so it's easier to partition the list for multiple pages.
                 ItemDataCollection.Sort((a, b) => a.Position.CompareTo(b.Position));
 
@@ -2997,7 +3026,6 @@ namespace Oxide.Plugins
                 ActualCapacity.Capacity = Math.Max(_allowedCapacity.Capacity, highestUsedPosition + 1);
 
                 var pageCount = ActualCapacity.PageCount;
-
                 if (_containerAdapters == null)
                 {
                     _containerAdapters = new ContainerAdapterCollection(pageCount);
@@ -3008,7 +3036,7 @@ namespace Oxide.Plugins
                 }
 
                 // Forget about associated entities from previous wipes.
-                if (WipeNumber != plugin._wipeNumber)
+                if (WipeNumber != Plugin._wipeNumber)
                 {
                     foreach (var itemData in ItemDataCollection)
                     {
@@ -3016,7 +3044,7 @@ namespace Oxide.Plugins
                     }
                 }
 
-                WipeNumber = plugin._wipeNumber;
+                WipeNumber = Plugin._wipeNumber;
 
                 CreateContainerAdapters();
             }
@@ -3413,6 +3441,44 @@ namespace Oxide.Plugins
                     // Note: The ItemContainer will already be Kill()'d by this point, but that's OK.
                     _storageContainer.Kill();
                 }
+            }
+
+            public string SerializeContentsAsJson()
+            {
+                using (var itemsToReleaseToPool = DisposableList<ItemData>.Get())
+                {
+                    foreach (var containerAdapter in _containerAdapters)
+                    {
+                        containerAdapter.SerializeTo(ItemDataCollection, itemsToReleaseToPool);
+                    }
+
+                    var json = JsonConvert.SerializeObject(ItemDataCollection);
+
+                    // After saving, unused ItemData instances can be pooled.
+                    PoolUtils.ResetItemsAndClear(itemsToReleaseToPool);
+
+                    // Clear the list, but don't reset the items to the pool, since they have been referenced in the container adapters.
+                    ItemDataCollection.Clear();
+
+                    return json;
+                }
+            }
+
+            public void WriteContentsFromJson(string json)
+            {
+                var itemDataList = JsonConvert.DeserializeObject<List<ItemData>>(json);
+
+                Kill();
+
+                foreach (var itemData in itemDataList)
+                {
+                    ItemDataCollection.Add(itemData);
+                }
+
+                SetupItemsAndContainers();
+
+                IsDirty = true;
+                SaveIfChanged();
             }
 
             private void CreateContainerAdapters()
