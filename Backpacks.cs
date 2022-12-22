@@ -153,9 +153,6 @@ namespace Oxide.Plugins
 
         private void OnNewSave(string filename)
         {
-            // Ensure config is loaded
-            LoadConfig();
-
             if (!_config.ClearBackpacksOnWipe)
                 return;
 
