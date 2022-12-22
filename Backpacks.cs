@@ -501,6 +501,12 @@ namespace Oxide.Plugins
         [HookMethod(nameof(API_TryOpenBackpack))]
         public object API_TryOpenBackpack(BasePlayer player, ulong ownerId = 0, ItemContainer container = null)
         {
+            return BooleanNoAlloc(_api.TryOpenBackpack(player, ownerId));
+        }
+
+        [HookMethod(nameof(API_TryOpenBackpackContainer))]
+        public object API_TryOpenBackpackContainer(BasePlayer player, ulong ownerId, ItemContainer container)
+        {
             return BooleanNoAlloc(_api.TryOpenBackpackContainer(player, ownerId, container));
         }
 
