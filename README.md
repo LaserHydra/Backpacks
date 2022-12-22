@@ -71,7 +71,6 @@ According to the config, there will be additional permissions such as `backpacks
     "Enabled by default (for players with permission)": true,
     "Skin Id": 0,
     "Image": "https://i.imgur.com/CyF0QNV.png",
-    "Image content (base64)": "",
     "Background Color": "0.969 0.922 0.882 0.035",
     "GUI Button Position": {
       "Anchors Min": "0.5 0.0",
