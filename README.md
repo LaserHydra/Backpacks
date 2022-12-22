@@ -59,7 +59,6 @@ According to the config, there will be additional permissions such as `backpacks
   "Drop on Death (true/false)": true,
   "Erase on Death (true/false)": false,
   "Clear Backpacks on Map-Wipe (true/false)": false,
-  "Only Save Backpacks on Server-Save (true/false)": false,
   "Use Blacklist (true/false)": false,
   "Blacklisted Items (Item Shortnames)": [
     "autoturret",

@@ -1,6 +1,5 @@
 ﻿// #define DEBUG_POOLING
 // #define DEBUG_BACKPACK_LIFECYCLE
-// #define ENABLE_DEBUG_COMMANDS
 
 using Facepunch;
 using Newtonsoft.Json;
@@ -69,6 +68,7 @@ namespace Oxide.Plugins
         private readonly HashSet<ulong> _uiViewers = new HashSet<ulong>();
         private uint _iconFileId;
         private string _iconFileIdString;
+        private Coroutine _saveRoutine;
 
         [PluginReference]
         private readonly Plugin Arena, EventManager;
@@ -140,7 +140,8 @@ namespace Oxide.Plugins
                 FileStorage.server.RemoveAllByEntity(_iconFileId);
             }
 
-            _backpackManager.SaveAndKillAll();
+            RestartSaveRoutine(async: false, keepInUseBackpacks: false);
+
             BackpackNetworkController.ResetNetworkGroupId();
 
             foreach (var player in BasePlayer.activePlayerList)
@@ -196,26 +197,12 @@ namespace Oxide.Plugins
 
         private void OnServerSave()
         {
-            _storedData.Save();
-
-            if (_config.SaveBackpacksOnServerSave)
-            {
-                _backpackManager.SaveAllAndKill();
-            }
+            RestartSaveRoutine(async: true, keepInUseBackpacks: true);
         }
 
         private void OnPlayerDisconnected(BasePlayer player)
         {
-            var backpack = _backpackManager.GetCachedBackpack(player.userID);
-            if (backpack == null)
-                return;
-
-            backpack.NetworkController?.Unsubscribe(player);
-
-            if (!_config.SaveBackpacksOnServerSave)
-            {
-                _backpackManager.SaveAndKill(backpack);
-            }
+            _backpackManager.GetCachedBackpack(player.userID)?.NetworkController?.Unsubscribe(player);
         }
 
         // Handle player death by normal means.
@@ -576,17 +563,6 @@ namespace Oxide.Plugins
 
         #region Commands
 
-        #if ENABLE_DEBUG_COMMANDS
-        [Command("backpacks.kill")]
-        private void CommandBackpackKillAll(IPlayer player)
-        {
-            if (!VerifyHasPermission(player, UsagePermission))
-                return;
-
-            _backpackManager.SaveAndKillAll();
-        }
-        #endif
-
         [Command("backpack", "backpack.open")]
         private void BackpackOpenCommand(IPlayer player, string cmd, string[] args)
         {
@@ -865,6 +841,24 @@ namespace Oxide.Plugins
             container.GiveUID();
             container.entityOwner = entityOwner;
             return container;
+        }
+
+        private IEnumerator SaveRoutine(bool async, bool keepInUseBackpacks)
+        {
+            if (_storedData.SaveIfChanged() && async)
+                yield return null;
+
+            yield return _backpackManager.SaveAllAndKill(async, keepInUseBackpacks);
+        }
+
+        private void RestartSaveRoutine(bool async, bool keepInUseBackpacks)
+        {
+            if (_saveRoutine != null)
+            {
+                ServerMgr.Instance.StopCoroutine(_saveRoutine);
+            }
+
+            ServerMgr.Instance.StartCoroutine(SaveRoutine(async, keepInUseBackpacks));
         }
 
         private void OpenBackpack(BasePlayer looter, bool isKeyBind, int desiredPageIndex = -1, bool forward = true, bool wrapAround = true, ulong ownerId = 0)
@@ -1884,18 +1878,9 @@ namespace Oxide.Plugins
                 return true;
             }
 
-            public void SaveAndKill(Backpack backpack)
+            public IEnumerator SaveAllAndKill(bool async, bool keepInUseBackpacks)
             {
-                backpack.Save();
-                backpack.Kill();
-                _cachedBackpacks.Remove(backpack.OwnerId);
-                _backpackPathCache.Remove(backpack.OwnerId);
-                Pool.Free(ref backpack);
-            }
-
-            public void SaveAllAndKill(bool keepUsed = true)
-            {
-                // Clear the list before usage, in case an error prevented cleanup.
+                // Clear the list before usage, in case an error prevented cleanup, or in case coroutine was restarted.
                 _tempBackpackList.Clear();
 
                 // Copy the list of cached backpacks because it may be modified.
@@ -1906,23 +1891,23 @@ namespace Oxide.Plugins
 
                 foreach (var backpack in _tempBackpackList)
                 {
+                    var didSave = backpack.SaveIfChanged();
+
                     // Kill the backpack to free up space, if no admins are viewing it and its owner is disconnected.
-                    if (keepUsed && (backpack.HasLooters || BasePlayer.FindByID(backpack.OwnerId) != null))
+                    if (!keepInUseBackpacks || (!backpack.HasLooters && BasePlayer.FindByID(backpack.OwnerId) == null))
                     {
-                        backpack.Save();
+                        backpack.Kill();
+                        _cachedBackpacks.Remove(backpack.OwnerId);
+                        _backpackPathCache.Remove(backpack.OwnerId);
+                        var backpackToFree = backpack;
+                        Pool.Free(ref backpackToFree);
                     }
-                    else
-                    {
-                        SaveAndKill(backpack);
-                    }
+
+                    if (didSave && async)
+                        yield return null;
                 }
 
                 _tempBackpackList.Clear();
-            }
-
-            public void SaveAndKillAll()
-            {
-                SaveAllAndKill(keepUsed: false);
             }
 
             public void ClearCache()
@@ -2059,16 +2044,8 @@ namespace Oxide.Plugins
             private void PlayerStoppedLooting(BasePlayer looter)
             {
                 _plugin.TrackStart();
-
                 _backpack.OnClosed(looter);
-
                 ExposedHooks.OnBackpackClosed(_plugin, looter, _backpack.OwnerId, looter.inventory.loot.containers.FirstOrDefault());
-
-                if (_plugin.IsLoaded && !_plugin._config.SaveBackpacksOnServerSave)
-                {
-                    _backpack.Save();
-                }
-
                 _plugin.TrackEnd();
             }
         }
@@ -2337,10 +2314,6 @@ namespace Oxide.Plugins
 
                     ItemDataList.RemoveAt(indexToTake);
                     Pool.Free(ref itemDataToTake);
-                }
-
-                if (numToTake > 0)
-                {
                     _backpack.IsDirty = true;
                 }
             }
@@ -2364,9 +2337,8 @@ namespace Oxide.Plugins
 
                     ItemDataList.RemoveAt(i);
                     Pool.Free(ref itemData);
+                    _backpack.IsDirty = true;
                 }
-
-                _backpack.IsDirty = true;
             }
 
             public void TakeAllItems(List<Item> collect, int startPosition = 0)
@@ -2390,9 +2362,8 @@ namespace Oxide.Plugins
 
                     ItemDataList.RemoveAt(i--);
                     Pool.Free(ref itemData);
+                    _backpack.IsDirty = true;
                 }
-
-                _backpack.IsDirty = true;
             }
 
             public void SerializeForNetwork(List<ProtoBuf.Item> saveList)
@@ -2412,7 +2383,7 @@ namespace Oxide.Plugins
             {
                 foreach (var itemData in ItemDataList)
                 {
-                    itemData.Erase();
+                    itemData.BeforeErase();
                 }
 
                 PoolUtils.ResetItemsAndClear(ItemDataList);
@@ -3214,11 +3185,6 @@ namespace Oxide.Plugins
                     if (!containerAdapter.TryDepositItem(item))
                         continue;
 
-                    if (!Plugin._config.SaveBackpacksOnServerSave)
-                    {
-                        Save();
-                    }
-
                     return true;
                 }
 
@@ -3364,11 +3330,6 @@ namespace Oxide.Plugins
                     }
                 }
 
-                if (!Plugin._config.SaveBackpacksOnServerSave)
-                {
-                    Save();
-                }
-
                 return firstContainer;
             }
 
@@ -3389,20 +3350,15 @@ namespace Oxide.Plugins
                 {
                     containerAdapter.EraseContents();
                 }
-
-                if (!Plugin._config.SaveBackpacksOnServerSave)
-                {
-                    Save();
-                }
             }
 
-            public void Save(bool force = false)
+            public bool SaveIfChanged()
             {
-                if (!force && !IsDirty)
-                    return;
+                if (!IsDirty)
+                    return false;
 
                 #if DEBUG_BACKPACK_LIFECYCLE
-                LogDebug($"Backpack::Save | {OwnerIdString}");
+                LogDebug($"Backpack::Save | {OwnerIdString} | Frame: {Time.frameCount.ToString()}");
                 #endif
 
                 using (var itemsToReleaseToPool = DisposableList<ItemData>.Get())
@@ -3421,6 +3377,8 @@ namespace Oxide.Plugins
 
                 // Clear the list, but don't reset the items to the pool, since they have been referenced in the container adapters.
                 ItemDataCollection.Clear();
+
+                return true;
             }
 
             public int FetchItems(BasePlayer player, ref ItemQuery itemQuery, int desiredAmount)
@@ -3428,16 +3386,10 @@ namespace Oxide.Plugins
                 using (var collect = DisposableList<Item>.Get())
                 {
                     var amountTaken = TakeItems(ref itemQuery, desiredAmount, collect);
-                    if (amountTaken > 0 && !Plugin._config.SaveBackpacksOnServerSave)
-                    {
-                        Save();
-                    }
-
                     foreach (var item in collect)
                     {
                         player.GiveItem(item);
                     }
-
                     return amountTaken;
                 }
             }
@@ -3445,7 +3397,7 @@ namespace Oxide.Plugins
             public void Kill()
             {
                 #if DEBUG_BACKPACK_LIFECYCLE
-                LogDebug($"Backpack::Kill | OwnerId: {OwnerIdString}");
+                LogDebug($"Backpack::Kill | OwnerId: {OwnerIdString} | Frame: {Time.frameCount.ToString()}");
                 #endif
 
                 ForceCloseAllLooters();
@@ -4023,7 +3975,7 @@ namespace Oxide.Plugins
                 AssociatedEntityId = 0;
             }
 
-            public void Erase()
+            public void BeforeErase()
             {
                 if (AssociatedEntityId == 0)
                     return;
@@ -4145,6 +4097,7 @@ namespace Oxide.Plugins
 
         #region Stored Data
 
+        [JsonObject(MemberSerialization.OptIn)]
         private class StoredData
         {
             public static StoredData Load()
@@ -4153,8 +4106,8 @@ namespace Oxide.Plugins
                 if (data == null)
                 {
                     LogWarning($"Data file {nameof(Backpacks)}.json is invalid. Creating new data file.");
-                    data = new StoredData();
-                    data.Save();
+                    data = new StoredData { _dirty = true };
+                    data.SaveIfChanged();
                 }
                 return data;
             }
@@ -4174,6 +4127,9 @@ namespace Oxide.Plugins
             [JsonProperty("PlayerGuiPreferences")]
             private Dictionary<ulong, bool> EnabledGuiPreference = new Dictionary<ulong, bool>();
 
+            [JsonIgnore]
+            private bool _dirty;
+
             public bool? GetGuiButtonPreference(ulong userId)
             {
                 bool guiEnabled;
@@ -4185,16 +4141,19 @@ namespace Oxide.Plugins
             public bool ToggleGuiButtonPreference(ulong userId, bool defaultEnabled)
             {
                 var enabledNow = !(GetGuiButtonPreference(userId) ?? defaultEnabled);
-
                 EnabledGuiPreference[userId] = enabledNow;
-                Save();
-
+                _dirty = true;
                 return enabledNow;
             }
 
-            public void Save()
+            public bool SaveIfChanged()
             {
+                if (!_dirty)
+                    return false;
+
                 Interface.Oxide.DataFileSystem.WriteObject(nameof(Backpacks), this);
+                _dirty = false;
+                return true;
             }
         }
 
@@ -4202,6 +4161,7 @@ namespace Oxide.Plugins
 
         #region Configuration
 
+        [JsonObject(MemberSerialization.OptIn)]
         private class Configuration : BaseConfiguration
         {
             [JsonProperty("Default Backpack Size")]
@@ -4227,9 +4187,6 @@ namespace Oxide.Plugins
 
             [JsonProperty("Clear Backpacks on Map-Wipe (true/false)")]
             public bool ClearBackpacksOnWipe = false;
-
-            [JsonProperty("Only Save Backpacks on Server-Save (true/false)")]
-            public bool SaveBackpacksOnServerSave = false;
 
             [JsonProperty("Use Blacklist (true/false)")]
             private bool UseDenylist = false;
