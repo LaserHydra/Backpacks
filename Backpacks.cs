@@ -339,7 +339,7 @@ namespace Oxide.Plugins
                 {
                     [nameof(GetExistingBackpacks)] = new Func<Dictionary<ulong, ItemContainer>>(GetExistingBackpacks),
                     [nameof(EraseBackpack)] = new Action<ulong>(EraseBackpack),
-                    [nameof(DropBackpack)] = new Func<BasePlayer, DroppedItemContainer>(DropBackpack),
+                    [nameof(DropBackpack)] = new Func<BasePlayer, List<DroppedItemContainer>, DroppedItemContainer>(DropBackpack),
                     [nameof(GetBackpackOwnerId)] = new Func<ItemContainer, ulong>(GetBackpackOwnerId),
                     [nameof(GetBackpackContainer)] = new Func<ulong, ItemContainer>(GetBackpackContainer),
                     [nameof(GetBackpackItemAmount)] = new Func<ulong, int, ulong, int>(GetBackpackItemAmount),
@@ -365,13 +365,13 @@ namespace Oxide.Plugins
                 _backpackManager.TryEraseForPlayer(userId, force: true);
             }
 
-            public DroppedItemContainer DropBackpack(BasePlayer player)
+            public DroppedItemContainer DropBackpack(BasePlayer player, List<DroppedItemContainer> collect)
             {
                 var backpack = _backpackManager.GetBackpackIfExists(player.userID);
                 if (backpack == null)
                     return null;
 
-                return _backpackManager.Drop(player.userID, player.transform.position);
+                return _backpackManager.Drop(player.userID, player.transform.position, collect);
             }
 
             public ulong GetBackpackOwnerId(ItemContainer container)
@@ -458,9 +458,9 @@ namespace Oxide.Plugins
         }
 
         [HookMethod(nameof(API_DropBackpack))]
-        public DroppedItemContainer API_DropBackpack(BasePlayer player)
+        public DroppedItemContainer API_DropBackpack(BasePlayer player, List<DroppedItemContainer> collect = null)
         {
-            return _api.DropBackpack(player);
+            return _api.DropBackpack(player, collect);
         }
 
         [HookMethod(nameof(API_GetBackpackOwnerId))]
@@ -1790,9 +1790,9 @@ namespace Oxide.Plugins
                 return cachedContainersByUserId;
             }
 
-            public DroppedItemContainer Drop(ulong userId, Vector3 position)
+            public DroppedItemContainer Drop(ulong userId, Vector3 position, List<DroppedItemContainer> collect = null)
             {
-                return GetBackpackIfExists(userId)?.Drop(position);
+                return GetBackpackIfExists(userId)?.Drop(position, collect);
             }
 
             public bool TryOpenBackpack(BasePlayer looter, ulong backpackOwnerId)
@@ -3296,7 +3296,7 @@ namespace Oxide.Plugins
                 }
             }
 
-            public DroppedItemContainer Drop(Vector3 position, List<DroppedItemContainer> collectContainers = null)
+            public DroppedItemContainer Drop(Vector3 position, List<DroppedItemContainer> collect = null)
             {
                 if (!HasItems)
                     return null;
@@ -3333,7 +3333,7 @@ namespace Oxide.Plugins
                             firstContainer = droppedItemContainer;
                         }
 
-                        collectContainers?.Add(droppedItemContainer);
+                        collect?.Add(droppedItemContainer);
                     }
 
                     if (itemList.Count > 0)
