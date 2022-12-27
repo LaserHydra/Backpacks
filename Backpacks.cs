@@ -36,7 +36,6 @@ namespace Oxide.Plugins
         private const int SlotsPerRow = 6;
         private const int ReclaimEntryMaxSize = 40;
         private const float StandardLootDelay = 0.1f;
-        private const string GUIPanelName = "BackpacksUI";
 
         private const string UsagePermission = "backpacks.use";
         private const string SizePermission = "backpacks.size";
@@ -57,7 +56,7 @@ namespace Oxide.Plugins
         private readonly BackpackManager _backpackManager;
 
         private ProtectionProperties _immortalProtection;
-        private string _cachedUI;
+        private string _cachedButtonUi;
 
         private readonly ApiInstance _api;
         private Configuration _config;
@@ -111,7 +110,9 @@ namespace Oxide.Plugins
             _immortalProtection.Add(1);
 
             foreach (var player in BasePlayer.activePlayerList)
-                CreateGUI(player);
+            {
+                MaybeCreateButtonUi(player);
+            }
 
             Subscribe(nameof(OnPlayerSleep));
             Subscribe(nameof(OnPlayerSleepEnded));
@@ -127,7 +128,7 @@ namespace Oxide.Plugins
 
             foreach (var player in BasePlayer.activePlayerList)
             {
-                DestroyGUI(player);
+                DestroyButtonUi(player);
             }
 
             PoolUtils.ResizePools(empty: true);
@@ -196,7 +197,7 @@ namespace Oxide.Plugins
             if (player.IsNpc)
                 return;
 
-            DestroyGUI(player);
+            DestroyButtonUi(player);
 
             if (!_backpackManager.HasBackpackFile(player.userID)
                 || permission.UserHasPermission(player.UserIDString, KeepOnDeathPermission))
@@ -226,7 +227,7 @@ namespace Oxide.Plugins
             {
                 foreach (var player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, groupName)))
                 {
-                    CreateGUI(player.Object as BasePlayer);
+                    MaybeCreateButtonUi(player.Object as BasePlayer);
                 }
             }
         }
@@ -247,7 +248,7 @@ namespace Oxide.Plugins
                 {
                     if (!player.HasPermission(GUIPermission))
                     {
-                        DestroyGUI(player.Object as BasePlayer);
+                        DestroyButtonUi(player.Object as BasePlayer);
                     }
                 }
             }
@@ -268,7 +269,7 @@ namespace Oxide.Plugins
                 var player = BasePlayer.Find(userId);
                 if (player != null)
                 {
-                    CreateGUI(BasePlayer.Find(userId));
+                    MaybeCreateButtonUi(BasePlayer.Find(userId));
                 }
             }
         }
@@ -288,18 +289,18 @@ namespace Oxide.Plugins
                 var player = BasePlayer.Find(userId);
                 if (player != null)
                 {
-                    DestroyGUI(player);
+                    DestroyButtonUi(player);
                 }
             }
         }
 
-        private void OnPlayerConnected(BasePlayer player) => CreateGUI(player);
+        private void OnPlayerConnected(BasePlayer player) => MaybeCreateButtonUi(player);
 
-        private void OnPlayerRespawned(BasePlayer player) => CreateGUI(player);
+        private void OnPlayerRespawned(BasePlayer player) => MaybeCreateButtonUi(player);
 
-        private void OnPlayerSleepEnded(BasePlayer player) => CreateGUI(player);
+        private void OnPlayerSleepEnded(BasePlayer player) => MaybeCreateButtonUi(player);
 
-        private void OnPlayerSleep(BasePlayer player) => DestroyGUI(player);
+        private void OnPlayerSleep(BasePlayer player) => DestroyButtonUi(player);
 
         private void OnNetworkSubscriptionsUpdate(Network.Networkable networkable, List<Network.Visibility.Group> groupsToAdd, List<Network.Visibility.Group> groupsToRemove)
         {
@@ -740,11 +741,11 @@ namespace Oxide.Plugins
             var enabledNow = _storedData.ToggleGuiButtonPreference(basePlayer.userID, _config.GUI.EnabledByDefault);
             if (enabledNow)
             {
-                CreateGUI(basePlayer);
+                MaybeCreateButtonUi(basePlayer);
             }
             else
             {
-                DestroyGUI(basePlayer);
+                DestroyButtonUi(basePlayer);
             }
 
             player.Reply(GetMessage(player, "Toggled Backpack GUI"));
@@ -1086,7 +1087,7 @@ namespace Oxide.Plugins
             return false;
         }
 
-        private void CreateGUI(BasePlayer player)
+        private void MaybeCreateButtonUi(BasePlayer player)
         {
             if (player == null || player.IsNpc || !player.IsAlive() || player.IsSleeping())
                 return;
@@ -1097,77 +1098,22 @@ namespace Oxide.Plugins
             if (!ShouldDisplayGuiButton(player))
                 return;
 
-            DestroyGUI(player);
             _uiViewers.Add(player.userID);
 
-            if (_cachedUI == null)
+            if (_cachedButtonUi == null)
             {
-                var cuiElements = new CuiElementContainer();
-
-                cuiElements.Add(new CuiElement
-                {
-                    Name = GUIPanelName,
-                    Parent = "Hud.Menu",
-                    Components =
-                    {
-                        new CuiRawImageComponent
-                        {
-                            Color = _config.GUI.Color,
-                            Sprite = "assets/content/ui/ui.background.tiletex.psd",
-                        },
-                        new CuiRectTransformComponent
-                        {
-                            AnchorMin = _config.GUI.GUIButtonPosition.AnchorsMin,
-                            AnchorMax = _config.GUI.GUIButtonPosition.AnchorsMax,
-                            OffsetMin = _config.GUI.GUIButtonPosition.OffsetsMin,
-                            OffsetMax = _config.GUI.GUIButtonPosition.OffsetsMax
-                        },
-                    },
-                });
-
-                var imageComponent = _config.GUI.SkinId != 0
-                    ? new CuiImageComponent { ItemId = SaddleBagItemId, SkinId = _config.GUI.SkinId }
-                    : new CuiRawImageComponent { Url = _config.GUI.Image } as ICuiComponent;
-
-                cuiElements.Add(new CuiElement
-                {
-                    Parent = GUIPanelName,
-                    Components = {
-                        imageComponent,
-                        new CuiRectTransformComponent
-                        {
-                            AnchorMin = "0 0",
-                            AnchorMax = "1 1",
-                        },
-                    }
-                });
-
-                cuiElements.Add(new CuiButton
-                {
-                    Button =
-                    {
-                        Command = "backpack.open",
-                        Color = "0 0 0 0",
-                    },
-                    RectTransform =
-                    {
-                        AnchorMin = "0 0",
-                        AnchorMax = "1 1",
-                    },
-                }, GUIPanelName);
-
-                _cachedUI = CuiHelper.ToJson(cuiElements);
+                _cachedButtonUi = ButtonUi.CreateButtonUi(_config);
             }
 
-            CuiHelper.AddUi(player, _cachedUI);
+            CuiHelper.AddUi(player, _cachedButtonUi);
         }
 
-        private void DestroyGUI(BasePlayer player)
+        private void DestroyButtonUi(BasePlayer player)
         {
             if (!_uiViewers.Remove(player.userID))
                 return;
 
-            CuiHelper.DestroyUi(player, GUIPanelName);
+            ButtonUi.DestroyUi(player);
         }
 
         #endregion
@@ -2127,6 +2073,171 @@ namespace Oxide.Plugins
             }
         }
 
+        private struct UiImageComponent : IUiComponent
+        {
+            private const string Type = "UnityEngine.UI.Image";
+
+            private const string DefaultSprite = "Assets/Content/UI/UI.Background.Tile.psd";
+            private const string DefaultMaterial = "Assets/Icons/IconMaterial.mat";
+            private const string DefaultColor = "1 1 1 1";
+            private const Image.Type DefaultImageType = Image.Type.Simple;
+            private const string DefaultPng = null;
+            private const int DefaultItemId = 0;
+            private const ulong DefaultSkinId = 0;
+            private const float DefaultFadeIn = 0;
+
+            public string Sprite;
+            public string Material;
+            public string Color;
+            public Image.Type ImageType;
+            public string Png;
+            public int ItemId;
+            public ulong SkinId;
+            public float FadeIn;
+
+            public void Serialize(IUiBuilder builder)
+            {
+                if (Sprite == default(string))
+                    Sprite = DefaultSprite;
+
+                if (Material == default(string))
+                    Material = DefaultMaterial;
+
+                if (Color == default(string))
+                    Color = DefaultColor;
+
+                if (ImageType == default(Image.Type))
+                    ImageType = DefaultImageType;
+
+                builder.StartComponent();
+                builder.AddField("type", Type);
+
+                if (Sprite != DefaultSprite)
+                    builder.AddField("sprite", Sprite);
+
+                if (Material != DefaultMaterial)
+                    builder.AddField("material", Material);
+
+                if (Color != DefaultColor)
+                    builder.AddField("color", Color);
+
+                if (ImageType != DefaultImageType)
+                    builder.AddField("imagetype", builder.StringCache.Get(ImageType));
+
+                if (Png != DefaultPng)
+                    builder.AddField("png", Png);
+
+                if (ItemId != DefaultItemId)
+                    builder.AddField("itemid", ItemId);
+
+                if (SkinId != DefaultSkinId)
+                    builder.AddField("skinid", SkinId);
+
+                if (FadeIn != DefaultFadeIn)
+                    builder.AddField("fadeIn", FadeIn);
+
+                builder.EndComponent();
+            }
+        }
+
+        private struct UiRawImageComponent : IUiComponent
+        {
+            private const string Type = "UnityEngine.UI.RawImage";
+
+            private const string DefaultSprite = "Assets/Icons/rust.png";
+            private const string DefaultColor = "1 1 1 1";
+            private const string DefaultMaterial = null;
+            private const string DefaultUrl = null;
+            private const string DefaultPng = null;
+            private const float DefaultFadeIn = 0;
+
+            public string Sprite;
+            public string Color;
+            public string Material;
+            public string Url;
+            public string Png;
+            public float FadeIn;
+
+            public void Serialize(IUiBuilder builder)
+            {
+                if (Sprite == default(string))
+                    Sprite= DefaultSprite;
+
+                if (Color == default(string))
+                    Sprite= DefaultColor;
+
+                builder.StartComponent();
+                builder.AddField("type", Type);
+
+                if (Sprite != DefaultSprite)
+                    builder.AddField("sprite", Sprite);
+
+                if (Color != DefaultColor)
+                    builder.AddField("color", Color);
+
+                if (Material != DefaultMaterial)
+                    builder.AddField("material", Material);
+
+                if (Url != DefaultUrl)
+                    builder.AddField("url", Url);
+
+                if (Png != DefaultPng)
+                    builder.AddField("png", Png);
+
+                if (FadeIn != DefaultFadeIn)
+                    builder.AddField("fadeIn", FadeIn);
+
+                builder.EndComponent();
+            }
+        }
+
+        private struct UiRectTransformComponent : IUiComponent
+        {
+            private const string Type = "RectTransform";
+
+            public const string DefaultAnchorMin = "0.0 0.0";
+            public const string DefaultAnchorMax = "1.0 1.0";
+            public const string DefaultOffsetMin = "0.0 0.0";
+            public const string DefaultOffsetMax = "1.0 1.0";
+
+            public string AnchorMin;
+            public string AnchorMax;
+            public string OffsetMin;
+            public string OffsetMax;
+
+            public void Serialize(IUiBuilder builder)
+            {
+                if (AnchorMin == default(string))
+                    AnchorMin = DefaultAnchorMin;
+
+                if (AnchorMax == default(string))
+                    AnchorMax = DefaultAnchorMax;
+
+                if (OffsetMin == default(string))
+                    OffsetMin = DefaultOffsetMin;
+
+                if (OffsetMax == default(string))
+                    OffsetMax = DefaultOffsetMax;
+
+                builder.StartComponent();
+                builder.AddField("type", Type);
+
+                if (AnchorMin != DefaultAnchorMin)
+                    builder.AddField("anchormin", AnchorMin);
+
+                if (AnchorMax != DefaultAnchorMax)
+                    builder.AddField("anchormax", AnchorMax);
+
+                if (OffsetMin != DefaultOffsetMin)
+                    builder.AddField("offsetmin", OffsetMin);
+
+                if (OffsetMax != DefaultOffsetMax)
+                    builder.AddField("offsetmax", OffsetMax);
+
+                builder.EndComponent();
+            }
+        }
+
         private struct UiTextComponent : IUiComponent
         {
             private const string Type = "UnityEngine.UI.Text";
@@ -2428,6 +2539,103 @@ namespace Oxide.Plugins
 
                 builder.End();
                 builder.AddUi(player);
+            }
+
+            public static void DestroyUi(BasePlayer player)
+            {
+                CuiHelper.DestroyUi(player, Name);
+            }
+        }
+
+        private static class ButtonUi
+        {
+            private const string Name = "BackpacksUI";
+
+            public static string CreateButtonUi(Configuration config)
+            {
+                var uiBuilder = UiBuilder.Default;
+
+                uiBuilder.Start();
+                uiBuilder.AddSerializable(new UiElement<UiComponents<UiRawImageComponent, UiRectTransformComponent>>
+                {
+                    Name = Name,
+                    DestroyName = Name,
+                    Parent = "Hud.Menu",
+                    Components =
+                    {
+                        new UiRawImageComponent
+                        {
+                            Color = config.GUI.Color,
+                            Sprite = "assets/content/ui/ui.background.tiletex.psd",
+                        },
+                        new UiRectTransformComponent
+                        {
+                            AnchorMin = config.GUI.GUIButtonPosition.AnchorsMin,
+                            AnchorMax = config.GUI.GUIButtonPosition.AnchorsMax,
+                            OffsetMin = config.GUI.GUIButtonPosition.OffsetsMin,
+                            OffsetMax = config.GUI.GUIButtonPosition.OffsetsMax
+                        },
+                    }
+                });
+
+                var rectTransformComponent = new UiRectTransformComponent
+                {
+                    AnchorMin = "0 0",
+                    AnchorMax = "1 1",
+                };
+
+                if (config.GUI.SkinId != 0)
+                {
+                    uiBuilder.AddSerializable(new UiElement<UiComponents<UiImageComponent, UiRectTransformComponent>>
+                    {
+                        Parent = Name,
+                        Components =
+                        {
+                            new UiImageComponent
+                            {
+                                ItemId = SaddleBagItemId,
+                                SkinId = config.GUI.SkinId
+                            },
+                            rectTransformComponent
+                        }
+                    });
+                }
+                else
+                {
+                    uiBuilder.AddSerializable(new UiElement<UiComponents<UiRawImageComponent, UiRectTransformComponent>>
+                    {
+                        Parent = Name,
+                        Components =
+                        {
+                            new UiRawImageComponent
+                            {
+                                Url = config.GUI.Image
+                            },
+                            rectTransformComponent
+                        }
+                    });
+                }
+
+                uiBuilder.AddSerializable(new UiElement<UiComponents<UiButtonComponent, UiRectTransformComponent>>
+                {
+                    Parent = Name,
+                    Components =
+                    {
+                        new UiButtonComponent
+                        {
+                            Command = "backpack.open",
+                            Color = "0 0 0 0"
+                        },
+                        new UiRectTransformComponent
+                        {
+                            AnchorMin = "0 0",
+                            AnchorMax = "1 1",
+                        }
+                    }
+                });
+
+                uiBuilder.End();
+                return uiBuilder.ToJson();
             }
 
             public static void DestroyUi(BasePlayer player)
