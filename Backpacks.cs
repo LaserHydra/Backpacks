@@ -14,9 +14,12 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
+using Network;
 using Newtonsoft.Json.Converters;
 using Oxide.Core.Configuration;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace Oxide.Plugins
 {
@@ -871,7 +874,7 @@ namespace Oxide.Plugins
                 ServerMgr.Instance.StopCoroutine(_saveRoutine);
             }
 
-            ServerMgr.Instance.StartCoroutine(SaveRoutine(async, keepInUseBackpacks));
+            ServerMgr.Instance?.StartCoroutine(SaveRoutine(async, keepInUseBackpacks));
         }
 
         private void OpenBackpack(BasePlayer looter, bool isKeyBind, int desiredPageIndex = -1, bool forward = true, bool wrapAround = true, ulong ownerId = 0)
@@ -1564,6 +1567,866 @@ namespace Oxide.Plugins
                 Clear();
                 var self = this;
                 Pool.Free(ref self);
+            }
+        }
+
+        #endregion
+
+        #region String Cache
+
+        private interface IStringCache
+        {
+            string Get<T>(T value);
+            string Get<T>(T value, Func<T, string> createString);
+            string Get(bool value);
+        }
+
+        private sealed class DefaultStringCache : IStringCache
+        {
+            public static readonly DefaultStringCache Instance = new DefaultStringCache();
+
+            private static class StaticStringCache<T>
+            {
+                private static Dictionary<T, string> _cacheByValue = new Dictionary<T, string>();
+
+                public static string Get(T value)
+                {
+                    string str;
+                    if (!_cacheByValue.TryGetValue(value, out str))
+                    {
+                        str = value.ToString();
+                        _cacheByValue[value] = str;
+                    }
+
+                    return str;
+                }
+            }
+
+            private static class StaticStringCacheWithFactory<T>
+            {
+                private static Dictionary<Func<T, string>, Dictionary<T, string>> _cacheByDelegate =
+                    new Dictionary<Func<T, string>, Dictionary<T, string>>();
+
+                public static string Get(T value, Func<T, string> createString)
+                {
+                    if (createString.Target != null)
+                        throw new InvalidOperationException($"{typeof(StaticStringCacheWithFactory<T>).Name} only accepts open delegates");
+
+                    Dictionary<T, string> cache;
+                    if (!_cacheByDelegate.TryGetValue(createString, out cache))
+                    {
+                        cache = new Dictionary<T, string>();
+                        _cacheByDelegate[createString] = cache;
+                    }
+
+                    string str;
+                    if (!cache.TryGetValue(value, out str))
+                    {
+                        str = createString(value);
+                        cache[value] = str;
+                    }
+
+                    return str;
+                }
+            }
+
+            private DefaultStringCache() {}
+
+            public string Get<T>(T value)
+            {
+                return StaticStringCache<T>.Get(value);
+            }
+
+            public string Get(bool value)
+            {
+                return value ? "true" : "false";
+            }
+
+            public string Get<T>(T value, Func<T, string> createString)
+            {
+                return StaticStringCacheWithFactory<T>.Get(value, createString);
+            }
+        }
+
+        #endregion
+
+        #region UI Builder
+
+        private interface IUiSerializable
+        {
+            void Serialize(IUiBuilder uiBuilder);
+        }
+
+        private interface IUiBuilder
+        {
+            IStringCache StringCache { get; }
+            void Start();
+            void End();
+            void StartElement();
+            void EndElement();
+            void StartComponent();
+            void EndComponent();
+            void AddField<T>(string key, T value);
+            void AddField(string key, string value);
+            void AddXY(string key, float x, float y);
+            void AddSerializable<T>(T serializable) where T : IUiSerializable;
+            void AddComponents<T>(T components) where T : IUiComponentCollection;
+            string ToJson();
+            byte[] GetBytes();
+            void AddUi(SendInfo sendInfo);
+            void AddUi(BasePlayer player);
+        }
+
+        private class UiBuilder : IUiBuilder
+        {
+            private static bool ClientRPCStart(BaseEntity entity, string funcName)
+            {
+                if (Net.sv.IsConnected() && entity.net != null && Net.sv.write.Start())
+                {
+                    Net.sv.write.PacketID(Message.Type.RPCMessage);
+                    Net.sv.write.UInt32(entity.net.ID);
+                    Net.sv.write.UInt32(StringPool.Get(funcName));
+                    Net.sv.write.UInt64(0);
+                    return true;
+                }
+                return false;
+            }
+
+            public static readonly UiBuilder Default = new UiBuilder(65536);
+
+            private enum State
+            {
+                Empty,
+                ElementList,
+                Element,
+                ComponentList,
+                Component,
+                Complete
+            }
+
+            public int Length { get; private set; }
+
+            private const char Delimiter = ',';
+            private const char Quote = '"';
+            private const char Colon = ':';
+            private const char Space = ' ';
+            private const char OpenBracket = '[';
+            private const char CloseBracket = ']';
+            private const char OpenCurlyBrace = '{';
+            private const char CloseCurlyBrace = '}';
+
+            private const int MinCapacity = 1024;
+            private const int DefaultCapacity = 4096;
+
+            public IStringCache StringCache { get; }
+            private char[] _chars;
+            private byte[] _bytes;
+            private State _state;
+            private bool _needsDelimiter;
+
+            public UiBuilder(int capacity, IStringCache stringCache)
+            {
+                if (capacity < MinCapacity)
+                    throw new InvalidOperationException($"Capacity must be at least {MinCapacity}");
+
+                Resize(capacity);
+                StringCache = stringCache;
+            }
+
+            public UiBuilder(int capacity = DefaultCapacity) : this(capacity, DefaultStringCache.Instance) {}
+
+            public void Start()
+            {
+                Reset();
+                StartArray();
+                _state = State.ElementList;
+            }
+
+            public void End()
+            {
+                ValidateState(State.ElementList);
+                EndArray();
+                _state = State.Complete;
+            }
+
+            public void StartElement()
+            {
+                ValidateState(State.ElementList);
+                StartObject();
+                _state = State.Element;
+            }
+
+            public void EndElement()
+            {
+                ValidateState(State.Element);
+                EndObject();
+                _state = State.ElementList;
+            }
+
+            public void StartComponent()
+            {
+                ValidateState(State.ComponentList);
+                StartObject();
+                _state = State.Component;
+            }
+
+            public void EndComponent()
+            {
+                ValidateState(State.Component);
+                EndObject();
+                _state = State.ComponentList;
+            }
+
+            public void AddField<T>(string key, T value)
+            {
+                AddKey(key);
+                Append(StringCache.Get(value));
+                _needsDelimiter = true;
+            }
+
+            public void AddField(string key, string value)
+            {
+                if (value == null)
+                    return;
+
+                AddKey(key);
+                Append(Quote);
+                Append(value);
+                Append(Quote);
+                _needsDelimiter = true;
+            }
+
+            public void AddXY(string key, float x, float y)
+            {
+                AddKey(key);
+                Append(Quote);
+                Append(StringCache.Get(x));
+                Append(Space);
+                Append(StringCache.Get(y));
+                Append(Quote);
+                _needsDelimiter = true;
+            }
+
+            public void AddSerializable<T>(T serializable) where T : IUiSerializable
+            {
+                serializable.Serialize(this);
+            }
+
+            public void AddComponents<T>(T components) where T : IUiComponentCollection
+            {
+                ValidateState(State.Element);
+                AddKey("components");
+                StartArray();
+                _state = State.ComponentList;
+                components.Serialize(this);
+                EndArray();
+                _state = State.Element;
+            }
+
+            public string ToJson()
+            {
+                ValidateState(State.Complete);
+                return new string(_chars, 0, Length);
+            }
+
+            public byte[] GetBytes()
+            {
+                ValidateState(State.Complete);
+                var bytes = new byte[Length];
+                Buffer.BlockCopy(_bytes, 0, bytes, 0, Length);
+                return bytes;
+            }
+
+            public void AddUi(SendInfo sendInfo)
+            {
+                if (ClientRPCStart(CommunityEntity.ServerInstance, "AddUI"))
+                {
+                    var byteCount = Encoding.UTF8.GetBytes(_chars, 0, Length, _bytes, 0);
+                    Net.sv.write.BytesWithSize(_bytes, byteCount);
+                    Net.sv.write.Send(sendInfo);
+                }
+            }
+
+            public void AddUi(BasePlayer player)
+            {
+                AddUi(new SendInfo(player.Connection));
+            }
+
+            private void ValidateState(State desiredState)
+            {
+                if (_state != desiredState)
+                    throw new InvalidOperationException($"Expected state {desiredState} but found {_state}");
+            }
+
+            private void ValidateState(State desiredState, State alternateState)
+            {
+                if (_state != desiredState && _state != alternateState)
+                    throw new InvalidOperationException($"Expected state {desiredState} or {alternateState} but found {_state}");
+            }
+
+            private void Resize(int length)
+            {
+                Array.Resize(ref _chars, length);
+                Array.Resize(ref _bytes, length * 2);
+            }
+
+            private void ResizeIfApproachingLength()
+            {
+                if (Length + 1024 > _chars.Length)
+                {
+                    Resize(_chars.Length * 2);
+                }
+            }
+
+            private void Append(char @char)
+            {
+                _chars[Length++] = @char;
+            }
+
+            private void Append(string str)
+            {
+                for (var i = 0; i < str.Length; i++)
+                {
+                    _chars[Length + i] = str[i];
+                }
+
+                Length += str.Length;
+            }
+
+            private void AddDelimiter()
+            {
+                Append(Delimiter);
+            }
+
+            private void AddDelimiterIfNeeded()
+            {
+                if (_needsDelimiter)
+                {
+                    AddDelimiter();
+                }
+            }
+
+            private void StartObject()
+            {
+                AddDelimiterIfNeeded();
+                Append(OpenCurlyBrace);
+                _needsDelimiter = false;
+            }
+
+            private void EndObject()
+            {
+                Append(CloseCurlyBrace);
+                _needsDelimiter = true;
+            }
+
+            private void StartArray()
+            {
+                Append(OpenBracket);
+                _needsDelimiter = false;
+            }
+
+            private void EndArray()
+            {
+                Append(CloseBracket);
+                _needsDelimiter = true;
+            }
+
+            private void AddKey(string key)
+            {
+                ValidateState(State.Element, State.Component);
+                ResizeIfApproachingLength();
+                AddDelimiterIfNeeded();
+                Append(Quote);
+                Append(key);
+                Append(Quote);
+                Append(Colon);
+            }
+
+            private void Reset()
+            {
+                Length = 0;
+                _state = State.Empty;
+                _needsDelimiter = false;
+            }
+        }
+
+        #endregion
+
+        #region UI Layout
+
+        private struct UiRect
+        {
+            public string Anchor;
+            public float XMin;
+            public float XMax;
+            public float YMin;
+            public float YMax;
+        }
+
+        private static class Layout
+        {
+            [Flags]
+            public enum Option
+            {
+                AnchorBottom = 1 << 0,
+                AnchorRight = 1 << 1,
+                Vertical = 1 << 2
+            }
+
+            public const string AnchorBottomLeft = "0 0";
+            public const string AnchorBottomRight = "1 0";
+            public const string AnchorTopLeft = "0 1";
+            public const string AnchorTopRight = "1 1";
+
+            public const string AnchorBottomCenter = "0.5 0";
+            public const string AnchorTopCenter = "0.5 1";
+            public const string AnchorCenterLeft = "0 0.5";
+            public const string AnchorCenterRight = "1 0.5";
+
+            public static string DetermineAnchor(Option options)
+            {
+                return options.HasFlag(Option.AnchorBottom)
+                    ? options.HasFlag(Option.AnchorRight) ? AnchorBottomRight : AnchorBottomLeft
+                    : options.HasFlag(Option.AnchorRight) ? AnchorTopRight : AnchorTopLeft;
+            }
+        }
+
+        private interface ILayoutProvider {}
+
+        private struct StatelessLayoutProvider : ILayoutProvider
+        {
+            public static UiRect GetRect(int index, Layout.Option options, Vector2 size, float spacing = 0, Vector2 offset = default(Vector2))
+            {
+                var xMin = !options.HasFlag(Layout.Option.Vertical)
+                    ? offset.x + index * (spacing + size.x)
+                    : offset.x;
+
+                var xMax = xMin + size.x;
+
+                var yMin = options.HasFlag(Layout.Option.Vertical)
+                    ? offset.y + index * (spacing + size.y)
+                    : offset.y;
+
+                var yMax = yMin + size.y;
+
+                if (options.HasFlag(Layout.Option.AnchorRight))
+                {
+                    var temp = xMin;
+                    xMin = -xMax;
+                    xMax = -temp;
+                }
+
+                if (!options.HasFlag(Layout.Option.AnchorBottom))
+                {
+                    var temp = yMin;
+                    yMin = -yMax;
+                    yMax = -temp;
+                }
+
+                return new UiRect
+                {
+                    Anchor = Layout.DetermineAnchor(options),
+                    XMin = xMin,
+                    XMax = xMax,
+                    YMin = yMin,
+                    YMax = yMax,
+                };
+            }
+
+            public Layout.Option Options;
+            public Vector2 Offset;
+            public Vector2 Size;
+            public float Spacing;
+
+            public UiRect this[int index] => GetRect(index, Options, Size, Spacing, Offset);
+
+            public static StatelessLayoutProvider operator +(StatelessLayoutProvider layoutProvider, Vector2 vector)
+            {
+                layoutProvider.Offset += vector;
+                return layoutProvider;
+            }
+
+            public static StatelessLayoutProvider operator -(StatelessLayoutProvider layoutProvider, Vector2 vector)
+            {
+                layoutProvider.Offset -= vector;
+                return layoutProvider;
+            }
+        }
+
+        #endregion
+
+        #region UI Components
+
+        private interface IUiComponent : IUiSerializable {}
+
+        private struct UiButtonComponent : IUiComponent
+        {
+            private const string Type = "UnityEngine.UI.Button";
+
+            private const string DefaultCommand = null;
+            private const string DefaultClose = null;
+            private const string DefaultSprite = "Assets/Content/UI/UI.Background.Tile.psd";
+            private const string DefaultMaterial = "Assets/Icons/IconMaterial.mat";
+            private const string DefaultColor = "1 1 1 1";
+            private const Image.Type DefaultImageType = Image.Type.Simple;
+            private const float DefaultFadeIn = 0;
+
+            public string Command;
+            public string Close;
+            public string Sprite;
+            public string Material;
+            public string Color;
+            public Image.Type ImageType;
+            public float FadeIn;
+
+            public void Serialize(IUiBuilder builder)
+            {
+                if (Sprite == default(string))
+                    Sprite = DefaultSprite;
+
+                if (Material == default(string))
+                    Material = DefaultMaterial;
+
+                if (Color == default(string))
+                    Color = DefaultColor;
+
+                if (ImageType == default(Image.Type))
+                    ImageType = DefaultImageType;
+
+                builder.StartComponent();
+                builder.AddField("type", Type);
+
+                if (Command != DefaultCommand)
+                    builder.AddField("command", Command);
+
+                if (Close != DefaultClose)
+                    builder.AddField("close", Close);
+
+                if (Sprite != DefaultSprite)
+                    builder.AddField("sprite", Sprite);
+
+                if (Material != DefaultMaterial)
+                    builder.AddField("material", Material);
+
+                if (Color != DefaultColor)
+                    builder.AddField("color", Color);
+
+                if (ImageType != DefaultImageType)
+                    builder.AddField("imagetype", builder.StringCache.Get(ImageType));
+
+                if (FadeIn != DefaultFadeIn)
+                    builder.AddField("fadeIn", FadeIn);
+
+                builder.EndComponent();
+            }
+        }
+
+        private struct UiTextComponent : IUiComponent
+        {
+            private const string Type = "UnityEngine.UI.Text";
+
+            private const string DefaultText = "Text";
+            private const int DefaultFontSize = 14;
+            private const string DefaultFont = "RobotoCondensed-Bold.ttf";
+            private const TextAnchor DefaultTextAlign = TextAnchor.UpperLeft;
+            private const string DefaultColor = "1 1 1 1";
+            private const VerticalWrapMode DefaultVerticalWrapMode = VerticalWrapMode.Truncate;
+            private const float DefaultFadeIn = 0;
+
+            public string Text;
+            public int FontSize;
+            public string Font;
+            public TextAnchor TextAlign;
+            public string Color;
+            public VerticalWrapMode VerticalWrapMode;
+            public float FadeIn;
+
+            public void Serialize(IUiBuilder builder)
+            {
+                if (Text == default(string))
+                    Text = DefaultText;
+
+                if (FontSize == default(int))
+                    FontSize = DefaultFontSize;
+
+                if (Font == default(string))
+                    Font = DefaultFont;
+
+                if (TextAlign == default(TextAnchor))
+                    TextAlign = DefaultTextAlign;
+
+                if (Color == default(string))
+                    Color = DefaultColor;
+
+                if (VerticalWrapMode == default(VerticalWrapMode))
+                    VerticalWrapMode = DefaultVerticalWrapMode;
+
+                builder.StartComponent();
+                builder.AddField("type", Type);
+
+                if (Text != DefaultText)
+                    builder.AddField("text", Text);
+
+                if (FontSize != DefaultFontSize)
+                    builder.AddField("fontSize", FontSize);
+
+                if (Font != DefaultFont)
+                    builder.AddField("font", Font);
+
+                if (TextAlign != DefaultTextAlign)
+                    builder.AddField("align", builder.StringCache.Get(TextAlign));
+
+                if (Color != DefaultColor)
+                    builder.AddField("color", Color);
+
+                if (VerticalWrapMode != DefaultVerticalWrapMode)
+                    builder.AddField("verticalOverflow", builder.StringCache.Get(VerticalWrapMode));
+
+                if (FadeIn != DefaultFadeIn)
+                    builder.AddField("fadeIn", FadeIn);
+
+                builder.EndComponent();
+            }
+        }
+
+        // Custom component for handling positions.
+        private struct UiRectComponent : IUiComponent
+        {
+            private const string Type = "RectTransform";
+
+            public const string DefaultAnchorMin = "0.0 0.0";
+
+            private const string DefaultAnchor = "0 0";
+
+            public UiRect Rect;
+
+            public UiRectComponent(UiRect rect)
+            {
+                Rect = rect;
+            }
+
+            public UiRectComponent(float x, float y, string anchor = DefaultAnchor)
+            {
+                Rect = new UiRect
+                {
+                    Anchor = anchor,
+                    XMin = x,
+                    XMax = x,
+                    YMin = y,
+                    YMax = y
+                };
+            }
+
+            public void Serialize(IUiBuilder builder)
+            {
+                builder.StartComponent();
+                builder.AddField("type", Type);
+
+                if (Rect.Anchor != DefaultAnchorMin)
+                {
+                    builder.AddField("anchormin", Rect.Anchor);
+                    builder.AddField("anchormax", Rect.Anchor);
+                }
+
+                builder.AddXY("offsetmin", Rect.XMin, Rect.YMin);
+                builder.AddXY("offsetmax", Rect.XMax, Rect.YMax);
+
+                builder.EndComponent();
+            }
+        }
+
+        #endregion
+
+        #region UI Elements
+
+        private interface IUiComponentCollection : IUiSerializable {}
+
+        private struct UiComponents<T1> : IUiComponentCollection, IEnumerable<IUiComponentCollection>
+            where T1 : IUiComponent
+        {
+            public T1 Component1;
+
+            public void Add(T1 item) => Component1 = item;
+
+            public void Serialize(IUiBuilder builder)
+            {
+                Component1.Serialize(builder);
+            }
+
+            public IEnumerator<IUiComponentCollection> GetEnumerator()
+            {
+                throw new NotImplementedException();
+            }
+
+            IEnumerator IEnumerable.GetEnumerator()
+            {
+                throw new NotImplementedException();
+            }
+        }
+
+        private struct UiComponents<T1, T2> : IUiComponentCollection, IEnumerable<IUiComponentCollection>
+            where T1 : IUiComponent
+            where T2 : IUiComponent
+        {
+            public T1 Component1;
+            public T2 Component2;
+
+            public void Add(T1 item) => Component1 = item;
+            public void Add(T2 item) => Component2 = item;
+
+            public void Serialize(IUiBuilder builder)
+            {
+                Component1.Serialize(builder);
+                Component2.Serialize(builder);
+            }
+
+            public IEnumerator<IUiComponentCollection> GetEnumerator()
+            {
+                throw new NotImplementedException();
+            }
+
+            IEnumerator IEnumerable.GetEnumerator()
+            {
+                throw new NotImplementedException();
+            }
+        }
+
+        private struct UiElement<T> : IUiSerializable
+            where T : IUiComponentCollection
+        {
+            public string Name;
+            public string Parent;
+            public string DestroyName;
+            public float FadeOut;
+            public T Components;
+
+            public void Serialize(IUiBuilder builder)
+            {
+                builder.StartElement();
+                builder.AddField("name", Name);
+                builder.AddField("parent", Parent);
+
+                if (DestroyName != default(string))
+                    builder.AddField("destroyUi", DestroyName);
+
+                if (FadeOut != default(float))
+                    builder.AddField("fadeOut", FadeOut);
+
+                builder.AddComponents(Components);
+                builder.EndElement();
+            }
+        }
+
+        private struct UiButtonElement<TButton, TText> : IUiSerializable
+            where TButton : IUiComponentCollection
+            where TText : IUiComponentCollection
+        {
+            public string Name;
+            public string Parent;
+            public string DestroyName;
+            public float FadeOut;
+            public TButton Button;
+            public TText Text;
+
+            public void Serialize(IUiBuilder builder)
+            {
+                builder.AddSerializable(new UiElement<TButton>
+                {
+                    Parent = Parent,
+                    Name = Name,
+                    Components = Button,
+                    DestroyName = DestroyName,
+                    FadeOut = FadeOut
+                });
+
+                builder.AddSerializable(new UiElement<TText>
+                {
+                    Parent = Name,
+                    Components = Text,
+                    FadeOut = FadeOut
+                });
+            }
+        }
+
+        #endregion
+
+        #region UI
+
+        private static class PaginationUi
+        {
+            private const float BaseOffsetY = 135;
+            private const float PerRowOffsetY = 62;
+            private const float ButtonSpacing = 6;
+            private const float ButtonWidth = 25;
+            private const float ButtonHeight = ButtonWidth;
+            private const float OffsetX = 572.5f;
+
+            private const string Name = "Backpacks.Pagination";
+
+            public static void AddPaginationUi(BasePlayer player, int numPages, int activePageIndex, int capacity)
+            {
+                var numRows = 1 + (capacity - 1) / 6;
+                var offsetY = BaseOffsetY + numRows * PerRowOffsetY;
+
+                var builder = UiBuilder.Default;
+
+                builder.Start();
+                builder.AddSerializable(new UiElement<UiComponents<UiRectComponent>>
+                {
+                    Parent = "Hud.Menu",
+                    Name = Name,
+                    DestroyName = Name,
+                    Components =
+                    {
+                        new UiRectComponent(OffsetX, offsetY, Layout.AnchorBottomCenter)
+                    }
+                });
+
+                var buttonLayoutProvider = new StatelessLayoutProvider
+                {
+                    Options = Layout.Option.AnchorBottom | Layout.Option.AnchorRight,
+                    Offset = new Vector2(0, ButtonSpacing),
+                    Size = new Vector2(ButtonWidth, ButtonHeight),
+                    Spacing = ButtonSpacing
+                };
+
+                for (var i = 0; i < numPages; i++)
+                {
+                    var visiblePageNumber = numPages - i;
+                    var isActivePage = activePageIndex == visiblePageNumber - 1;
+
+                    builder.AddSerializable(new UiButtonElement<UiComponents<UiRectComponent, UiButtonComponent>, UiComponents<UiTextComponent>>
+                    {
+                        Parent = Name,
+                        Name = DefaultStringCache.Instance.Get(i, n => $"{Name}.{n.ToString()}"),
+                        Button =
+                        {
+                            new UiRectComponent(buttonLayoutProvider[i]),
+                            new UiButtonComponent
+                            {
+                                Color = isActivePage ? "0.25 0.5 0.75 1" : "0.451 0.553 0.271 1",
+                                Command = isActivePage ? "" : DefaultStringCache.Instance.Get(visiblePageNumber, n => $"backpack.open {n.ToString()}"),
+                            }
+                        },
+                        Text =
+                        {
+                            new UiTextComponent
+                            {
+                                Text = DefaultStringCache.Instance.Get(visiblePageNumber),
+                                TextAlign = TextAnchor.MiddleCenter,
+                                Color = isActivePage ? "0.75 0.85 1 1" : "0.659 0.918 0.2 1"
+                            }
+                        }
+                    });
+                }
+
+                builder.End();
+                builder.AddUi(player);
+            }
+
+            public static void DestroyUi(BasePlayer player)
+            {
+                CuiHelper.DestroyUi(player, Name);
             }
         }
 
@@ -3245,7 +4108,8 @@ namespace Oxide.Plugins
 
                 EnlargeIfNeeded();
 
-                pageIndex = GetAllowedCapacityForLooter(looter.userID).ClampPage(pageIndex);
+                var allowedCapacity = GetAllowedCapacityForLooter(looter.userID);
+                pageIndex = allowedCapacity.ClampPage(pageIndex);
                 var itemContainerAdapter = EnsureItemContainerAdapter(pageIndex);
 
                 NetworkController.Subscribe(looter);
@@ -3264,12 +4128,20 @@ namespace Oxide.Plugins
 
                 StartLooting(looter, itemContainerAdapter.ItemContainer, _storageContainer);
                 ExposedHooks.OnBackpackOpened(Plugin, looter, OwnerId, itemContainerAdapter.ItemContainer);
+
+                var allowedPageCount = allowedCapacity.PageCount;
+                if (allowedPageCount > 1)
+                {
+                    PaginationUi.AddPaginationUi(looter,  allowedPageCount, pageIndex , itemContainerAdapter.Capacity);
+                }
+
                 return true;
             }
 
             public void SwitchToPage(BasePlayer looter, int pageIndex)
             {
-                var itemContainer = EnsureItemContainerAdapter(pageIndex).ItemContainer;
+                var itemContainerAdapter = EnsureItemContainerAdapter(pageIndex);
+                var itemContainer = itemContainerAdapter.ItemContainer;
                 var playerLoot = looter.inventory.loot;
                 foreach (var container in playerLoot.containers)
                 {
@@ -3282,11 +4154,20 @@ namespace Oxide.Plugins
                 playerLoot.AddContainer(itemContainer);
                 playerLoot.SendImmediate();
                 ExposedHooks.OnBackpackOpened(Plugin, looter, OwnerId, itemContainer);
+                var allowedPageCount = GetAllowedCapacityForLooter(looter.userID).PageCount;
+                if (allowedPageCount > 1)
+                {
+                    PaginationUi.AddPaginationUi(looter, allowedPageCount, pageIndex, itemContainerAdapter.Capacity);
+                }
             }
 
             public void OnClosed(BasePlayer looter)
             {
                 _looters.Remove(looter);
+                if (ActualCapacity.PageCount > 1)
+                {
+                    PaginationUi.DestroyUi(looter);
+                }
 
                 // Clean up the subscription immediately if admin stopped looting.
                 // This avoids having to clean up the admin subscriptions some other way which would add complexity.
