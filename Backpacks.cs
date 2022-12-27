@@ -53,13 +53,8 @@ namespace Oxide.Plugins
 
         private const int SaddleBagItemId = 1400460850;
 
-        private static readonly object True = true;
-        private static readonly object False = false;
-
         private readonly BackpackCapacityManager _backpackCapacityManager;
         private readonly BackpackManager _backpackManager;
-        private readonly ValueObjectCache<int> _intObjectCache = new ValueObjectCache<int>();
-        private readonly ValueObjectCache<ulong> _ulongObjectCache = new ValueObjectCache<ulong>();
 
         private ProtectionProperties _immortalProtection;
         private string _cachedUI;
@@ -469,7 +464,7 @@ namespace Oxide.Plugins
         [HookMethod(nameof(API_GetBackpackOwnerId))]
         public object API_GetBackpackOwnerId(ItemContainer container)
         {
-            return _ulongObjectCache.Get(_api.GetBackpackOwnerId(container));
+            return ObjectCache.Get(_api.GetBackpackOwnerId(container));
         }
 
         [HookMethod(nameof(API_GetBackpackContainer))]
@@ -487,43 +482,43 @@ namespace Oxide.Plugins
         [HookMethod(nameof(API_TryOpenBackpack))]
         public object API_TryOpenBackpack(BasePlayer player, ulong ownerId = 0, ItemContainer container = null)
         {
-            return BooleanNoAlloc(_api.TryOpenBackpack(player, ownerId));
+            return ObjectCache.Get(_api.TryOpenBackpack(player, ownerId));
         }
 
         [HookMethod(nameof(API_TryOpenBackpackContainer))]
         public object API_TryOpenBackpackContainer(BasePlayer player, ulong ownerId, ItemContainer container)
         {
-            return BooleanNoAlloc(_api.TryOpenBackpackContainer(player, ownerId, container));
+            return ObjectCache.Get(_api.TryOpenBackpackContainer(player, ownerId, container));
         }
 
         [HookMethod(nameof(API_TryOpenBackpackPage))]
         public object API_TryOpenBackpackPage(BasePlayer player, ulong ownerId = 0, int page = 0)
         {
-            return BooleanNoAlloc(_api.TryOpenBackpackPage(player, ownerId, page));
+            return ObjectCache.Get(_api.TryOpenBackpackPage(player, ownerId, page));
         }
 
         [HookMethod(nameof(API_SumBackpackItems))]
         public object API_SumBackpackItems(ulong ownerId, Dictionary<string, object> dict)
         {
-            return _intObjectCache.Get(_api.SumBackpackItems(ownerId, dict));
+            return ObjectCache.Get(_api.SumBackpackItems(ownerId, dict));
         }
 
         [HookMethod(nameof(API_CountBackpackItems))]
         public object API_CountBackpackItems(ulong ownerId, Dictionary<string, object> dict)
         {
-            return _intObjectCache.Get(_api.CountBackpackItems(ownerId, dict));
+            return ObjectCache.Get(_api.CountBackpackItems(ownerId, dict));
         }
 
         [HookMethod(nameof(API_TakeBackpackItems))]
         public object API_TakeBackpackItems(ulong ownerId, Dictionary<string, object> dict, int amount, List<Item> collect)
         {
-            return _intObjectCache.Get(_api.TakeBackpackItems(ownerId, dict, amount, collect));
+            return ObjectCache.Get(_api.TakeBackpackItems(ownerId, dict, amount, collect));
         }
 
         [HookMethod(nameof(API_TryDepositBackpackItem))]
         public object API_TryDepositBackpackItem(ulong ownerId, Item item)
         {
-            return BooleanNoAlloc(_api.TryDepositBackpackItem(ownerId, item));
+            return ObjectCache.Get(_api.TryDepositBackpackItem(ownerId, item));
         }
 
         [HookMethod(nameof(API_WriteBackpackContentsFromJson))]
@@ -544,34 +539,34 @@ namespace Oxide.Plugins
 
         private static class ExposedHooks
         {
-            public static object CanOpenBackpack(Backpacks plugin, BasePlayer looter, ulong ownerId)
+            public static object CanOpenBackpack(BasePlayer looter, ulong ownerId)
             {
-                return Interface.CallHook("CanOpenBackpack", looter, plugin._ulongObjectCache.Get(ownerId));
+                return Interface.CallHook("CanOpenBackpack", looter, ObjectCache.Get(ownerId));
             }
 
-            public static void OnBackpackClosed(Backpacks plugin, BasePlayer looter, ulong ownerId, ItemContainer container)
+            public static void OnBackpackClosed(BasePlayer looter, ulong ownerId, ItemContainer container)
             {
-                Interface.CallHook("OnBackpackClosed", looter, plugin._ulongObjectCache.Get(ownerId), container);
+                Interface.CallHook("OnBackpackClosed", looter, ObjectCache.Get(ownerId), container);
             }
 
-            public static void OnBackpackOpened(Backpacks plugin, BasePlayer looter, ulong ownerId, ItemContainer container)
+            public static void OnBackpackOpened(BasePlayer looter, ulong ownerId, ItemContainer container)
             {
-                Interface.CallHook("OnBackpackOpened", looter, plugin._ulongObjectCache.Get(ownerId), container);
+                Interface.CallHook("OnBackpackOpened", looter, ObjectCache.Get(ownerId), container);
             }
 
-            public static object CanDropBackpack(Backpacks plugin, ulong ownerId, Vector3 position)
+            public static object CanDropBackpack(ulong ownerId, Vector3 position)
             {
-                return Interface.CallHook("CanDropBackpack", plugin._ulongObjectCache.Get(ownerId), position);
+                return Interface.CallHook("CanDropBackpack", ObjectCache.Get(ownerId), position);
             }
 
-            public static object CanEraseBackpack(Backpacks plugin, ulong ownerId)
+            public static object CanEraseBackpack(ulong ownerId)
             {
-                return Interface.CallHook("CanEraseBackpack", plugin._ulongObjectCache.Get(ownerId));
+                return Interface.CallHook("CanEraseBackpack", ObjectCache.Get(ownerId));
             }
 
-            public static object CanBackpackAcceptItem(Backpacks plugin, ulong ownerId, ItemContainer container, Item item)
+            public static object CanBackpackAcceptItem(ulong ownerId, ItemContainer container, Item item)
             {
-                return Interface.CallHook("CanBackpackAcceptItem", plugin._ulongObjectCache.Get(ownerId), container, item);
+                return Interface.CallHook("CanBackpackAcceptItem", ObjectCache.Get(ownerId), container, item);
             }
         }
 
@@ -763,11 +758,6 @@ namespace Oxide.Plugins
         public static void LogInfo(string message) => Interface.Oxide.LogInfo($"[Backpacks] {message}");
         public static void LogWarning(string message) => Interface.Oxide.LogWarning($"[Backpacks] {message}");
         public static void LogError(string message) => Interface.Oxide.LogError($"[Backpacks] {message}");
-
-        private static object BooleanNoAlloc(bool value)
-        {
-            return value ? True : False;
-        }
 
         private static bool IsKeyBindArg(string arg)
         {
@@ -1061,7 +1051,7 @@ namespace Oxide.Plugins
                 return false;
             }
 
-            var hookResult = ExposedHooks.CanOpenBackpack(this, looter, ownerId);
+            var hookResult = ExposedHooks.CanOpenBackpack(looter, ownerId);
             if (hookResult != null && hookResult is string)
             {
                 looter.ChatMessage(hookResult as string);
@@ -1193,19 +1183,35 @@ namespace Oxide.Plugins
                 haystack.Contains(needle, CompareOptions.IgnoreCase);
         }
 
-        private class ValueObjectCache<T> where T : struct
+        private static class ObjectCache
         {
-            private readonly Dictionary<T, object> _cache = new Dictionary<T, object>();
+            private static readonly object True = true;
+            private static readonly object False = false;
 
-            public object Get(T val)
+            private static class StaticObjectCache<T>
             {
-                object cachedObject;
-                if (!_cache.TryGetValue(val, out cachedObject))
+                private static readonly Dictionary<T, object> _cacheByValue = new Dictionary<T, object>();
+
+                public static object Get(T value)
                 {
-                    cachedObject = val;
-                    _cache[val] = cachedObject;
+                    object cachedObject;
+                    if (!_cacheByValue.TryGetValue(value, out cachedObject))
+                    {
+                        cachedObject = value;
+                        _cacheByValue[value] = cachedObject;
+                    }
+                    return cachedObject;
                 }
-                return cachedObject;
+            }
+
+            public static object Get<T>(T value)
+            {
+                return StaticObjectCache<T>.Get(value);
+            }
+
+            public static object Get(bool value)
+            {
+                return value ? True : False;
             }
         }
 
@@ -1587,7 +1593,7 @@ namespace Oxide.Plugins
 
             private static class StaticStringCache<T>
             {
-                private static Dictionary<T, string> _cacheByValue = new Dictionary<T, string>();
+                private static readonly Dictionary<T, string> _cacheByValue = new Dictionary<T, string>();
 
                 public static string Get(T value)
                 {
@@ -1604,7 +1610,7 @@ namespace Oxide.Plugins
 
             private static class StaticStringCacheWithFactory<T>
             {
-                private static Dictionary<Func<T, string>, Dictionary<T, string>> _cacheByDelegate =
+                private static readonly Dictionary<Func<T, string>, Dictionary<T, string>> _cacheByDelegate =
                     new Dictionary<Func<T, string>, Dictionary<T, string>>();
 
                 public static string Get(T value, Func<T, string> createString)
@@ -2919,7 +2925,7 @@ namespace Oxide.Plugins
             {
                 _plugin.TrackStart();
                 _backpack.OnClosed(looter);
-                ExposedHooks.OnBackpackClosed(_plugin, looter, _backpack.OwnerId, looter.inventory.loot.containers.FirstOrDefault());
+                ExposedHooks.OnBackpackClosed(looter, _backpack.OwnerId, looter.inventory.loot.containers.FirstOrDefault());
                 _plugin.TrackEnd();
             }
         }
@@ -4086,7 +4092,7 @@ namespace Oxide.Plugins
                     && _config.IsRestrictedItem(item))
                     return false;
 
-                var hookResult = ExposedHooks.CanBackpackAcceptItem(Plugin, OwnerId, container, item);
+                var hookResult = ExposedHooks.CanBackpackAcceptItem(OwnerId, container, item);
                 if (hookResult is bool && (bool)hookResult == false)
                     return false;
 
@@ -4127,7 +4133,7 @@ namespace Oxide.Plugins
                 }
 
                 StartLooting(looter, itemContainerAdapter.ItemContainer, _storageContainer);
-                ExposedHooks.OnBackpackOpened(Plugin, looter, OwnerId, itemContainerAdapter.ItemContainer);
+                ExposedHooks.OnBackpackOpened(looter, OwnerId, itemContainerAdapter.ItemContainer);
 
                 var allowedPageCount = allowedCapacity.PageCount;
                 if (allowedPageCount > 1)
@@ -4153,7 +4159,7 @@ namespace Oxide.Plugins
                 Interface.CallHook("OnLootEntity", looter, itemContainer.entityOwner);
                 playerLoot.AddContainer(itemContainer);
                 playerLoot.SendImmediate();
-                ExposedHooks.OnBackpackOpened(Plugin, looter, OwnerId, itemContainer);
+                ExposedHooks.OnBackpackOpened(looter, OwnerId, itemContainer);
                 var allowedPageCount = GetAllowedCapacityForLooter(looter.userID).PageCount;
                 if (allowedPageCount > 1)
                 {
@@ -4182,7 +4188,7 @@ namespace Oxide.Plugins
                 if (!HasItems)
                     return null;
 
-                var hookResult = ExposedHooks.CanDropBackpack(Plugin, OwnerId, position);
+                var hookResult = ExposedHooks.CanDropBackpack(OwnerId, position);
                 if (hookResult is bool && (bool)hookResult == false)
                     return null;
 
@@ -4237,7 +4243,7 @@ namespace Oxide.Plugins
 
                 if (!force)
                 {
-                    var hookResult = ExposedHooks.CanEraseBackpack(Plugin, OwnerId);
+                    var hookResult = ExposedHooks.CanEraseBackpack(OwnerId);
                     if (hookResult is bool && (bool)hookResult == false)
                         return;
                 }
