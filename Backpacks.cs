@@ -29,6 +29,8 @@ namespace Oxide.Plugins
     {
         #region Fields
 
+        private static int _maxCapacityPerPage = 48;
+
         private const int MinRows = 1;
         private const int MaxRows = 8;
         private const int MinCapacity = 1;
@@ -82,6 +84,8 @@ namespace Oxide.Plugins
         private void Init()
         {
             _config.Init(this);
+
+            _maxCapacityPerPage = Mathf.Clamp(_config.MaxCapacityPerPage, MinCapacity, MaxCapacity);
 
             permission.RegisterPermission(UsagePermission, this);
             permission.RegisterPermission(GUIPermission, this);
@@ -3300,7 +3304,7 @@ namespace Oxide.Plugins
         {
             public int PageIndex { get; private set; }
             public int Capacity { get; set; }
-            public List<ItemData> ItemDataList { get; } = new List<ItemData>(MaxCapacity);
+            public List<ItemData> ItemDataList { get; } = new List<ItemData>(_maxCapacityPerPage);
             public bool HasItems => ItemDataList.Count > 0;
 
             private Backpack _backpack;
@@ -3486,7 +3490,7 @@ namespace Oxide.Plugins
 
             public VirtualContainerAdapter CopyItemsFrom(List<ItemData> itemDataList)
             {
-                var startPosition = PageIndex * MaxCapacity;
+                var startPosition = PageIndex * _maxCapacityPerPage;
                 var endPosition = startPosition + Capacity;
 
                 // This assumes the list has already been sorted by item position.
@@ -3702,7 +3706,7 @@ namespace Oxide.Plugins
 
             public void SerializeTo(List<ItemData> saveList, List<ItemData> itemsToReleaseToPool)
             {
-                var positionOffset = PageIndex * MaxCapacity;
+                var positionOffset = PageIndex * _maxCapacityPerPage;
 
                 foreach (var item in ItemContainer.itemList)
                 {
@@ -3932,8 +3936,8 @@ namespace Oxide.Plugins
                     throw new ArgumentOutOfRangeException($"Page {pageIndex} cannot exceed {lastPageIndex}");
 
                 return pageIndex < lastPageIndex
-                    ? MaxCapacity
-                    : totalCapacity - MaxCapacity * lastPageIndex;
+                    ? _maxCapacityPerPage
+                    : totalCapacity - _maxCapacityPerPage * lastPageIndex;
             }
 
             public static bool operator >(BackpackCapacity a, BackpackCapacity b) => a.Capacity > b.Capacity;
@@ -3944,7 +3948,7 @@ namespace Oxide.Plugins
 
             private static int CalculatePageCountForCapacity(int capacity)
             {
-                return 1 + (capacity - 1) / MaxCapacity;
+                return 1 + (capacity - 1) / _maxCapacityPerPage;
             }
 
             public int Capacity
@@ -3974,7 +3978,7 @@ namespace Oxide.Plugins
         {
             private static int CalculatePageIndexForItemPosition(int position)
             {
-                return position / MaxCapacity;
+                return position / _maxCapacityPerPage;
             }
 
             [JsonProperty("OwnerID", Order = 0)]
@@ -5149,7 +5153,7 @@ namespace Oxide.Plugins
                 if (item == null)
                     return null;
 
-                item.position = Position % MaxCapacity;
+                item.position = Position % _maxCapacityPerPage;
 
                 if (IsBlueprint)
                 {
@@ -5314,6 +5318,9 @@ namespace Oxide.Plugins
         {
             [JsonProperty("Default Backpack Size")]
             public int DefaultBackpackSize = 6;
+
+            [JsonProperty("Max Size Per Page")]
+            public int MaxCapacityPerPage = 48;
 
             [JsonProperty("Backpack Permission Sizes")]
             public int[] BackpackPermissionSizes = new int[] { 6, 12, 18, 24, 30, 36, 42, 48 };

@@ -45,6 +45,7 @@ According to the config, there will be additional permissions such as `backpacks
 ```json
 {
   "Default Backpack Size": 6,
+  "Max Size Per Page": 48,
   "Backpack Permission Sizes": [
     6,
     12,
