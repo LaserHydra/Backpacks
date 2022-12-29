@@ -18,6 +18,7 @@ using System.Text;
 using Network;
 using Newtonsoft.Json.Converters;
 using Oxide.Core.Configuration;
+using Rust;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -68,7 +69,7 @@ namespace Oxide.Plugins
         private Coroutine _saveRoutine;
 
         [PluginReference]
-        private readonly Plugin Arena, EventManager;
+        private readonly Plugin Arena, EventManager, ItemRetriever;
 
         public Backpacks()
         {
@@ -112,6 +113,8 @@ namespace Oxide.Plugins
             _immortalProtection = ScriptableObject.CreateInstance<ProtectionProperties>();
             _immortalProtection.name = "BackpacksProtection";
             _immortalProtection.Add(1);
+
+            RegisterAsItemSupplier();
 
             foreach (var player in BasePlayer.activePlayerList)
             {
@@ -186,9 +189,17 @@ namespace Oxide.Plugins
             RestartSaveRoutine(async: true, keepInUseBackpacks: true);
         }
 
+        private void OnPluginLoaded(Plugin plugin)
+        {
+            if (plugin.Name == nameof(ItemRetriever))
+            {
+                RegisterAsItemSupplier();
+            }
+        }
+
         private void OnPlayerDisconnected(BasePlayer player)
         {
-            _backpackManager.GetCachedBackpack(player.userID)?.NetworkController?.Unsubscribe(player);
+            _backpackManager.GetBackpackIfCached(player.userID)?.NetworkController?.Unsubscribe(player);
         }
 
         // Handle player death by normal means.
@@ -410,19 +421,19 @@ namespace Oxide.Plugins
 
             public int SumBackpackItems(ulong ownerId, Dictionary<string, object> dict)
             {
-                var itemQuery = ItemQuery.FromDict(dict);
+                var itemQuery = ItemQuery.Parse(dict);
                 return _backpackManager.GetBackpackIfExists(ownerId)?.SumItems(ref itemQuery) ?? 0;
             }
 
             public int CountBackpackItems(ulong ownerId, Dictionary<string, object> dict)
             {
-                var itemQuery = ItemQuery.FromDict(dict);
+                var itemQuery = ItemQuery.Parse(dict);
                 return _backpackManager.GetBackpackIfExists(ownerId)?.CountItems(ref itemQuery) ?? 0;
             }
 
             public int TakeBackpackItems(ulong ownerId, Dictionary<string, object> dict, int amount, List<Item> collect)
             {
-                var itemQuery = ItemQuery.FromDict(dict);
+                var itemQuery = ItemQuery.Parse(dict);
                 return _backpackManager.GetBackpackIfExists(ownerId)?.TakeItems(ref itemQuery, amount, collect) ?? 0;
             }
 
@@ -854,6 +865,60 @@ namespace Oxide.Plugins
             return container;
         }
 
+        private void RegisterAsItemSupplier()
+        {
+            ItemRetriever?.Call("API_AddSupplier", this, new Dictionary<string, object>
+            {
+                ["FindPlayerItems"] = new Action<BasePlayer, Dictionary<string, object>, List<Item>>((player, rawItemQuery, collect) =>
+                {
+                    var backpack = _backpackManager.GetBackpackIfCached(player.userID);
+                    if (backpack == null)
+                        return;
+
+                    var itemQuery = ItemQuery.Parse(rawItemQuery);
+                    backpack.FindItems(collect, ref itemQuery);
+                }),
+
+                ["FindPlayerAmmo"] = new Action<BasePlayer, AmmoTypes, List<Item>>((player, ammoType, collect) =>
+                {
+                    var backpack = _backpackManager.GetBackpackIfCached(player.userID);
+                    if (backpack == null)
+                        return;
+
+                    backpack.FindAmmo(collect, ammoType);
+                }),
+
+                ["SumPlayerItems"] = new Func<BasePlayer, Dictionary<string, object>, int>((player, rawItemQuery) =>
+                {
+                    var backpack = _backpackManager.GetBackpackIfCached(player.userID);
+                    if (backpack == null)
+                        return 0;
+
+                    var itemQuery = ItemQuery.Parse(rawItemQuery);
+                    return backpack.SumItems(ref itemQuery);
+                }),
+
+                ["TakePlayerItems"] = new Func<BasePlayer, Dictionary<string, object>, int, List<Item>, int>((player, rawItemQuery, amount, collect) =>
+                {
+                    var backpack = _backpackManager.GetBackpackIfCached(player.userID);
+                    if (backpack == null)
+                        return 0;
+
+                    var itemQuery = ItemQuery.Parse(rawItemQuery);
+                    return backpack.TakeItems(ref itemQuery, amount, collect);
+                }),
+
+                ["SerializeForNetwork"] = new Action<BasePlayer, List<ProtoBuf.Item>>((player, saveList) =>
+                {
+                    var backpack = _backpackManager.GetBackpackIfCached(player.userID);
+                    if (backpack == null)
+                        return;
+
+                    backpack.SerializeForNetwork(saveList);
+                }),
+            });
+        }
+
         private IEnumerator SaveRoutine(bool async, bool keepInUseBackpacks)
         {
             if (_storedData.SaveIfChanged() && async)
@@ -1191,27 +1256,22 @@ namespace Oxide.Plugins
 
         private static class ItemUtils
         {
-            public static bool HasItemMod<T>(ItemDefinition itemDefinition) where T : ItemMod
+            public static void FindItems(List<Item> itemList, List<Item> collect, ref ItemQuery itemQuery)
             {
-                foreach (var itemMod in itemDefinition.itemMods)
+                foreach (var item in itemList)
                 {
-                    if (itemMod is T)
-                        return true;
+                    var usableAmount = itemQuery.GetUsableAmount(item);
+                    if (usableAmount > 0)
+                    {
+                        collect.Add(item);
+                    }
+
+                    List<Item> childItemList;
+                    if (HasSearchableContainer(item, out childItemList))
+                    {
+                        FindItems(childItemList, collect, ref itemQuery);
+                    }
                 }
-
-                return false;
-            }
-
-            public static bool HasSearchableContainer(Item item, out List<Item> itemList)
-            {
-                itemList = item.contents?.itemList;
-                return itemList?.Count > 0 && HasSearchableContainer(item.info);
-            }
-
-            public static bool HasSearchableContainer(ItemData itemData, out List<ItemData> itemDataList)
-            {
-                itemDataList = itemData.Contents;
-                return itemDataList?.Count > 0 && HasSearchableContainer(itemData.ID);
             }
 
             public static int CountItems(List<Item> itemList, ref ItemQuery itemQuery)
@@ -1407,10 +1467,27 @@ namespace Oxide.Plugins
                 }
             }
 
+            private static bool HasItemMod<T>(ItemDefinition itemDefinition) where T : ItemMod
+            {
+                foreach (var itemMod in itemDefinition.itemMods)
+                {
+                    if (itemMod is T)
+                        return true;
+                }
+
+                return false;
+            }
+
             private static bool HasSearchableContainer(ItemDefinition itemDefinition)
             {
                 // Don't consider vanilla containers searchable (i.e., don't take low grade out of a miner's hat).
                 return !HasItemMod<ItemModContainer>(itemDefinition);
+            }
+
+            private static bool HasSearchableContainer(Item item, out List<Item> itemList)
+            {
+                itemList = item.contents?.itemList;
+                return itemList?.Count > 0 && HasSearchableContainer(item.info);
             }
 
             private static bool HasSearchableContainer(int itemId)
@@ -1420,6 +1497,12 @@ namespace Oxide.Plugins
                     return false;
 
                 return HasSearchableContainer(itemDefinition);
+            }
+
+            private static bool HasSearchableContainer(ItemData itemData, out List<ItemData> itemDataList)
+            {
+                itemDataList = itemData.Contents;
+                return itemDataList?.Count > 0 && HasSearchableContainer(itemData.ID);
             }
 
             private static void TakeItemAmount(Item item, List<Item> collect, int amount)
@@ -2819,7 +2902,7 @@ namespace Oxide.Plugins
                 return Interface.Oxide.DataFileSystem.ExistsDatafile(GetBackpackPath(userId));
             }
 
-            public Backpack GetCachedBackpack(ulong userId)
+            public Backpack GetBackpackIfCached(ulong userId)
             {
                 Backpack backpack;
                 return _cachedBackpacks.TryGetValue(userId, out backpack)
@@ -2829,7 +2912,7 @@ namespace Oxide.Plugins
 
             public Backpack GetBackpack(ulong userId)
             {
-                return GetCachedBackpack(userId) ?? Load(userId);
+                return GetBackpackIfCached(userId) ?? Load(userId);
             }
 
             public Backpack GetBackpackIfExists(ulong userId)
@@ -3148,41 +3231,44 @@ namespace Oxide.Plugins
 
         private struct ItemQuery
         {
-            public static ItemQuery FromDict(Dictionary<string, object> dict)
+            public static ItemQuery Parse(Dictionary<string, object> raw)
             {
-                return new ItemQuery
-                {
-                    BlueprintId = GetOption<int>(dict, "BlueprintId"),
-                    DisplayName = GetOption<string>(dict, "DisplayName"),
-                    DataInt = GetOption<int>(dict, "DataInt"),
-                    Flags = GetOption<int>(dict, "Flags"),
-                    ItemDefinition = GetOption<ItemDefinition>(dict, "ItemDefinition"),
-                    ItemId = GetOption<int>(dict, "ItemId"),
-                    MinCondition = GetOption<float>(dict, "MinCondition"),
-                    RequireEmpty = GetOption<bool>(dict, "RequireEmpty"),
-                    SkinId = GetOption<ulong>(dict, "SkinId"),
-                };
+                var itemQuery = new ItemQuery();
+
+                GetOption(raw, "BlueprintId", out itemQuery.BlueprintId);
+                GetOption(raw, "DisplayName", out itemQuery.DisplayName);
+                GetOption(raw, "DataInt", out itemQuery.DataInt);
+                GetOption(raw, "FlagsContain", out itemQuery.FlagsContain);
+                GetOption(raw, "FlagsEqual", out itemQuery.FlagsEqual);
+                GetOption(raw, "ItemDefinition", out itemQuery.ItemDefinition);
+                GetOption(raw, "ItemId", out itemQuery.ItemId);
+                GetOption(raw, "MinCondition", out itemQuery.MinCondition);
+                GetOption(raw, "RequireEmpty", out itemQuery.RequireEmpty);
+                GetOption(raw, "SkinId", out itemQuery.SkinId);
+
+                return itemQuery;
             }
 
-            private static T GetOption<T>(Dictionary<string, object> dict, string key)
+            private static void GetOption<T>(Dictionary<string, object> dict, string key, out T result)
             {
                 object value;
-                return dict.TryGetValue(key, out value) && value is T
+                result = dict.TryGetValue(key, out value) && value is T
                     ? (T)value
                     : default(T);
             }
 
-            public int BlueprintId;
-            public int DataInt;
+            public int? BlueprintId;
+            public int? DataInt;
             public string DisplayName;
-            public int Flags;
+            public Item.Flag? FlagsContain;
+            public Item.Flag? FlagsEqual;
             public ItemDefinition ItemDefinition;
-            public int ItemId;
+            public int? ItemId;
             public float MinCondition;
             public bool RequireEmpty;
-            public ulong SkinId;
+            public ulong? SkinId;
 
-            private int GetItemId()
+            private int? GetItemId()
             {
                 if (ItemDefinition != null)
                     return ItemDefinition?.itemid ?? ItemId;
@@ -3192,9 +3278,9 @@ namespace Oxide.Plugins
 
             private ItemDefinition GetItemDefinition()
             {
-                if ((object)ItemDefinition == null)
+                if ((object)ItemDefinition == null && ItemId.HasValue)
                 {
-                    ItemDefinition = ItemManager.FindItemDefinition(ItemId);
+                    ItemDefinition = ItemManager.FindItemDefinition(ItemId.Value);
                 }
 
                 return ItemDefinition;
@@ -3222,19 +3308,22 @@ namespace Oxide.Plugins
             public int GetUsableAmount(Item item)
             {
                 var itemId = GetItemId();
-                if (itemId != 0 && itemId != item.info.itemid)
+                if (itemId.HasValue && itemId != item.info.itemid)
                     return 0;
 
-                if (SkinId != 0 && SkinId != item.skin)
+                if (SkinId.HasValue && SkinId != item.skin)
                     return 0;
 
-                if (BlueprintId != 0 && BlueprintId != item.blueprintTarget)
+                if (BlueprintId.HasValue && BlueprintId != item.blueprintTarget)
                     return 0;
 
-                if (DataInt != 0 && DataInt != (item.instanceData?.dataInt ?? 0))
+                if (DataInt.HasValue && DataInt != (item.instanceData?.dataInt ?? 0))
                     return 0;
 
-                if (Flags != 0 && Flags != ((int)item.flags & Flags))
+                if (FlagsContain.HasValue && !item.flags.HasFlag(FlagsContain.Value))
+                    return 0;
+
+                if (FlagsEqual.HasValue && FlagsEqual != item.flags)
                     return 0;
 
                 if (MinCondition > 0 && HasCondition() && (item.conditionNormalized < MinCondition || item.maxConditionNormalized < MinCondition))
@@ -3251,19 +3340,22 @@ namespace Oxide.Plugins
             public int GetUsableAmount(ItemData itemData)
             {
                 var itemId = GetItemId();
-                if (itemId != 0 && itemId != itemData.ID)
+                if (itemId.HasValue && itemId != itemData.ID)
                     return 0;
 
-                if (SkinId != 0 && SkinId != itemData.Skin)
+                if (SkinId.HasValue && SkinId != itemData.Skin)
                     return 0;
 
-                if (BlueprintId != 0 && BlueprintId != itemData.BlueprintTarget)
+                if (BlueprintId.HasValue && BlueprintId != itemData.BlueprintTarget)
                     return 0;
 
-                if (DataInt != 0 && DataInt != itemData.DataInt)
+                if (DataInt.HasValue && DataInt != itemData.DataInt)
                     return 0;
 
-                if (Flags != 0 && Flags != ((int)itemData.Flags & Flags))
+                if (FlagsContain.HasValue && !itemData.Flags.HasFlag(FlagsContain.Value))
+                    return 0;
+
+                if (FlagsEqual.HasValue && FlagsEqual != itemData.Flags)
                     return 0;
 
                 if (MinCondition > 0 && HasCondition() && (ConditionNormalized(itemData) < MinCondition || MaxConditionNormalized(itemData) < MinCondition))
@@ -3619,6 +3711,16 @@ namespace Oxide.Plugins
             public void SortByPosition()
             {
                 ItemContainer.itemList.Sort((a, b) => a.position.CompareTo(b.position));
+            }
+
+            public void FindItems(List<Item> collect, ref ItemQuery itemQuery)
+            {
+                ItemUtils.FindItems(ItemContainer.itemList, collect, ref itemQuery);
+            }
+
+            public void FindAmmo(List<Item> collect, AmmoTypes ammoType)
+            {
+                ItemContainer.FindAmmo(collect, ammoType);
             }
 
             public int CountItems(ref ItemQuery itemQuery)
@@ -4243,6 +4345,22 @@ namespace Oxide.Plugins
                     count += containerAdapter.CountItems(ref itemQuery);
                 }
                 return count;
+            }
+
+            public void FindItems(List<Item> collect, ref ItemQuery itemQuery)
+            {
+                foreach (var containerAdapter in _containerAdapters)
+                {
+                    (containerAdapter as ItemContainerAdapter)?.FindItems(collect, ref itemQuery);
+                }
+            }
+
+            public void FindAmmo(List<Item> collect, AmmoTypes ammoType)
+            {
+                foreach (var containerAdapter in _containerAdapters)
+                {
+                    (containerAdapter as ItemContainerAdapter)?.FindAmmo(collect, ammoType);
+                }
             }
 
             public int SumItems(ref ItemQuery itemQuery)
