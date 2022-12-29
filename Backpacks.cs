@@ -4284,7 +4284,7 @@ namespace Oxide.Plugins
                 }
 
                 desiredPageIndex = allowedCapacity.ClampPage(desiredPageIndex);
-                pageCapacity = allowedCapacity.Capacity;
+                pageCapacity = allowedCapacity.CapacityForPage(desiredPageIndex);
                 return desiredPageIndex;
             }
 
