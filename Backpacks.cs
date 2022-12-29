@@ -797,7 +797,8 @@ namespace Oxide.Plugins
                    ?? (container.entityOwner as ContainerIOEntity)?.lootPanelName
                    ?? (container.entityOwner as LootableCorpse)?.lootPanelName
                    ?? (container.entityOwner as DroppedItemContainer)?.lootPanelName
-                   ?? (container.entityOwner as BaseRidableAnimal)?.lootPanelName;
+                   ?? (container.entityOwner as BaseRidableAnimal)?.lootPanelName
+                   ?? ResizableLootPanelName;
         }
 
         private static void ClosePlayerInventory(BasePlayer player)
