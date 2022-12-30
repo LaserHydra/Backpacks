@@ -735,13 +735,13 @@ namespace Oxide.Plugins
             }
 
             var targetBasePlayer = targetPlayer.Object as BasePlayer;
-            var backpackOwnerId = targetBasePlayer?.userID ?? ulong.Parse(targetPlayer.Id);
+            var desiredOwnerId = targetBasePlayer?.userID ?? ulong.Parse(targetPlayer.Id);
 
             OpenBackpack(
                 basePlayer,
                 IsKeyBindArg(args.LastOrDefault()),
                 ParsePageArg(args.ElementAtOrDefault(1)),
-                ownerId: backpackOwnerId
+                desiredOwnerId: desiredOwnerId
             );
         }
 
@@ -938,18 +938,41 @@ namespace Oxide.Plugins
             ServerMgr.Instance?.StartCoroutine(SaveRoutine(async, keepInUseBackpacks));
         }
 
-        private void OpenBackpack(BasePlayer looter, bool isKeyBind, int desiredPageIndex = -1, bool forward = true, bool wrapAround = true, ulong ownerId = 0)
+        private void OpenBackpackMaybeDelayed(BasePlayer looter, ItemContainer currentContainer, Backpack backpack, int pageIndex, bool isKeyBind)
+        {
+            var pageCapacity = backpack.GetAllowedPageCapacityForLooter(looter.userID, pageIndex);
+
+            var delaySeconds = CalculateOpenDelay(currentContainer, pageCapacity, isKeyBind);
+            if (delaySeconds > 0)
+            {
+                if (currentContainer != null)
+                {
+                    looter.EndLooting();
+                    looter.inventory.loot.SendImmediate();
+                }
+
+                var ownerId2 = backpack.OwnerId;
+                var looter2 = looter;
+                var pageIndex2 = pageIndex;
+
+                timer.Once(delaySeconds, () => _backpackManager.TryOpenBackpackPage(looter2, ownerId2, pageIndex2));
+                return;
+            }
+
+            _backpackManager.TryOpenBackpackPage(looter, backpack.OwnerId, pageIndex);
+        }
+
+        private void OpenBackpack(BasePlayer looter, bool isKeyBind, int desiredPageIndex = -1, bool forward = true, bool wrapAround = true, ulong desiredOwnerId = 0)
         {
             var playerLoot = looter.inventory.loot;
             var lootingContainer = playerLoot.containers.FirstOrDefault();
 
-            var wasLooting = lootingContainer != null;
-            if (wasLooting)
+            if (lootingContainer != null)
             {
                 Backpack currentBackpack;
                 int currentPageIndex;
                 if (_backpackManager.IsBackpack(lootingContainer, out currentBackpack, out currentPageIndex)
-                    && (currentBackpack.OwnerId == ownerId || ownerId == 0))
+                    && (currentBackpack.OwnerId == desiredOwnerId || desiredOwnerId == 0))
                 {
                     var nextPageIndex = currentBackpack.DetermineNextPageIndexForLooter(looter.userID, currentPageIndex, desiredPageIndex, forward, wrapAround, requireContents: false);
                     if (nextPageIndex == currentPageIndex)
@@ -981,36 +1004,27 @@ namespace Oxide.Plugins
                     currentBackpack.SwitchToPage(looter, nextPageIndex);
                     return;
                 }
+
+                var parent = lootingContainer.parent?.parent;
+                if (parent != null && _backpackManager.IsBackpack(parent, out currentBackpack, out currentPageIndex)
+                    && (currentBackpack.OwnerId == desiredOwnerId || desiredOwnerId == 0))
+                {
+                    // Player is looting a child container of the target backpack, so open the current page.
+                    OpenBackpackMaybeDelayed(looter, lootingContainer, currentBackpack, currentPageIndex, isKeyBind);
+                    return;
+                }
             }
 
             // At this point, player is not looting, looting a different backpack, or looting a different container.
-            if (ownerId == 0)
+            if (desiredOwnerId == 0)
             {
-                ownerId = looter.userID;
+                desiredOwnerId = looter.userID;
             }
 
-            var backpack = _backpackManager.GetBackpack(ownerId);
-            int pageCapacity;
-            desiredPageIndex = backpack.DetermineInitialPageForLooter(looter.userID, desiredPageIndex, forward, out pageCapacity);
+            var backpack = _backpackManager.GetBackpack(desiredOwnerId);
+            desiredPageIndex = backpack.DetermineInitialPageForLooter(looter.userID, desiredPageIndex, forward);
 
-            var delaySeconds = CalculateOpenDelay(lootingContainer, pageCapacity, isKeyBind);
-            if (delaySeconds > 0)
-            {
-                if (wasLooting)
-                {
-                    looter.EndLooting();
-                    playerLoot.SendImmediate();
-                }
-
-                var ownerId2 = ownerId;
-                var looter2 = looter;
-                var desiredPageIndex2 = desiredPageIndex;
-
-                timer.Once(delaySeconds, () => _backpackManager.TryOpenBackpackPage(looter2, ownerId2, desiredPageIndex2));
-                return;
-            }
-
-            _backpackManager.TryOpenBackpackPage(looter, ownerId, desiredPageIndex);
+            OpenBackpackMaybeDelayed(looter, lootingContainer, backpack, desiredPageIndex, isKeyBind);
         }
 
         private bool ShouldDisplayGuiButton(BasePlayer player)
@@ -4311,7 +4325,7 @@ namespace Oxide.Plugins
                 return GetAllowedCapacityForLooter(looterId).CapacityForPage(desiredPageIndex);
             }
 
-            public int DetermineInitialPageForLooter(ulong looterId, int desiredPageIndex, bool forward, out int pageCapacity)
+            public int DetermineInitialPageForLooter(ulong looterId, int desiredPageIndex, bool forward)
             {
                 var allowedCapacity = GetAllowedCapacityForLooter(looterId);
 
@@ -4320,9 +4334,7 @@ namespace Oxide.Plugins
                     desiredPageIndex = forward ? 0 : allowedCapacity.LastPage;
                 }
 
-                desiredPageIndex = allowedCapacity.ClampPage(desiredPageIndex);
-                pageCapacity = allowedCapacity.CapacityForPage(desiredPageIndex);
-                return desiredPageIndex;
+                return allowedCapacity.ClampPage(desiredPageIndex);
             }
 
             public int DetermineNextPageIndexForLooter(ulong looterId, int currentPageIndex, int desiredPageIndex, bool forward, bool wrapAround, bool requireContents)
