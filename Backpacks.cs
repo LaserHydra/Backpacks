@@ -69,7 +69,7 @@ namespace Oxide.Plugins
         private Coroutine _saveRoutine;
 
         [PluginReference]
-        private readonly Plugin Arena, EventManager, ItemRetriever;
+        private readonly Plugin Arena, BagOfHolding, EventManager, ItemRetriever;
 
         public Backpacks()
         {
@@ -191,9 +191,22 @@ namespace Oxide.Plugins
 
         private void OnPluginLoaded(Plugin plugin)
         {
-            if (plugin.Name == nameof(ItemRetriever))
+            switch (plugin.Name)
             {
-                RegisterAsItemSupplier();
+                case nameof(ItemRetriever):
+                    RegisterAsItemSupplier();
+                    break;
+                case nameof(BagOfHolding):
+                {
+                    NextTick(() =>
+                    {
+                        if (!plugin.IsLoaded)
+                            return;
+
+                        _backpackManager.DiscoverBags(plugin);
+                    });
+                    break;
+                }
             }
         }
 
@@ -2846,6 +2859,14 @@ namespace Oxide.Plugins
                 _plugin = plugin;
             }
 
+            public void DiscoverBags(Plugin bagOfHolding)
+            {
+                foreach (var backpack in _cachedBackpacks.Values)
+                {
+                    backpack.DiscoverBags(bagOfHolding);
+                }
+            }
+
             public void HandleCapacityPermissionChangedForGroup(string groupName)
             {
                 foreach (var backpack in _cachedBackpacks.Values)
@@ -4305,6 +4326,18 @@ namespace Oxide.Plugins
                 #if DEBUG_POOLING
                 LogDebug($"LeavePool | {PoolUtils.GetStats<Backpack>()}");
                 #endif
+            }
+
+            public void DiscoverBags(Plugin bagOfHolding)
+            {
+                foreach (var containerAdapter in _containerAdapters)
+                {
+                    var itemContainerAdapter = containerAdapter as ItemContainerAdapter;
+                    if (itemContainerAdapter == null)
+                        continue;
+
+                    bagOfHolding.Call("API_DiscoverBags", itemContainerAdapter.ItemContainer);
+                }
             }
 
             public void MarkDirty()
