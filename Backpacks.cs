@@ -811,7 +811,7 @@ namespace Oxide.Plugins
             if (currentContainer != null)
             {
                 // Can instantly switch to a smaller container.
-                if (nextContainerCapacity < currentContainer.capacity)
+                if (nextContainerCapacity <= currentContainer.capacity)
                     return 0;
 
                 // Can instantly switch to a generic resizable loot panel from a different loot panel.
