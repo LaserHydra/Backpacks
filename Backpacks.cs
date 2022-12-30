@@ -3658,7 +3658,7 @@ namespace Oxide.Plugins
 
             public ItemContainerAdapter()
             {
-                _onDirty = () => _backpack.IsDirty = true;
+                _onDirty = () => _backpack.MarkDirty();
                 _canAcceptItem = (item, amount) =>
                 {
                     // Explicitly track hook time so server owners can be informed of the cost.
@@ -4107,12 +4107,38 @@ namespace Oxide.Plugins
             private bool _processedRestrictedItems;
             private DynamicConfigFile _dataFile;
             private StorageContainer _storageContainer;
+            private BasePlayer _owner;
             private ContainerAdapterCollection _containerAdapters;
             private readonly List<BasePlayer> _looters = new List<BasePlayer>();
 
             public bool HasLooters => _looters.Count > 0;
             private Configuration _config => Plugin._config;
             private BackpackManager _backpackManager => Plugin._backpackManager;
+
+            private BasePlayer Owner
+            {
+                get
+                {
+                    if (_owner == null || !_owner.IsConnected)
+                    {
+                        foreach (var looter in _looters)
+                        {
+                            if (looter.userID == OwnerId)
+                            {
+                                _owner = looter;
+                                break;
+                            }
+                        }
+
+                        if (_owner == null)
+                        {
+                            _owner = BasePlayer.FindByID(OwnerId);
+                        }
+                    }
+
+                    return _owner;
+                }
+            }
 
             private BackpackCapacity AllowedCapacity
             {
@@ -4246,6 +4272,7 @@ namespace Oxide.Plugins
                 _processedRestrictedItems = false;
                 _dataFile = null;
                 _storageContainer = null;
+                _owner = null;
                 _containerAdapters?.ResetPooledItemsAndClear();
                 _looters.Clear();
             }
@@ -4255,6 +4282,16 @@ namespace Oxide.Plugins
                 #if DEBUG_POOLING
                 LogDebug($"LeavePool | {PoolUtils.GetStats<Backpack>()}");
                 #endif
+            }
+
+            public void MarkDirty()
+            {
+                IsDirty = true;
+
+                if (Plugin.ItemRetriever != null)
+                {
+                    Owner?.inventory?.containerMain?.MarkDirty();
+                }
             }
 
             public int GetPageIndexForContainer(ItemContainer container)
