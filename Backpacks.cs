@@ -877,7 +877,7 @@ namespace Oxide.Plugins
                         return;
 
                     var itemQuery = ItemQuery.Parse(rawItemQuery);
-                    backpack.FindItems(collect, ref itemQuery);
+                    backpack.FindItems(ref itemQuery, collect);
                 }),
 
                 ["FindPlayerAmmo"] = new Action<BasePlayer, AmmoTypes, List<Item>>((player, ammoType, collect) =>
@@ -886,7 +886,7 @@ namespace Oxide.Plugins
                     if (backpack == null)
                         return;
 
-                    backpack.FindAmmo(collect, ammoType);
+                    backpack.FindAmmo(ammoType, collect);
                 }),
 
                 ["SumPlayerItems"] = new Func<BasePlayer, Dictionary<string, object>, int>((player, rawItemQuery) =>
@@ -1257,7 +1257,7 @@ namespace Oxide.Plugins
 
         private static class ItemUtils
         {
-            public static void FindItems(List<Item> itemList, List<Item> collect, ref ItemQuery itemQuery)
+            public static void FindItems(List<Item> itemList, ref ItemQuery itemQuery, List<Item> collect)
             {
                 foreach (var item in itemList)
                 {
@@ -1270,7 +1270,7 @@ namespace Oxide.Plugins
                     List<Item> childItemList;
                     if (HasSearchableContainer(item, out childItemList))
                     {
-                        FindItems(childItemList, collect, ref itemQuery);
+                        FindItems(childItemList, ref itemQuery, collect);
                     }
                 }
             }
@@ -1355,7 +1355,7 @@ namespace Oxide.Plugins
                 return sum;
             }
 
-            public static int TakeItems(List<Item> itemList, List<Item> collect, ref ItemQuery itemQuery, int amount)
+            public static int TakeItems(List<Item> itemList, ref ItemQuery itemQuery, int amount, List<Item> collect)
             {
                 var totalAmountTaken = 0;
 
@@ -1371,7 +1371,7 @@ namespace Oxide.Plugins
                     {
                         amountToTake = Math.Min(usableAmount, amountToTake);
 
-                        TakeItemAmount(item, collect, amountToTake);
+                        TakeItemAmount(item, amountToTake, collect);
                         totalAmountTaken += amountToTake;
                     }
 
@@ -1379,14 +1379,14 @@ namespace Oxide.Plugins
                     List<Item> childItemList;
                     if (amountToTake > 0 && HasSearchableContainer(item, out childItemList))
                     {
-                        totalAmountTaken += TakeItems(childItemList, collect, ref itemQuery, amount);
+                        totalAmountTaken += TakeItems(childItemList, ref itemQuery, amount, collect);
                     }
                 }
 
                 return totalAmountTaken;
             }
 
-            public static int TakeItems(List<ItemData> itemDataList, List<Item> collect, ref ItemQuery itemQuery, int amount)
+            public static int TakeItems(List<ItemData> itemDataList, ref ItemQuery itemQuery, int amount, List<Item> collect)
             {
                 var totalAmountTaken = 0;
 
@@ -1418,7 +1418,7 @@ namespace Oxide.Plugins
                     List<ItemData> childItemList;
                     if (amountToTake > 0 && HasSearchableContainer(itemData, out childItemList))
                     {
-                        totalAmountTaken += TakeItems(childItemList, collect, ref itemQuery, amountToTake);
+                        totalAmountTaken += TakeItems(childItemList, ref itemQuery, amountToTake, collect);
                     }
                 }
 
@@ -1506,7 +1506,7 @@ namespace Oxide.Plugins
                 return itemDataList?.Count > 0 && HasSearchableContainer(itemData.ID);
             }
 
-            private static void TakeItemAmount(Item item, List<Item> collect, int amount)
+            private static void TakeItemAmount(Item item, int amount, List<Item> collect)
             {
                 if (amount >= item.amount)
                 {
@@ -3382,9 +3382,9 @@ namespace Oxide.Plugins
             bool HasItems { get; }
             int CountItems(ref ItemQuery itemQuery);
             int SumItems(ref ItemQuery itemQuery);
-            int TakeItems(List<Item> collect, ref ItemQuery itemQuery, int amount);
+            int TakeItems(ref ItemQuery itemQuery, int amount, List<Item> collect);
             bool TryDepositItem(Item item);
-            void ReclaimFractionForSoftcore(List<Item> collect, float fraction);
+            void ReclaimFractionForSoftcore(float fraction, List<Item> collect);
             void TakeRestrictedItems(List<Item> collect);
             void TakeAllItems(List<Item> collect, int startPosition = 0);
             void SerializeForNetwork(List<ProtoBuf.Item> saveList);
@@ -3451,9 +3451,9 @@ namespace Oxide.Plugins
                 return ItemUtils.SumItems(ItemDataList, ref itemQuery);
             }
 
-            public int TakeItems(List<Item> collect, ref ItemQuery itemQuery, int amount)
+            public int TakeItems(ref ItemQuery itemQuery, int amount, List<Item> collect)
             {
-                var amountTaken = ItemUtils.TakeItems(ItemDataList, collect, ref itemQuery, amount);
+                var amountTaken = ItemUtils.TakeItems(ItemDataList, ref itemQuery, amount, collect);
                 if (amountTaken > 0)
                 {
                     _backpack.IsDirty = true;
@@ -3462,7 +3462,7 @@ namespace Oxide.Plugins
                 return amountTaken;
             }
 
-            public void ReclaimFractionForSoftcore(List<Item> collect, float fraction)
+            public void ReclaimFractionForSoftcore(float fraction, List<Item> collect)
             {
                 // For some reason, the vanilla reclaim logic doesn't take the last item.
                 if (ItemDataList.Count <= 1)
@@ -3714,12 +3714,12 @@ namespace Oxide.Plugins
                 ItemContainer.itemList.Sort((a, b) => a.position.CompareTo(b.position));
             }
 
-            public void FindItems(List<Item> collect, ref ItemQuery itemQuery)
+            public void FindItems(ref ItemQuery itemQuery, List<Item> collect)
             {
-                ItemUtils.FindItems(ItemContainer.itemList, collect, ref itemQuery);
+                ItemUtils.FindItems(ItemContainer.itemList, ref itemQuery, collect);
             }
 
-            public void FindAmmo(List<Item> collect, AmmoTypes ammoType)
+            public void FindAmmo(AmmoTypes ammoType, List<Item> collect)
             {
                 ItemContainer.FindAmmo(collect, ammoType);
             }
@@ -3734,12 +3734,12 @@ namespace Oxide.Plugins
                 return ItemUtils.SumItems(ItemContainer.itemList, ref itemQuery);
             }
 
-            public int TakeItems(List<Item> collect, ref ItemQuery itemQuery, int amount)
+            public int TakeItems(ref ItemQuery itemQuery, int amount, List<Item> collect)
             {
-                return ItemUtils.TakeItems(ItemContainer.itemList, collect, ref itemQuery, amount);
+                return ItemUtils.TakeItems(ItemContainer.itemList, ref itemQuery, amount, collect);
             }
 
-            public void ReclaimFractionForSoftcore(List<Item> collect, float fraction)
+            public void ReclaimFractionForSoftcore(float fraction, List<Item> collect)
             {
                 var itemList = ItemContainer.itemList;
 
@@ -4385,19 +4385,19 @@ namespace Oxide.Plugins
                 return count;
             }
 
-            public void FindItems(List<Item> collect, ref ItemQuery itemQuery)
+            public void FindItems(ref ItemQuery itemQuery, List<Item> collect)
             {
                 foreach (var containerAdapter in _containerAdapters)
                 {
-                    (containerAdapter as ItemContainerAdapter)?.FindItems(collect, ref itemQuery);
+                    (containerAdapter as ItemContainerAdapter)?.FindItems(ref itemQuery, collect);
                 }
             }
 
-            public void FindAmmo(List<Item> collect, AmmoTypes ammoType)
+            public void FindAmmo(AmmoTypes ammoType, List<Item> collect)
             {
                 foreach (var containerAdapter in _containerAdapters)
                 {
-                    (containerAdapter as ItemContainerAdapter)?.FindAmmo(collect, ammoType);
+                    (containerAdapter as ItemContainerAdapter)?.FindAmmo(ammoType, collect);
                 }
             }
 
@@ -4420,7 +4420,7 @@ namespace Oxide.Plugins
                     if (amountToTake <= 0)
                         break;
 
-                    amountTaken += containerAdapter.TakeItems(collect, ref itemQuery, amountToTake);
+                    amountTaken += containerAdapter.TakeItems(ref itemQuery, amountToTake, collect);
                 }
                 return amountTaken;
             }
@@ -5112,7 +5112,7 @@ namespace Oxide.Plugins
                 {
                     foreach (var containerAdapter in _containerAdapters)
                     {
-                        containerAdapter.ReclaimFractionForSoftcore(allItemsToReclaim, reclaimFraction);
+                        containerAdapter.ReclaimFractionForSoftcore(reclaimFraction, allItemsToReclaim);
                     }
 
                     if (allItemsToReclaim.Count > 0)
