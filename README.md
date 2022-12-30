@@ -106,6 +106,7 @@ Alternative backpacks images:
   "User ID not Found": "Could not find player with ID '{0}'",
   "User Name not Found": "Could not find player with name '{0}'",
   "Multiple Players Found": "Multiple matching players found:\n{0}",
+  "Backpack Items Rejected": "Your backpack rejected some items. They have been added to your inventory or dropped.",
   "Backpack Over Capacity": "Your backpack was over capacity. Overflowing items were added to your inventory or dropped.",
   "Blacklisted Items Removed": "Your backpack contained blacklisted items. They have been added to your inventory or dropped.",
   "Backpack Fetch Syntax": "Syntax: backpack.fetch <item short name or id> <amount>",

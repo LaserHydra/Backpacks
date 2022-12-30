@@ -3870,11 +3870,9 @@ namespace Oxide.Plugins
                     if (item == null)
                         continue;
 
-                    if (!item.MoveToContainer(ItemContainer, item.position)
-                        && item.MoveToContainer(ItemContainer))
+                    if (!item.MoveToContainer(ItemContainer, item.position) && !item.MoveToContainer(ItemContainer))
                     {
-                        LogError($"Failed to move item into backpack: {item.amount.ToString()} {item.info.shortname} (skin: {item.skin.ToString()})");
-                        item.Remove();
+                        _backpack.AddRejectedItem(item);
                     }
                 }
 
@@ -4107,6 +4105,8 @@ namespace Oxide.Plugins
             [JsonProperty("Items", Order = 2)]
             private List<ItemData> ItemDataCollection = new List<ItemData>();
 
+            public List<Item> _rejectedItems;
+
             public Backpacks Plugin;
             public BackpackNetworkController NetworkController { get; private set; }
             public bool AllowedCapacityNeedsRefresh = true;
@@ -4289,6 +4289,15 @@ namespace Oxide.Plugins
                 _owner = null;
                 _containerAdapters?.ResetPooledItemsAndClear();
                 _looters.Clear();
+                if (_rejectedItems?.Count > 0)
+                {
+                    foreach (var item in _rejectedItems)
+                    {
+                        LogError($"Found rejected item when backpack entered pool: {item.amount.ToString()} {item.info.shortname} (skin: {item.skin.ToString()})");
+                        item.Remove();
+                    }
+                    _rejectedItems.Clear();
+                }
             }
 
             public void LeavePool()
@@ -4306,6 +4315,16 @@ namespace Oxide.Plugins
                 {
                     Owner?.inventory?.containerMain?.MarkDirty();
                 }
+            }
+
+            public void AddRejectedItem(Item item)
+            {
+                if (_rejectedItems == null)
+                {
+                    _rejectedItems = new List<Item>();
+                }
+
+                _rejectedItems.Add(item);
             }
 
             public int GetPageIndexForContainer(ItemContainer container)
@@ -4503,6 +4522,7 @@ namespace Oxide.Plugins
                 // Some operations are only appropriate for the owner (not for admins viewing the backpack).
                 if (looter.userID == OwnerId)
                 {
+                    EjectRejectedItemsIfNeeded(looter);
                     EjectRestrictedItemsIfNeeded(looter);
                     ShrinkIfNeededAndEjectOverflowingItems(looter);
                 }
@@ -4532,6 +4552,11 @@ namespace Oxide.Plugins
                 foreach (var container in playerLoot.containers)
                 {
                     container.onDirty -= playerLoot.MarkDirty;
+                }
+
+                if (looter.userID == OwnerId)
+                {
+                    EjectRejectedItemsIfNeeded(looter);
                 }
 
                 playerLoot.containers.Clear();
@@ -4650,6 +4675,19 @@ namespace Oxide.Plugins
                         containerAdapter.SerializeTo(ItemDataCollection, itemsToReleaseToPool);
                     }
 
+                    if (_rejectedItems?.Count > 0)
+                    {
+                        var lastPosition = ItemDataCollection.LastOrDefault()?.Position ?? 0;
+
+                        foreach (var item in _rejectedItems)
+                        {
+                            item.position = ++lastPosition;
+                            var itemData = Pool.Get<ItemData>().Setup(item);
+                            ItemDataCollection.Add(itemData);
+                            itemsToReleaseToPool.Add(itemData);
+                        }
+                    }
+
                     _dataFile.WriteObject(this);
                     IsDirty = false;
 
@@ -4688,6 +4726,16 @@ namespace Oxide.Plugins
                 {
                     var adapter = containerAdapter;
                     KillContainerAdapter(ref adapter);
+                }
+
+                if (_rejectedItems?.Count > 0)
+                {
+                    foreach (var item in _rejectedItems)
+                    {
+                        item.Remove();
+                    }
+
+                    _rejectedItems.Clear();
                 }
 
                 if (_storageContainer != null && !_storageContainer.IsDestroyed)
@@ -4784,6 +4832,21 @@ namespace Oxide.Plugins
 
                 _containerAdapters[pageIndex] = itemContainerAdapter;
                 return itemContainerAdapter;
+            }
+
+            private void EjectRejectedItemsIfNeeded(BasePlayer receiver)
+            {
+                if (_rejectedItems?.Count > 0)
+                {
+                    foreach (var item in _rejectedItems)
+                    {
+                        receiver.GiveItem(item);
+                    }
+
+                    _rejectedItems.Clear();
+
+                    receiver.ChatMessage(Plugin.GetMessage(receiver, "Backpack Items Rejected"));
+                }
             }
 
             private void EjectRestrictedItemsIfNeeded(BasePlayer receiver)
@@ -5772,6 +5835,7 @@ namespace Oxide.Plugins
                 ["User ID not Found"] = "Could not find player with ID '{0}'",
                 ["User Name not Found"] = "Could not find player with name '{0}'",
                 ["Multiple Players Found"] = "Multiple matching players found:\n{0}",
+                ["Backpack Items Rejected"] = "Your backpack rejected some items. They have been added to your inventory or dropped.",
                 ["Backpack Over Capacity"] = "Your backpack was over capacity. Overflowing items were added to your inventory or dropped.",
                 ["Blacklisted Items Removed"] = "Your backpack contained blacklisted items. They have been added to your inventory or dropped.",
                 ["Backpack Fetch Syntax"] = "Syntax: backpack.fetch <item short name or id> <amount>",
