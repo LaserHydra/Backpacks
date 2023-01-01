@@ -4708,18 +4708,7 @@ namespace Oxide.Plugins
                         containerAdapter.SerializeTo(ItemDataCollection, itemsToReleaseToPool);
                     }
 
-                    if (_rejectedItems?.Count > 0)
-                    {
-                        var lastPosition = ItemDataCollection.LastOrDefault()?.Position ?? 0;
-
-                        foreach (var item in _rejectedItems)
-                        {
-                            item.position = ++lastPosition;
-                            var itemData = Pool.Get<ItemData>().Setup(item);
-                            ItemDataCollection.Add(itemData);
-                            itemsToReleaseToPool.Add(itemData);
-                        }
-                    }
+                    SerializeRejectedItems(itemsToReleaseToPool);
 
                     _dataFile.WriteObject(this);
                     IsDirty = false;
@@ -4786,6 +4775,8 @@ namespace Oxide.Plugins
                     {
                         containerAdapter.SerializeTo(ItemDataCollection, itemsToReleaseToPool);
                     }
+
+                    SerializeRejectedItems(itemsToReleaseToPool);
 
                     var json = JsonConvert.SerializeObject(ItemDataCollection);
 
@@ -4865,6 +4856,22 @@ namespace Oxide.Plugins
 
                 _containerAdapters[pageIndex] = itemContainerAdapter;
                 return itemContainerAdapter;
+            }
+
+            private void SerializeRejectedItems(List<ItemData> itemsToReleaseToPool)
+            {
+                if (_rejectedItems == null || _rejectedItems.Count == 0)
+                    return;
+
+                var lastPosition = ItemDataCollection.LastOrDefault()?.Position ?? 0;
+
+                foreach (var item in _rejectedItems)
+                {
+                    item.position = ++lastPosition;
+                    var itemData = Pool.Get<ItemData>().Setup(item);
+                    ItemDataCollection.Add(itemData);
+                    itemsToReleaseToPool.Add(itemData);
+                }
             }
 
             private void EjectRejectedItemsIfNeeded(BasePlayer receiver)
