@@ -18,6 +18,7 @@ using System.Text;
 using Network;
 using Newtonsoft.Json.Converters;
 using Oxide.Core.Configuration;
+using Oxide.Core.Libraries;
 using Rust;
 using UnityEngine;
 using UnityEngine.UI;
@@ -48,6 +49,7 @@ namespace Oxide.Plugins
         private const string KeepOnDeathPermission = "backpacks.keepondeath";
         private const string KeepOnWipePermission = "backpacks.keeponwipe";
         private const string NoBlacklistPermission = "backpacks.noblacklist";
+        private const string RestrictionRulesetPermission ="backpacks.restrictions";
 
         private const string CoffinPrefab = "assets/prefabs/misc/halloween/coffin/coffinstorage.prefab";
         private const string DroppedBackpackPrefab = "assets/prefabs/misc/item drop/item_drop_backpack.prefab";
@@ -94,7 +96,6 @@ namespace Oxide.Plugins
             permission.RegisterPermission(AdminPermission, this);
             permission.RegisterPermission(KeepOnDeathPermission, this);
             permission.RegisterPermission(KeepOnWipePermission, this);
-            permission.RegisterPermission(NoBlacklistPermission, this);
 
             _backpackCapacityManager.Init(_config);
 
@@ -247,7 +248,7 @@ namespace Oxide.Plugins
             {
                 _backpackManager.HandleCapacityPermissionChangedForGroup(groupName);
             }
-            else if (perm.Equals(NoBlacklistPermission))
+            else if (perm.StartsWith(RestrictionRulesetPermission) || perm.Equals(NoBlacklistPermission))
             {
                 _backpackManager.HandleRestrictionPermissionChangedForGroup(groupName);
             }
@@ -266,7 +267,7 @@ namespace Oxide.Plugins
             {
                 _backpackManager.HandleCapacityPermissionChangedForGroup(groupName);
             }
-            else if (perm.Equals(NoBlacklistPermission))
+            else if (perm.StartsWith(RestrictionRulesetPermission) || perm.Equals(NoBlacklistPermission))
             {
                 _backpackManager.HandleRestrictionPermissionChangedForGroup(groupName);
             }
@@ -288,7 +289,7 @@ namespace Oxide.Plugins
             {
                 _backpackManager.HandleCapacityPermissionChangedForUser(userId);
             }
-            else if (perm.Equals(NoBlacklistPermission))
+            else if (perm.StartsWith(RestrictionRulesetPermission) || perm.Equals(NoBlacklistPermission))
             {
                 _backpackManager.HandleRestrictionPermissionChangedForUser(userId);
             }
@@ -308,7 +309,7 @@ namespace Oxide.Plugins
             {
                 _backpackManager.HandleCapacityPermissionChangedForUser(userId);
             }
-            else if (perm.Equals(NoBlacklistPermission))
+            else if (perm.StartsWith(RestrictionRulesetPermission) || perm.Equals(NoBlacklistPermission))
             {
                 _backpackManager.HandleRestrictionPermissionChangedForUser(userId);
             }
@@ -787,6 +788,29 @@ namespace Oxide.Plugins
         public static void LogInfo(string message) => Interface.Oxide.LogInfo($"[Backpacks] {message}");
         public static void LogWarning(string message) => Interface.Oxide.LogWarning($"[Backpacks] {message}");
         public static void LogError(string message) => Interface.Oxide.LogError($"[Backpacks] {message}");
+
+        private static T[] ParseEnumList<T>(string[] list, string errorFormat) where T : struct
+        {
+            var valueList = new List<T>(list?.Length ?? 0);
+
+            if (list != null)
+            {
+                foreach (var itemName in list)
+                {
+                    T result;
+                    if (Enum.TryParse(itemName, ignoreCase: true, result: out result))
+                    {
+                        valueList.Add(result);
+                    }
+                    else
+                    {
+                        LogError(string.Format(errorFormat, itemName));
+                    }
+                }
+            }
+
+            return valueList.ToArray();
+        }
 
         private static bool IsKeyBindArg(string arg)
         {
@@ -2898,7 +2922,7 @@ namespace Oxide.Plugins
                     if (!_plugin.permission.UserHasGroup(backpack.OwnerIdString, groupName))
                         continue;
 
-                    backpack.RespectsItemRestrictionsNeedsRefresh = true;
+                    backpack.RestrictionRulesetNeedsRefresh = true;
                 }
             }
 
@@ -2912,7 +2936,7 @@ namespace Oxide.Plugins
                 if (!_cachedBackpacks.TryGetValue(userId, out backpack))
                     return;
 
-                backpack.RespectsItemRestrictionsNeedsRefresh = true;
+                backpack.RestrictionRulesetNeedsRefresh = true;
             }
 
             public bool IsBackpack(ItemContainer container, out Backpack backpack, out int pageIndex)
@@ -3546,7 +3570,7 @@ namespace Oxide.Plugins
                 for (var i = ItemDataList.Count - 1; i >= 0; i--)
                 {
                     var itemData = ItemDataList[i];
-                    if (!_config.IsRestrictedItem(itemData))
+                    if (_backpack.RestrictionRuleset.AllowsItem(itemData))
                         continue;
 
                     var item = itemData.ToItem();
@@ -3813,7 +3837,7 @@ namespace Oxide.Plugins
                 for (var i = ItemContainer.itemList.Count - 1; i >= 0; i--)
                 {
                     var item = ItemContainer.itemList[i];
-                    if (!_config.IsRestrictedItem(item))
+                    if (_backpack.RestrictionRuleset.AllowsItem(item))
                         continue;
 
                     collect.Add(item);
@@ -4131,14 +4155,14 @@ namespace Oxide.Plugins
             public Backpacks Plugin;
             public BackpackNetworkController NetworkController { get; private set; }
             public bool AllowedCapacityNeedsRefresh = true;
-            public bool RespectsItemRestrictionsNeedsRefresh = true;
+            public bool RestrictionRulesetNeedsRefresh = true;
             public string OwnerIdString;
             public bool IsDirty;
 
             private BackpackCapacity ActualCapacity;
             private BackpackCapacity _allowedCapacity;
 
-            private bool _respectsItemRestrictions;
+            private RestrictionRuleset _restrictionRuleset;
             private bool _processedRestrictedItems;
             private DynamicConfigFile _dataFile;
             private StorageContainer _storageContainer;
@@ -4194,24 +4218,24 @@ namespace Oxide.Plugins
                 }
             }
 
-            public bool RespectsItemRestrictions
+            public RestrictionRuleset RestrictionRuleset
             {
                 get
                 {
-                    if (RespectsItemRestrictionsNeedsRefresh)
+                    if (RestrictionRulesetNeedsRefresh)
                     {
-                        var shouldRespect = !Plugin.permission.UserHasPermission(OwnerIdString, NoBlacklistPermission);
-                        if (shouldRespect && !_respectsItemRestrictions)
+                        var restrictionRuleset = _config.ItemRestrictions.GetForPlayer(OwnerIdString);
+                        if (restrictionRuleset != _restrictionRuleset)
                         {
                             // Re-evaluate existing items when the backpack is next opened.
                             _processedRestrictedItems = false;
                         }
 
-                        _respectsItemRestrictions = shouldRespect;
-                        RespectsItemRestrictionsNeedsRefresh = false;
+                        _restrictionRuleset = restrictionRuleset;
+                        RestrictionRulesetNeedsRefresh = false;
                     }
 
-                    return _respectsItemRestrictions;
+                    return _restrictionRuleset;
                 }
             }
 
@@ -4298,12 +4322,12 @@ namespace Oxide.Plugins
                 // Don't remove the NetworkController. Will reuse it for the next Backpack owner.
                 NetworkController?.UnsubscribeAll();
                 AllowedCapacityNeedsRefresh = true;
-                RespectsItemRestrictionsNeedsRefresh = true;
+                RestrictionRulesetNeedsRefresh = true;
                 OwnerIdString = null;
                 IsDirty = false;
                 ActualCapacity = default(BackpackCapacity);
                 _allowedCapacity = default(BackpackCapacity);
-                _respectsItemRestrictions = true;
+                _restrictionRuleset = null;
                 _processedRestrictedItems = false;
                 _dataFile = null;
                 _storageContainer = null;
@@ -4519,9 +4543,7 @@ namespace Oxide.Plugins
 
             public bool ShouldAcceptItem(Item item, ItemContainer container)
             {
-                if (_config.ItemRestrictionEnabled
-                    && RespectsItemRestrictions
-                    && _config.IsRestrictedItem(item))
+                if (_config.ItemRestrictions.Enabled && !RestrictionRuleset.AllowsItem(item))
                     return false;
 
                 var hookResult = ExposedHooks.CanBackpackAcceptItem(OwnerId, container, item);
@@ -4891,11 +4913,7 @@ namespace Oxide.Plugins
 
             private void EjectRestrictedItemsIfNeeded(BasePlayer receiver)
             {
-                if (!Plugin._config.ItemRestrictionEnabled)
-                    return;
-
-                // Some backpacks may ignore item restrictions due to permissions.
-                if (!RespectsItemRestrictions)
+                if (!Plugin._config.ItemRestrictions.Enabled)
                     return;
 
                 // Optimization: Avoid processing item restrictions every time the backpack is opened.
@@ -5585,6 +5603,214 @@ namespace Oxide.Plugins
         #region Configuration
 
         [JsonObject(MemberSerialization.OptIn)]
+        private class RestrictionRuleset
+        {
+            public static readonly RestrictionRuleset AllowAll = new RestrictionRuleset { _allowsAll = true };
+
+            [JsonProperty("Name", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            public string Name;
+
+            [JsonProperty("Allowed item categories")]
+            public string[] AllowedItemCategoryNames = new string[0];
+
+            [JsonProperty("Disallowed item categories")]
+            public string[] DisallowedItemCategoryNames = new string[0];
+
+            [JsonProperty("Allowed item short names")]
+            public string[] AllowedItemShortNames = new string[0];
+
+            [JsonProperty("Disallowed item short names")]
+            public string[] DisallowedItemShortNames = new string[0];
+
+            [JsonProperty("Allowed skin IDs")]
+            public HashSet<ulong> AllowedSkinIds = new HashSet<ulong>();
+
+            [JsonProperty("Disallowed skin IDs")]
+            public HashSet<ulong> DisallowedSkinIds = new HashSet<ulong>();
+
+            [JsonIgnore]
+            private ItemCategory[] _allowedItemCategories;
+
+            [JsonIgnore]
+            private ItemCategory[] _disallowedItemCategories;
+
+            [JsonIgnore]
+            private HashSet<int> _allowedItemIds = new HashSet<int>();
+
+            [JsonIgnore]
+            private HashSet<int> _disallowedItemIds = new HashSet<int>();
+
+            [JsonIgnore]
+            public string Permission { get; private set; }
+
+            [JsonIgnore]
+            public bool _allowsAll { get; private set; }
+
+            public void Init(Backpacks plugin)
+            {
+                if (!string.IsNullOrWhiteSpace(Name))
+                {
+                    Permission = $"{RestrictionRulesetPermission}.{Name}";
+                    plugin.permission.RegisterPermission(Permission, plugin);
+                }
+
+                var errorFormat = "Invalid item category in config: {0}";
+                _allowedItemCategories = ParseEnumList<ItemCategory>(AllowedItemCategoryNames, errorFormat);
+                _disallowedItemCategories = ParseEnumList<ItemCategory>(DisallowedItemCategoryNames, errorFormat);
+
+                foreach (var itemShortName in AllowedItemShortNames)
+                {
+                    var itemDefinition = ItemManager.FindItemDefinition(itemShortName);
+                    if (itemDefinition != null)
+                    {
+                        _allowedItemIds.Add(itemDefinition.itemid);
+                    }
+                    else
+                    {
+                        LogError($"Invalid item short name in config: {itemShortName}");
+                    }
+                }
+
+                foreach (var itemShortName in DisallowedItemShortNames)
+                {
+                    var itemDefinition = ItemManager.FindItemDefinition(itemShortName);
+                    if (itemDefinition != null)
+                    {
+                        _disallowedItemIds.Add(itemDefinition.itemid);
+                    }
+                    else
+                    {
+                        LogError($"Invalid item short name in config: {itemShortName}");
+                    }
+                }
+
+                if (_allowedItemCategories.Contains(ItemCategory.All)
+                    && _disallowedItemCategories.Length == 0
+                    && _disallowedItemIds.Count == 0
+                    && DisallowedSkinIds.Count == 0)
+                {
+                    _allowsAll = true;
+                }
+            }
+
+            public bool AllowsItem(Item item)
+            {
+                // Optimization: Skip all checks if all items are allowed.
+                if (_allowsAll)
+                    return true;
+
+                if (DisallowedSkinIds.Contains(item.skin))
+                    return false;
+
+                if (AllowedSkinIds.Contains(item.skin))
+                    return true;
+
+                if (_disallowedItemIds.Contains(item.info.itemid))
+                    return false;
+
+                if (_allowedItemIds.Contains(item.info.itemid))
+                    return true;
+
+                if (_disallowedItemCategories.Contains(item.info.category))
+                    return false;
+
+                if (_allowedItemCategories.Contains(item.info.category))
+                    return true;
+
+                return _allowedItemCategories.Contains(ItemCategory.All);
+            }
+
+            public bool AllowsItem(ItemData itemData)
+            {
+                // Optimization: Skip all checks if all items are allowed.
+                if (_allowsAll)
+                    return true;
+
+                if (DisallowedSkinIds.Contains(itemData.Skin))
+                    return false;
+
+                if (AllowedSkinIds.Contains(itemData.Skin))
+                    return true;
+
+                if (_disallowedItemIds.Contains(itemData.ID))
+                    return false;
+
+                if (_allowedItemIds.Contains(itemData.ID))
+                    return true;
+
+                // Optimization: Skip looking up the ItemDefinition if all categories are allowed.
+                if (_allowedItemCategories.Contains(ItemCategory.All) && _disallowedItemCategories.Length == 0)
+                    return true;
+
+                var itemDefinition = ItemManager.FindItemDefinition(itemData.ID);
+                if ((object)itemDefinition == null)
+                    return true;
+
+                if (_disallowedItemCategories.Contains(itemDefinition.category))
+                    return false;
+
+                if (_allowedItemCategories.Contains(itemDefinition.category))
+                    return true;
+
+                return _allowedItemCategories.Contains(ItemCategory.All);
+            }
+        }
+
+        [JsonObject(MemberSerialization.OptIn)]
+        private class RestrictionOptions
+        {
+            [JsonProperty("Enabled (true/false)")]
+            public bool Enabled;
+
+            [JsonProperty("Enable legacy noblacklist permission (true/false)", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            public bool EnableLegacyPermission;
+
+            [JsonProperty("Default ruleset")]
+            public RestrictionRuleset DefaultRuleset = new RestrictionRuleset
+            {
+                AllowedItemCategoryNames = new[] { ItemCategory.All.ToString() }
+            };
+
+            [JsonProperty("Rulesets by permission")]
+            public RestrictionRuleset[] RulesetsByPermission = Array.Empty<RestrictionRuleset>();
+
+            [JsonIgnore]
+            private Permission _permission;
+
+            public void Init(Backpacks plugin)
+            {
+                _permission = plugin.permission;
+
+                if (EnableLegacyPermission)
+                {
+                    _permission.RegisterPermission(NoBlacklistPermission, plugin);
+                }
+
+                DefaultRuleset.Init(plugin);
+
+                foreach (var restrictionProfile in RulesetsByPermission)
+                {
+                    restrictionProfile.Init(plugin);
+                }
+            }
+
+            public RestrictionRuleset GetForPlayer(string userIdString)
+            {
+                if (EnableLegacyPermission && _permission.UserHasPermission(userIdString, NoBlacklistPermission))
+                    return RestrictionRuleset.AllowAll;
+
+                for (var i = RulesetsByPermission.Length - 1; i >= 0; i--)
+                {
+                    var profile = RulesetsByPermission[i];
+                    if (profile.Permission != null && _permission.UserHasPermission(userIdString, profile.Permission))
+                        return profile;
+                }
+
+                return DefaultRuleset;
+            }
+        }
+
+        [JsonObject(MemberSerialization.OptIn)]
         private class Configuration : BaseConfiguration
         {
             [JsonProperty("Default Backpack Size")]
@@ -5615,20 +5841,24 @@ namespace Oxide.Plugins
             public bool ClearBackpacksOnWipe = false;
 
             [JsonProperty("Use Blacklist (true/false)")]
-            private bool UseDenylist = false;
+            public bool DeprecatedUseDenylist;
+
+            public bool ShouldSerializeDeprecatedUseDenylist() => false;
 
             [JsonProperty("Blacklisted Items (Item Shortnames)")]
-            private string[] DenylistItemShortNames = new string[]
-            {
-                "autoturret",
-                "lmg.m249",
-            };
+            public string[] DeprecatedDenylistItemShortNames;
+
+            public bool ShouldSerializeDeprecatedDenylistItemShortNames() => false;
 
             [JsonProperty("Use Whitelist (true/false)")]
-            private bool UseAllowlist = false;
+            public bool DeprecatedUseAllowlist;
+
+            public bool ShouldSerializeDeprecatedUseAllowlist() => false;
 
             [JsonProperty("Whitelisted Items (Item Shortnames)")]
-            private string[] AllowedItemShortNames = new string[0];
+            public string[] DeprecatedAllowedItemShortNames;
+
+            public bool ShouldSerializeDeprecatedAllowedItemShortNames() => false;
 
             [JsonProperty("Minimum Despawn Time (Seconds)")]
             public float MinimumDespawnTime = 300;
@@ -5638,6 +5868,9 @@ namespace Oxide.Plugins
 
             [JsonProperty("Softcore")]
             public SoftcoreOptions Softcore = new SoftcoreOptions();
+
+            [JsonProperty("Item restrictions")]
+            public RestrictionOptions ItemRestrictions = new RestrictionOptions();
 
             public class GUIButton
             {
@@ -5678,68 +5911,9 @@ namespace Oxide.Plugins
                 public float ReclaimFraction = 0.5f;
             }
 
-            [JsonIgnore]
-            public bool ItemRestrictionEnabled => UseAllowlist || UseDenylist;
-
-            [JsonIgnore]
-            private readonly HashSet<int> _disallowedItemIds = new HashSet<int>();
-
-            [JsonIgnore]
-            private readonly HashSet<int> _allowedItemIds = new HashSet<int>();
-
             public void Init(Backpacks plugin)
             {
-                if (UseDenylist)
-                {
-                    foreach (var itemShortName in DenylistItemShortNames)
-                    {
-                        var itemDefinition = ItemManager.FindItemDefinition(itemShortName);
-                        if (itemDefinition != null)
-                        {
-                            _disallowedItemIds.Add(itemDefinition.itemid);
-                        }
-                        else
-                        {
-                            plugin.PrintWarning($"Invalid item short name in config: {itemShortName}");
-                        }
-                    }
-                }
-                else if (UseAllowlist)
-                {
-                    foreach (var itemShortName in AllowedItemShortNames)
-                    {
-                        var itemDefinition = ItemManager.FindItemDefinition(itemShortName);
-                        if (itemDefinition != null)
-                        {
-                            _allowedItemIds.Add(itemDefinition.itemid);
-                        }
-                        else
-                        {
-                            plugin.PrintWarning($"Invalid item short name in config: {itemShortName}");
-                        }
-                    }
-                }
-            }
-
-            public bool IsRestrictedItem(Item item)
-            {
-                return IsRestrictedItem(item.info.itemid);
-            }
-
-            public bool IsRestrictedItem(ItemData itemData)
-            {
-                return IsRestrictedItem(itemData.ID);
-            }
-
-            private bool IsRestrictedItem(int itemId)
-            {
-                if (UseAllowlist)
-                    return !_allowedItemIds.Contains(itemId);
-
-                if (UseDenylist)
-                    return _disallowedItemIds.Contains(itemId);
-
-                return false;
+                ItemRestrictions.Init(plugin);
             }
         }
 
@@ -5830,7 +6004,27 @@ namespace Oxide.Plugins
                     throw new JsonException();
                 }
 
-                if (MaybeUpdateConfig(_config))
+                var changed = MaybeUpdateConfig(_config);
+
+                if (_config.DeprecatedUseAllowlist || _config.DeprecatedUseDenylist)
+                {
+                    changed = true;
+
+                    _config.ItemRestrictions.Enabled = true;
+                    _config.ItemRestrictions.EnableLegacyPermission = true;
+
+                    if (_config.DeprecatedUseAllowlist)
+                    {
+                        _config.ItemRestrictions.DefaultRuleset.AllowedItemCategoryNames = Array.Empty<string>();
+                        _config.ItemRestrictions.DefaultRuleset.AllowedItemShortNames = _config.DeprecatedAllowedItemShortNames;
+                    }
+                    else if (_config.DeprecatedUseDenylist)
+                    {
+                        _config.ItemRestrictions.DefaultRuleset.DisallowedItemShortNames = _config.DeprecatedDenylistItemShortNames;
+                    }
+                }
+
+                if (changed)
                 {
                     PrintWarning("Configuration appears to be outdated; updating and saving");
                     SaveConfig();
