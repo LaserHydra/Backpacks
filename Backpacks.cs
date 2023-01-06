@@ -88,7 +88,7 @@ namespace Oxide.Plugins
         {
             _config.Init(this);
 
-            _maxCapacityPerPage = Mathf.Clamp(_config.MaxCapacityPerPage, MinCapacity, MaxCapacity);
+            _maxCapacityPerPage = Mathf.Clamp(_config.BackpackSize.MaxCapacityPerPage, MinCapacity, MaxCapacity);
 
             permission.RegisterPermission(UsagePermission, this);
             permission.RegisterPermission(GUIPermission, this);
@@ -510,7 +510,7 @@ namespace Oxide.Plugins
         }
 
         [HookMethod(nameof(API_TryOpenBackpack))]
-        public object API_TryOpenBackpack(BasePlayer player, ulong ownerId = 0, ItemContainer container = null)
+        public object API_TryOpenBackpack(BasePlayer player, ulong ownerId = 0)
         {
             return ObjectCache.Get(_api.TryOpenBackpack(player, ownerId));
         }
@@ -2816,7 +2816,7 @@ namespace Oxide.Plugins
 
                 var backpackSizeList = new List<BackpackSize>();
 
-                if (config.EnableLegacyRowPermissions)
+                if (config.BackpackSize.EnableLegacyRowPermissions)
                 {
                     for (var row = MinRows; row <= MaxRows; row++)
                     {
@@ -2826,7 +2826,7 @@ namespace Oxide.Plugins
                     }
                 }
 
-                foreach (var capacity in new HashSet<int>(config.BackpackPermissionSizes))
+                foreach (var capacity in new HashSet<int>(config.BackpackSize.PermissionSizes))
                 {
                     backpackSizeList.Add(new BackpackSize(capacity, $"{SizePermission}.{capacity.ToString()}"));
                 }
@@ -2858,7 +2858,7 @@ namespace Oxide.Plugins
                     }
                 }
 
-                return _config.DefaultBackpackSize;
+                return _config.BackpackSize.DefaultSize;
             }
         }
 
@@ -5762,7 +5762,7 @@ namespace Oxide.Plugins
             [JsonProperty("Enabled (true/false)")]
             public bool Enabled;
 
-            [JsonProperty("Enable legacy noblacklist permission (true/false)", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            [JsonProperty("Enable legacy noblacklist permission", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public bool EnableLegacyPermission;
 
             [JsonProperty("Default ruleset")]
@@ -5772,7 +5772,14 @@ namespace Oxide.Plugins
             };
 
             [JsonProperty("Rulesets by permission")]
-            public RestrictionRuleset[] RulesetsByPermission = Array.Empty<RestrictionRuleset>();
+            public RestrictionRuleset[] RulesetsByPermission =
+            {
+                new RestrictionRuleset
+                {
+                    Name = "allowall",
+                    AllowedItemCategoryNames = new [] { ItemCategory.All.ToString() },
+                },
+            };
 
             [JsonIgnore]
             private Permission _permission;
@@ -5811,25 +5818,46 @@ namespace Oxide.Plugins
         }
 
         [JsonObject(MemberSerialization.OptIn)]
-        private class Configuration : BaseConfiguration
+        private class BackpackSizeOptions
         {
-            [JsonProperty("Default Backpack Size")]
-            public int DefaultBackpackSize = 6;
+            [JsonProperty("Default size")]
+            public int DefaultSize = 6;
 
-            [JsonProperty("Max Size Per Page")]
+            [JsonProperty("Max size per page")]
             public int MaxCapacityPerPage = 48;
 
-            [JsonProperty("Backpack Permission Sizes")]
-            public int[] BackpackPermissionSizes = new int[] { 6, 12, 18, 24, 30, 36, 42, 48 };
+            [JsonProperty("Enable legacy backpacks.use.1-8 row permissions", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            public bool EnableLegacyRowPermissions;
 
-            [JsonProperty("Enable Legacy Row Permissions (true/false)")]
-            public bool EnableLegacyRowPermissions = true;
+            [JsonProperty("Permission sizes")]
+            public int[] PermissionSizes = { 6, 12, 18, 24, 30, 36, 42, 48 };
+        }
+
+        [JsonObject(MemberSerialization.OptIn)]
+        private class Configuration : BaseConfiguration
+        {
+            [JsonProperty("Backpack size")]
+            public BackpackSizeOptions BackpackSize = new BackpackSizeOptions();
 
             [JsonProperty("Backpack Size (1-8 Rows)")]
-            private int DeprecatedBackpackRows { set { DefaultBackpackSize = value * 6; } }
+            private int DeprecatedBackpackRows
+            {
+                set
+                {
+                    BackpackSize.DefaultSize = value * 6;
+                    BackpackSize.EnableLegacyRowPermissions = true;
+                }
+            }
 
             [JsonProperty("Backpack Size (1-7 Rows)")]
-            private int DeprecatedBackpackSize { set { DefaultBackpackSize = value * 6; } }
+            private int DeprecatedBackpackSize
+            {
+                set
+                {
+                    BackpackSize.DefaultSize = value * 6;
+                    BackpackSize.EnableLegacyRowPermissions = true;
+                }
+            }
 
             [JsonProperty("Drop on Death (true/false)")]
             public bool DropOnDeath = true;
