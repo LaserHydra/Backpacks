@@ -5759,7 +5759,7 @@ namespace Oxide.Plugins
         [JsonObject(MemberSerialization.OptIn)]
         private class RestrictionOptions
         {
-            [JsonProperty("Enabled (true/false)")]
+            [JsonProperty("Enabled")]
             public bool Enabled;
 
             [JsonProperty("Enable legacy noblacklist permission", DefaultValueHandling = DefaultValueHandling.Ignore)]

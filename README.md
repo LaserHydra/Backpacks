@@ -105,7 +105,7 @@ Default configuration:
     "Reclaim Fraction": 0.5
   },
   "Item restrictions": {
-    "Enabled (true/false)": false,
+    "Enabled": false,
     "Default ruleset": {
       "Allowed item categories": [
         "All"
