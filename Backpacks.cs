@@ -25,7 +25,7 @@ using UnityEngine.UI;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "LaserHydra", "3.8.0")]
+    [Info("Backpacks", "LaserHydra", "3.9.0")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : CovalencePlugin
     {
