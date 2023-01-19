@@ -66,7 +66,6 @@ namespace Oxide.Plugins
         private readonly ApiInstance _api;
         private Configuration _config;
         private StoredData _storedData;
-        private int _wipeNumber;
         private readonly HashSet<ulong> _uiViewers = new HashSet<ulong>();
         private Coroutine _saveRoutine;
 
@@ -109,8 +108,6 @@ namespace Oxide.Plugins
 
         private void OnServerInitialized()
         {
-            _wipeNumber = DetermineWipeNumber();
-
             _immortalProtection = ScriptableObject.CreateInstance<ProtectionProperties>();
             _immortalProtection.name = "BackpacksProtection";
             _immortalProtection.Add(1);
@@ -882,20 +879,6 @@ namespace Oxide.Plugins
             return StandardLootDelay;
         }
 
-        private static int DetermineWipeNumber()
-        {
-            var saveName = World.SaveFileName;
-
-            var lastDotIndex = saveName.LastIndexOf('.');
-            var secondToLastDotIndex = saveName.LastIndexOf('.', lastDotIndex - 1);
-            var wipeNumberString = saveName.Substring(secondToLastDotIndex + 1, lastDotIndex - secondToLastDotIndex - 1);
-
-            int wipeNumber;
-            return int.TryParse(wipeNumberString, out wipeNumber)
-                ? wipeNumber
-                : 0;
-        }
-
         private static void StartLooting(BasePlayer player, ItemContainer container, StorageContainer entitySource)
         {
             if (player.CanInteract()
@@ -1636,6 +1619,7 @@ namespace Oxide.Plugins
             {
                 ResetPool<ItemData>(empty ? 0 : 2 * BackpackPoolSize);
                 ResetPool<List<ItemData>>(empty ? 0 : BackpackPoolSize);
+                ResetPool<EntityData>(empty ? 0 : BackpackPoolSize / 4);
                 ResetPool<Backpack>(empty ? 0 : BackpackPoolSize);
                 ResetPool<VirtualContainerAdapter>(empty ? 0 : 2 * BackpackPoolSize);
                 ResetPool<ItemContainerAdapter>(empty ? 0 : 2 * BackpackPoolSize);
@@ -3655,11 +3639,6 @@ namespace Oxide.Plugins
 
             public void EraseContents()
             {
-                foreach (var itemData in ItemDataList)
-                {
-                    itemData.BeforeErase();
-                }
-
                 PoolUtils.ResetItemsAndClear(ItemDataList);
 
                 _backpack.IsDirty = true;
@@ -3923,12 +3902,6 @@ namespace Oxide.Plugins
                 if (ItemContainer == null || ItemContainer.uid == 0)
                     return;
 
-                foreach (var item in ItemContainer.itemList)
-                {
-                    // Disassociate entities so they aren't killed.
-                    DisassociateEntity(item);
-                }
-
                 ItemContainer.Kill();
             }
 
@@ -3952,39 +3925,6 @@ namespace Oxide.Plugins
                 }
 
                 return this;
-            }
-
-            private void DisassociateEntity(Item item)
-            {
-                if (item.instanceData != null)
-                {
-                    if (item.instanceData.subEntity != 0)
-                    {
-                        var associatedEntity = BaseNetworkable.serverEntities.Find(item.instanceData.subEntity) as BaseEntity;
-                        if (associatedEntity != null && associatedEntity.HasParent())
-                        {
-                            // Disable networking of the entity while it has no parent to reduce unnecessary server load.
-                            associatedEntity.limitNetworking = true;
-
-                            // Unparent the associated entity so it's not killed when its parent is.
-                            // For example, a CassetteRecorder would normally kill its child Cassette.
-                            associatedEntity.SetParent(null);
-                        }
-                    }
-
-                    // If the item has an associated entity (e.g., photo, sign, cassette), the id will already have been saved.
-                    // Forget about the entity when killing the item so that the entity will persist.
-                    // When the backpack item is recreated later, this property will set from the data file so that the item can be reassociated.
-                    item.instanceData.subEntity = 0;
-                }
-
-                if (item.contents != null)
-                {
-                    foreach (var childItem in item.contents.itemList)
-                    {
-                        DisassociateEntity(childItem);
-                    }
-                }
             }
         }
 
@@ -4174,9 +4114,6 @@ namespace Oxide.Plugins
             [JsonProperty("OwnerID", Order = 0)]
             public ulong OwnerId { get; set; }
 
-            [JsonProperty("WipeNumber", Order = 1, DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public int WipeNumber;
-
             [JsonProperty("Items", Order = 2)]
             private List<ItemData> ItemDataCollection = new List<ItemData>();
 
@@ -4321,17 +4258,6 @@ namespace Oxide.Plugins
                     _containerAdapters.Resize(pageCount);
                 }
 
-                // Forget about associated entities from previous wipes.
-                if (WipeNumber != Plugin._wipeNumber)
-                {
-                    foreach (var itemData in ItemDataCollection)
-                    {
-                        itemData.DissociateEntity();
-                    }
-                }
-
-                WipeNumber = Plugin._wipeNumber;
-
                 CreateContainerAdapters();
             }
 
@@ -4342,7 +4268,6 @@ namespace Oxide.Plugins
                 #endif
 
                 OwnerId = 0;
-                WipeNumber = 0;
                 if (ItemDataCollection != null)
                 {
                     PoolUtils.ResetItemsAndClear(ItemDataCollection);
@@ -5303,8 +5228,234 @@ namespace Oxide.Plugins
             }
         }
 
+        [JsonConverter(typeof(PoolConverter<EntityData>))]
+        private class EntityData : Pool.IPooled
+        {
+            [JsonProperty("Flags", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            public BaseEntity.Flags Flags;
+
+            [JsonProperty("DataInt", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            public int DataInt;
+
+            [JsonProperty("CreatorSteamId", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            public ulong CreatorSteamId;
+
+            [JsonProperty("FileContent", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            public string[] FileContent;
+
+            public void Setup(BaseEntity entity)
+            {
+                var photoEntity = entity as PhotoEntity;
+                if ((object)photoEntity != null)
+                {
+                    if (photoEntity.ImageCrc == 0)
+                        return;
+
+                    var fileContent = FileStorage.server.Get(photoEntity.ImageCrc, FileStorage.Type.jpg, entity.net.ID);
+                    if (fileContent == null)
+                        return;
+
+                    CreatorSteamId = photoEntity.PhotographerSteamId;
+                    FileContent = new[] { Convert.ToBase64String(fileContent) };
+                    return;
+                }
+
+                var signContent = entity as SignContent;
+                if ((object)signContent != null)
+                {
+                    var imageIdList = signContent.GetContentCRCs;
+
+                    var hasContent = false;
+                    foreach (var imageId in imageIdList)
+                    {
+                        if (imageId != 0)
+                        {
+                            hasContent = true;
+                            break;
+                        }
+                    }
+
+                    if (!hasContent)
+                        return;
+
+                    FileContent = new string[imageIdList.Length];
+
+                    for (var i = 0; i < imageIdList.Length; i++)
+                    {
+                        var imageId = imageIdList[i];
+                        if (imageId == 0)
+                            continue;
+
+                        var fileContent = FileStorage.server.Get(imageId, FileStorage.Type.png, entity.net.ID);
+                        if (fileContent == null)
+                            continue;
+
+                        FileContent[i] = Convert.ToBase64String(fileContent);
+                    }
+
+                    return;
+                }
+
+                var paintedItemStorageEntity = entity as PaintedItemStorageEntity;
+                if ((object)paintedItemStorageEntity != null)
+                {
+                    if (paintedItemStorageEntity._currentImageCrc == 0)
+                        return;
+
+                    var fileContent = FileStorage.server.Get(paintedItemStorageEntity._currentImageCrc, FileStorage.Type.png, entity.net.ID);
+                    if (fileContent == null)
+                        return;
+
+                    FileContent = new[] { Convert.ToBase64String(fileContent) };
+                    return;
+                }
+
+                var cassette = entity as Cassette;
+                if ((object)cassette != null)
+                {
+                    DataInt = cassette.preloadedAudioId;
+
+                    if (cassette.AudioId == 0)
+                        return;
+
+                    var fileContent = FileStorage.server.Get(cassette.AudioId, FileStorage.Type.ogg, entity.net.ID);
+                    if (fileContent == null)
+                        return;
+
+                    CreatorSteamId = cassette.CreatorSteamId;
+                    FileContent = new[] { Convert.ToBase64String(fileContent) };
+                    return;
+                }
+
+                var pagerEntity = entity as PagerEntity;
+                if ((object)pagerEntity != null)
+                {
+                    Flags = pagerEntity.flags;
+                    DataInt = pagerEntity.GetFrequency();
+                    return;
+                }
+
+                var mobileInventoryEntity = entity as MobileInventoryEntity;
+                if ((object)mobileInventoryEntity != null)
+                {
+                    Flags = mobileInventoryEntity.flags;
+                    return;
+                }
+
+                LogWarning($"Unable to serialize associated entity of type {entity.GetType()}.");
+            }
+
+            public void EnterPool()
+            {
+                #if DEBUG_POOLING
+                LogDebug($"EntityData::EnterPool | {PoolUtils.GetStats<EntityData>()}");
+                #endif
+
+                Flags = 0;
+                DataInt = 0;
+                CreatorSteamId = 0;
+                FileContent = null;
+            }
+
+            public void LeavePool()
+            {
+                #if DEBUG_POOLING
+                LogDebug($"EntityData::LeavePool | {PoolUtils.GetStats<EntityData>()}");
+                #endif
+            }
+
+            public void UpdateAssociatedEntity(Item item)
+            {
+                BaseEntity entity;
+
+                var entityId = item.instanceData?.subEntity ?? 0;
+                if (entityId == 0)
+                {
+                    var itemModSign = item.info.GetComponent<ItemModSign>();
+                    if (itemModSign == null)
+                        return;
+
+                    entity = itemModSign.CreateAssociatedEntity(item);
+                }
+                else
+                {
+                    entity = BaseNetworkable.serverEntities.Find(entityId) as BaseEntity;
+                    if (entity == null)
+                        return;
+                }
+
+                var photoEntity = entity as PhotoEntity;
+                if ((object)photoEntity != null)
+                {
+                    var fileContent = FileContent?.FirstOrDefault();
+                    if (fileContent == null)
+                        return;
+
+                    photoEntity.SetImageData(CreatorSteamId, Convert.FromBase64String(fileContent));
+                    return;
+                }
+
+                var signContent = entity as SignContent;
+                if ((object)signContent != null)
+                {
+                    if (FileContent == null)
+                        return;
+
+                    for (uint i = 0; i < FileContent.Length && i < signContent.GetContentCRCs.Length; i++)
+                    {
+                        var fileContent = FileContent[i];
+                        if (fileContent == null)
+                            continue;
+
+                        signContent.GetContentCRCs[i] = FileStorage.server.Store(Convert.FromBase64String(fileContent), FileStorage.Type.png, entity.net.ID, i);
+                    }
+                    return;
+                }
+
+                var paintedItemStorageEntity = entity as PaintedItemStorageEntity;
+                if ((object)paintedItemStorageEntity != null)
+                {
+                    var fileContent = FileContent?.FirstOrDefault();
+                    if (fileContent == null)
+                        return;
+
+                    paintedItemStorageEntity._currentImageCrc = FileStorage.server.Store(Convert.FromBase64String(fileContent), FileStorage.Type.png, entity.net.ID);
+                    return;
+                }
+
+                var cassette = entity as Cassette;
+                if ((object)cassette != null)
+                {
+                    cassette.preloadedAudioId = DataInt;
+
+                    var fileContent = FileContent?.FirstOrDefault();
+                    if (fileContent == null)
+                        return;
+
+                    var audioId = FileStorage.server.Store(Convert.FromBase64String(fileContent), FileStorage.Type.ogg, entity.net.ID);
+                    cassette.SetAudioId(audioId, CreatorSteamId);
+                    return;
+                }
+
+                var pagerEntity = entity as PagerEntity;
+                if ((object)pagerEntity != null)
+                {
+                    pagerEntity.flags |= Flags;
+                    pagerEntity.ChangeFrequency(DataInt);
+                    return;
+                }
+
+                var mobileInventoryEntity = entity as MobileInventoryEntity;
+                if ((object)mobileInventoryEntity != null)
+                {
+                    mobileInventoryEntity.flags |= Flags;
+                    return;
+                }
+            }
+        }
+
         [JsonConverter(typeof(PoolConverter<ItemData>))]
-        public class ItemData : Pool.IPooled
+        private class ItemData : Pool.IPooled
         {
             [JsonProperty("ID")]
             public int ID { get; private set; }
@@ -5354,8 +5505,8 @@ namespace Oxide.Plugins
             [JsonProperty("Flags", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public Item.Flag Flags { get; private set; }
 
-            [JsonProperty("AssociatedEntityId", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            private uint AssociatedEntityId;
+            [JsonProperty("EntityData", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            public EntityData EntityData { get; private set; }
 
             [JsonProperty("Contents", DefaultValueHandling = DefaultValueHandling.Ignore)]
             [JsonConverter(typeof(PoolListConverter<ItemData>))]
@@ -5383,7 +5534,20 @@ namespace Oxide.Plugins
                 Name = item.name;
                 Text = item.text;
                 Flags = item.flags;
-                AssociatedEntityId = item.instanceData?.subEntity ?? 0;
+
+                var subEntityId = item.instanceData?.subEntity ?? 0;
+                if (subEntityId != 0)
+                {
+                    var subEntity = BaseNetworkable.serverEntities.Find(subEntityId) as BaseEntity;
+                    if (subEntity != null)
+                    {
+                        if (EntityData == null)
+                        {
+                            EntityData = Pool.Get<EntityData>();
+                        }
+                        EntityData.Setup(subEntity);
+                    }
+                }
 
                 if (item.contents != null)
                 {
@@ -5419,7 +5583,13 @@ namespace Oxide.Plugins
                 Name = null;
                 Text = null;
                 Flags = 0;
-                AssociatedEntityId = 0;
+
+                if (EntityData != null)
+                {
+                    var entityData = EntityData;
+                    Pool.Free(ref entityData);
+                    EntityData = null;
+                }
 
                 if (Contents != null)
                 {
@@ -5442,23 +5612,6 @@ namespace Oxide.Plugins
                 Amount -= amount;
             }
 
-            public void DissociateEntity()
-            {
-                AssociatedEntityId = 0;
-            }
-
-            public void BeforeErase()
-            {
-                if (AssociatedEntityId == 0)
-                    return;
-
-                var entity = BaseNetworkable.serverEntities.Find(AssociatedEntityId);
-                if (entity == null || entity.IsDestroyed)
-                    return;
-
-                entity.Kill();
-            }
-
             public Item ToItem(int amount = -1)
             {
                 if (amount == -1)
@@ -5469,7 +5622,7 @@ namespace Oxide.Plugins
                 if (amount == 0)
                     return null;
 
-                Item item = ItemManager.CreateByItemID(ID, amount, Skin);
+                var item = ItemManager.CreateByItemID(ID, amount, Skin);
                 if (item == null)
                     return null;
 
@@ -5524,8 +5677,8 @@ namespace Oxide.Plugins
 
                 item.flags |= Flags;
 
-                BaseProjectile.Magazine magazine = item.GetHeldEntity()?.GetComponent<BaseProjectile>()?.primaryMagazine;
-                FlameThrower flameThrower = item.GetHeldEntity()?.GetComponent<FlameThrower>();
+                var magazine = item.GetHeldEntity()?.GetComponent<BaseProjectile>()?.primaryMagazine;
+                var flameThrower = item.GetHeldEntity()?.GetComponent<FlameThrower>();
 
                 if (magazine != null)
                 {
@@ -5538,28 +5691,18 @@ namespace Oxide.Plugins
                     flameThrower.ammo = FlameFuel;
                 }
 
-                if (DataInt > 0 || AssociatedEntityId != 0)
+                if (DataInt > 0)
                 {
                     item.instanceData = new ProtoBuf.Item.InstanceData
                     {
                         ShouldPool = false,
                         dataInt = DataInt,
                     };
-
-                    if (AssociatedEntityId != 0)
-                    {
-                        var associatedEntity = BaseNetworkable.serverEntities.Find(AssociatedEntityId);
-                        if (associatedEntity != null)
-                        {
-                            // Re-enable networking since it's disabled when the entity is disassociated.
-                            associatedEntity._limitedNetworking = false;
-
-                            item.instanceData.subEntity = AssociatedEntityId;
-                        }
-                    }
                 }
 
                 item.text = Text;
+
+                EntityData?.UpdateAssociatedEntity(item);
 
                 return item;
             }
