@@ -47,9 +47,8 @@ namespace Oxide.Plugins
         private const string FetchPermission = "backpacks.fetch";
         private const string AdminPermission = "backpacks.admin";
         private const string KeepOnDeathPermission = "backpacks.keepondeath";
-        private const string KeepOnWipePermission = "backpacks.keeponwipe";
-        private const string NoBlacklistPermission = "backpacks.noblacklist";
-        private const string RestrictionRulesetPermission ="backpacks.restrictions";
+        private const string LegacyKeepOnWipePermission = "backpacks.keeponwipe";
+        private const string LegacyNoBlacklistPermission = "backpacks.noblacklist";
 
         private const string CoffinPrefab = "assets/prefabs/misc/halloween/coffin/coffinstorage.prefab";
         private const string DroppedBackpackPrefab = "assets/prefabs/misc/item drop/item_drop_backpack.prefab";
@@ -94,7 +93,6 @@ namespace Oxide.Plugins
             permission.RegisterPermission(FetchPermission, this);
             permission.RegisterPermission(AdminPermission, this);
             permission.RegisterPermission(KeepOnDeathPermission, this);
-            permission.RegisterPermission(KeepOnWipePermission, this);
 
             _backpackCapacityManager.Init(_config);
 
@@ -141,7 +139,7 @@ namespace Oxide.Plugins
 
         private void OnNewSave(string filename)
         {
-            if (!_config.ClearBackpacksOnWipe)
+            if (!_config.ClearOnWipe.Enabled)
                 return;
 
             _backpackManager.ClearCache();
@@ -169,17 +167,27 @@ namespace Oxide.Plugins
                 if (!ulong.TryParse(fileName, out userId))
                     continue;
 
-                if (permission.UserHasPermission(fileName, KeepOnWipePermission))
+                var ruleset = _config.ClearOnWipe.GetForPlayer(fileName);
+                if (ruleset == null || ruleset.DisallowsAll)
                 {
-                    skippedBackpackCount++;
+                    _backpackManager.ClearBackpackFile(userId);
                     continue;
                 }
 
-                _backpackManager.ClearBackpackFile(userId);
+                if (ruleset.AllowsAll)
+                    continue;
+
+                var backpack = _backpackManager.GetBackpackIfExists(userId);
+                if (backpack == null)
+                    continue;
+
+                backpack.EraseContents(ruleset);
+                backpack.SaveIfChanged();
             }
 
-            var skippedBackpacksMessage = skippedBackpackCount > 0 ? $", except {skippedBackpackCount} due to being exempt" : string.Empty;
-            LogWarning($"New save created. All backpacks were cleared{skippedBackpacksMessage}. Players with the '{KeepOnWipePermission}' permission are exempt. Clearing backpacks can be disabled for all players in the configuration file.");
+            _backpackManager.ClearCache();
+
+            LogWarning($"New save created. Backpacks were wiped according to the config and player permissions.");
         }
 
         private void OnServerSave()
@@ -245,7 +253,7 @@ namespace Oxide.Plugins
             {
                 _backpackManager.HandleCapacityPermissionChangedForGroup(groupName);
             }
-            else if (perm.StartsWith(RestrictionRulesetPermission) || perm.Equals(NoBlacklistPermission))
+            else if (perm.StartsWith(RestrictionRuleset.FullPermissionPrefix) || perm.Equals(LegacyNoBlacklistPermission))
             {
                 _backpackManager.HandleRestrictionPermissionChangedForGroup(groupName);
             }
@@ -264,7 +272,7 @@ namespace Oxide.Plugins
             {
                 _backpackManager.HandleCapacityPermissionChangedForGroup(groupName);
             }
-            else if (perm.StartsWith(RestrictionRulesetPermission) || perm.Equals(NoBlacklistPermission))
+            else if (perm.StartsWith(RestrictionRuleset.FullPermissionPrefix) || perm.Equals(LegacyNoBlacklistPermission))
             {
                 _backpackManager.HandleRestrictionPermissionChangedForGroup(groupName);
             }
@@ -286,7 +294,7 @@ namespace Oxide.Plugins
             {
                 _backpackManager.HandleCapacityPermissionChangedForUser(userId);
             }
-            else if (perm.StartsWith(RestrictionRulesetPermission) || perm.Equals(NoBlacklistPermission))
+            else if (perm.StartsWith(RestrictionRuleset.FullPermissionPrefix) || perm.Equals(LegacyNoBlacklistPermission))
             {
                 _backpackManager.HandleRestrictionPermissionChangedForUser(userId);
             }
@@ -306,7 +314,7 @@ namespace Oxide.Plugins
             {
                 _backpackManager.HandleCapacityPermissionChangedForUser(userId);
             }
-            else if (perm.StartsWith(RestrictionRulesetPermission) || perm.Equals(NoBlacklistPermission))
+            else if (perm.StartsWith(RestrictionRuleset.FullPermissionPrefix) || perm.Equals(LegacyNoBlacklistPermission))
             {
                 _backpackManager.HandleRestrictionPermissionChangedForUser(userId);
             }
@@ -397,7 +405,7 @@ namespace Oxide.Plugins
 
             public void EraseBackpack(ulong userId)
             {
-                _backpackManager.TryEraseForPlayer(userId, force: true);
+                _backpackManager.TryEraseForPlayer(userId);
             }
 
             public DroppedItemContainer DropBackpack(BasePlayer player, List<DroppedItemContainer> collect)
@@ -723,7 +731,7 @@ namespace Oxide.Plugins
                 return;
             }
 
-            if (!_backpackManager.TryEraseForPlayer(userId, force: true))
+            if (!_backpackManager.TryEraseForPlayer(userId))
             {
                 LogWarning($"Player {userId.ToString()} has no backpack to erase.");
                 return;
@@ -2991,9 +2999,9 @@ namespace Oxide.Plugins
 
             public Backpack GetBackpackIfExists(ulong userId)
             {
-                return HasBackpackFile(userId)
-                    ? GetBackpack(userId)
-                    : null;
+                return GetBackpackIfCached(userId) ?? (HasBackpackFile(userId)
+                    ? Load(userId)
+                    : null);
             }
 
             public void RegisterContainer(ItemContainer container, Backpack backpack)
@@ -3117,13 +3125,13 @@ namespace Oxide.Plugins
                 Interface.Oxide.DataFileSystem.WriteObject<object>(DetermineBackpackPath(userId), null);
             }
 
-            public bool TryEraseForPlayer(ulong userId, bool force = false)
+            public bool TryEraseForPlayer(ulong userId)
             {
                 var backpack = GetBackpackIfExists(userId);
                 if (backpack == null)
                     return false;
 
-                backpack.EraseContents(force);
+                backpack.EraseContents(force: true);
                 return true;
             }
 
@@ -3161,6 +3169,12 @@ namespace Oxide.Plugins
 
             public void ClearCache()
             {
+                foreach (var backpack in _cachedBackpacks.Values)
+                {
+                    var backpackToFree = backpack;
+                    Pool.Free(ref backpackToFree);
+                }
+
                 _cachedBackpacks.Clear();
             }
         }
@@ -3448,6 +3462,11 @@ namespace Oxide.Plugins
 
         #region Container Adapters
 
+        private struct WipeContext
+        {
+            public int SlotsKept;
+        }
+
         private interface IContainerAdapter : Pool.IPooled
         {
             int PageIndex { get; }
@@ -3462,7 +3481,7 @@ namespace Oxide.Plugins
             void TakeAllItems(List<Item> collect, int startPosition = 0);
             void SerializeForNetwork(List<ProtoBuf.Item> saveList);
             void SerializeTo(List<ItemData> saveList, List<ItemData> itemsToReleaseToPool);
-            void EraseContents();
+            void EraseContents(WipeRuleset ruleset, ref WipeContext wipeContext);
             void Kill();
         }
 
@@ -3637,11 +3656,34 @@ namespace Oxide.Plugins
                 }
             }
 
-            public void EraseContents()
+            public void EraseContents(WipeRuleset ruleset, ref WipeContext wipeContext)
             {
-                PoolUtils.ResetItemsAndClear(ItemDataList);
+                if (ruleset == null || ruleset.DisallowsAll)
+                {
+                    if (ItemDataList.Count > 0)
+                    {
+                        PoolUtils.ResetItemsAndClear(ItemDataList);
+                        _backpack.IsDirty = true;
+                    }
+                    return;
+                }
 
-                _backpack.IsDirty = true;
+                SortByPosition();
+
+                for (var i = 0; i < ItemDataList.Count; i++)
+                {
+                    var itemData = ItemDataList[i];
+                    if ((ruleset.MaxSlotsToKeep < 0 || wipeContext.SlotsKept < ruleset.MaxSlotsToKeep)
+                        && ruleset.AllowsItem(itemData))
+                    {
+                        wipeContext.SlotsKept++;
+                        continue;
+                    }
+
+                    ItemDataList.RemoveAt(i--);
+                    Pool.Free(ref itemData);
+                    _backpack.IsDirty = true;
+                }
             }
 
             public void Kill()
@@ -3887,7 +3929,7 @@ namespace Oxide.Plugins
                 }
             }
 
-            public void EraseContents()
+            public void EraseContents(WipeRuleset ruleset, ref WipeContext wipeContext)
             {
                 for (var i = ItemContainer.itemList.Count - 1; i >= 0; i--)
                 {
@@ -4650,7 +4692,7 @@ namespace Oxide.Plugins
                 return firstContainer;
             }
 
-            public void EraseContents(bool force = false)
+            public void EraseContents(WipeRuleset wipeRuleset = null, bool force = false)
             {
                 // Optimization: If no container and no stored data, don't bother with the rest of the logic.
                 if (!HasItems)
@@ -4663,9 +4705,11 @@ namespace Oxide.Plugins
                         return;
                 }
 
+                var wipeContext = new WipeContext();
+
                 foreach (var containerAdapter in _containerAdapters)
                 {
-                    containerAdapter.EraseContents();
+                    containerAdapter.EraseContents(wipeRuleset, ref wipeContext);
                 }
             }
 
@@ -5777,24 +5821,25 @@ namespace Oxide.Plugins
         #region Configuration
 
         [JsonObject(MemberSerialization.OptIn)]
-        private class RestrictionRuleset
+        private abstract class BaseItemRuleset
         {
-            public static readonly RestrictionRuleset AllowAll = new RestrictionRuleset { _allowsAll = true };
+            [JsonIgnore]
+            protected abstract string PermissionPrefix { get; }
 
-            [JsonProperty("Name", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            [JsonProperty("Name", Order = -2, DefaultValueHandling = DefaultValueHandling.Ignore)]
             public string Name;
 
             [JsonProperty("Allowed item categories")]
-            public string[] AllowedItemCategoryNames = new string[0];
+            public string[] AllowedItemCategoryNames = Array.Empty<string>();
 
             [JsonProperty("Disallowed item categories")]
-            public string[] DisallowedItemCategoryNames = new string[0];
+            public string[] DisallowedItemCategoryNames = Array.Empty<string>();
 
             [JsonProperty("Allowed item short names")]
-            public string[] AllowedItemShortNames = new string[0];
+            public string[] AllowedItemShortNames = Array.Empty<string>();
 
             [JsonProperty("Disallowed item short names")]
-            public string[] DisallowedItemShortNames = new string[0];
+            public string[] DisallowedItemShortNames = Array.Empty<string>();
 
             [JsonProperty("Allowed skin IDs")]
             public HashSet<ulong> AllowedSkinIds = new HashSet<ulong>();
@@ -5803,28 +5848,28 @@ namespace Oxide.Plugins
             public HashSet<ulong> DisallowedSkinIds = new HashSet<ulong>();
 
             [JsonIgnore]
-            private ItemCategory[] _allowedItemCategories;
+            protected ItemCategory[] _allowedItemCategories;
 
             [JsonIgnore]
-            private ItemCategory[] _disallowedItemCategories;
+            protected ItemCategory[] _disallowedItemCategories;
 
             [JsonIgnore]
-            private HashSet<int> _allowedItemIds = new HashSet<int>();
+            protected HashSet<int> _allowedItemIds = new HashSet<int>();
 
             [JsonIgnore]
-            private HashSet<int> _disallowedItemIds = new HashSet<int>();
+            protected HashSet<int> _disallowedItemIds = new HashSet<int>();
 
             [JsonIgnore]
-            public string Permission { get; private set; }
+            public string Permission { get; protected set; }
 
             [JsonIgnore]
-            public bool _allowsAll { get; private set; }
+            public bool AllowsAll { get; protected set; }
 
             public void Init(Backpacks plugin)
             {
                 if (!string.IsNullOrWhiteSpace(Name))
                 {
-                    Permission = $"{RestrictionRulesetPermission}.{Name}";
+                    Permission = $"{nameof(Backpacks)}.{PermissionPrefix}.{Name}".ToLower();
                     plugin.permission.RegisterPermission(Permission, plugin);
                 }
 
@@ -5863,14 +5908,14 @@ namespace Oxide.Plugins
                     && _disallowedItemIds.Count == 0
                     && DisallowedSkinIds.Count == 0)
                 {
-                    _allowsAll = true;
+                    AllowsAll = true;
                 }
             }
 
             public bool AllowsItem(Item item)
             {
                 // Optimization: Skip all checks if all items are allowed.
-                if (_allowsAll)
+                if (AllowsAll)
                     return true;
 
                 if (DisallowedSkinIds.Contains(item.skin))
@@ -5897,7 +5942,7 @@ namespace Oxide.Plugins
             public bool AllowsItem(ItemData itemData)
             {
                 // Optimization: Skip all checks if all items are allowed.
-                if (_allowsAll)
+                if (AllowsAll)
                     return true;
 
                 if (DisallowedSkinIds.Contains(itemData.Skin))
@@ -5928,6 +5973,18 @@ namespace Oxide.Plugins
 
                 return _allowedItemCategories.Contains(ItemCategory.All);
             }
+        }
+
+        [JsonObject(MemberSerialization.OptIn)]
+        private class RestrictionRuleset : BaseItemRuleset
+        {
+            private const string PartialPermissionPrefix = "restrictions";
+
+            public static readonly string FullPermissionPrefix = $"{nameof(Backpacks)}.{PartialPermissionPrefix}".ToLower();
+
+            public static readonly RestrictionRuleset AllowAll = new RestrictionRuleset { AllowsAll = true };
+
+            protected override string PermissionPrefix => PartialPermissionPrefix;
         }
 
         [JsonObject(MemberSerialization.OptIn)]
@@ -5964,27 +6021,119 @@ namespace Oxide.Plugins
 
                 if (EnableLegacyPermission)
                 {
-                    _permission.RegisterPermission(NoBlacklistPermission, plugin);
+                    _permission.RegisterPermission(LegacyNoBlacklistPermission, plugin);
                 }
 
                 DefaultRuleset.Init(plugin);
 
-                foreach (var restrictionProfile in RulesetsByPermission)
+                foreach (var ruleset in RulesetsByPermission)
                 {
-                    restrictionProfile.Init(plugin);
+                    ruleset.Init(plugin);
                 }
             }
 
             public RestrictionRuleset GetForPlayer(string userIdString)
             {
-                if (EnableLegacyPermission && _permission.UserHasPermission(userIdString, NoBlacklistPermission))
+                if (EnableLegacyPermission && _permission.UserHasPermission(userIdString, LegacyNoBlacklistPermission))
                     return RestrictionRuleset.AllowAll;
 
                 for (var i = RulesetsByPermission.Length - 1; i >= 0; i--)
                 {
-                    var profile = RulesetsByPermission[i];
-                    if (profile.Permission != null && _permission.UserHasPermission(userIdString, profile.Permission))
-                        return profile;
+                    var ruleset = RulesetsByPermission[i];
+                    if (ruleset.Permission != null && _permission.UserHasPermission(userIdString, ruleset.Permission))
+                        return ruleset;
+                }
+
+                return DefaultRuleset;
+            }
+        }
+
+        [JsonObject(MemberSerialization.OptIn)]
+        private class WipeRuleset : BaseItemRuleset
+        {
+            public static readonly WipeRuleset AllowAll = new WipeRuleset
+            {
+                MaxSlotsToKeep = -1,
+                AllowsAll = true
+            };
+
+            [JsonIgnore]
+            protected override string PermissionPrefix => "keeponwipe";
+
+            [JsonProperty("Max slots to keep")]
+            public int MaxSlotsToKeep;
+
+            [JsonIgnore]
+            public bool DisallowsAll
+            {
+                get
+                {
+                    if (AllowsAll)
+                        return false;
+
+                    if (MaxSlotsToKeep == 0)
+                        return true;
+
+                    return _allowedItemCategories.Length == 0
+                       && _allowedItemIds.Count == 0
+                       && AllowedSkinIds.Count == 0;
+                }
+            }
+        }
+
+        [JsonObject(MemberSerialization.OptIn)]
+        private class WipeOptions
+        {
+            [JsonProperty("Enabled")]
+            public bool Enabled;
+
+            [JsonProperty("Enable legacy keeponwipe permission")]
+            public bool EnableLegacyPermission;
+
+            [JsonProperty("Default ruleset")]
+            public WipeRuleset DefaultRuleset = new WipeRuleset();
+
+            [JsonProperty("Rulesets by permission")]
+            public WipeRuleset[] RulesetsByPermission =
+            {
+                new WipeRuleset
+                {
+                    Name = "all",
+                    MaxSlotsToKeep = -1,
+                    AllowedItemCategoryNames = new [] { ItemCategory.All.ToString() },
+                },
+            };
+
+            [JsonIgnore]
+            private Permission _permission;
+
+            public void Init(Backpacks plugin)
+            {
+                _permission = plugin.permission;
+
+                if (EnableLegacyPermission)
+                {
+                    _permission.RegisterPermission(LegacyKeepOnWipePermission, plugin);
+                }
+
+                DefaultRuleset.Init(plugin);
+
+                foreach (var ruleset in RulesetsByPermission)
+                {
+                    ruleset.Init(plugin);
+                }
+            }
+
+            public WipeRuleset GetForPlayer(string userIdString)
+            {
+                if (EnableLegacyPermission && _permission.UserHasPermission(userIdString, LegacyKeepOnWipePermission))
+                    return WipeRuleset.AllowAll;
+
+                for (var i = RulesetsByPermission.Length - 1; i >= 0; i--)
+                {
+                    var ruleset = RulesetsByPermission[i];
+                    if (ruleset.Permission != null && _permission.UserHasPermission(userIdString, ruleset.Permission))
+                        return ruleset;
                 }
 
                 return DefaultRuleset;
@@ -6056,7 +6205,9 @@ namespace Oxide.Plugins
             public bool EraseOnDeath = false;
 
             [JsonProperty("Clear Backpacks on Map-Wipe (true/false)")]
-            public bool ClearBackpacksOnWipe = false;
+            public bool DeprecatedClearBackpacksOnWipe;
+
+            public bool ShouldSerializeDeprecatedClearBackpacksOnWipe() => false;
 
             [JsonProperty("Use Blacklist (true/false)")]
             public bool DeprecatedUseDenylist;
@@ -6089,6 +6240,9 @@ namespace Oxide.Plugins
 
             [JsonProperty("Item restrictions")]
             public RestrictionOptions ItemRestrictions = new RestrictionOptions();
+
+            [JsonProperty("Clear on wipe")]
+            public WipeOptions ClearOnWipe = new WipeOptions();
 
             public class GUIButton
             {
@@ -6132,6 +6286,7 @@ namespace Oxide.Plugins
             public void Init(Backpacks plugin)
             {
                 ItemRestrictions.Init(plugin);
+                ClearOnWipe.Init(plugin);
             }
         }
 
@@ -6240,6 +6395,14 @@ namespace Oxide.Plugins
                     {
                         _config.ItemRestrictions.DefaultRuleset.DisallowedItemShortNames = _config.DeprecatedDenylistItemShortNames;
                     }
+                }
+
+                if (_config.DeprecatedClearBackpacksOnWipe)
+                {
+                    changed = true;
+
+                    _config.ClearOnWipe.Enabled = true;
+                    _config.ClearOnWipe.EnableLegacyPermission = true;
                 }
 
                 if (changed)
