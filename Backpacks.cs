@@ -186,7 +186,6 @@ namespace Oxide.Plugins
             }
 
             _backpackManager.ClearCache();
-
             LogWarning($"New save created. Backpacks were wiped according to the config and player permissions.");
         }
 
@@ -345,6 +344,21 @@ namespace Oxide.Plugins
         private void OnPlayerSleepEnded(BasePlayer player) => MaybeCreateButtonUi(player);
 
         private void OnPlayerSleep(BasePlayer player) => DestroyButtonUi(player);
+
+        private void OnNpcConversationStart(NPCTalking npcTalking, BasePlayer player, ConversationData conversationData)
+        {
+            // This delay can be removed in the future if an OnNpcConversationStarted hook is created.
+            NextTick(() =>
+            {
+                // Verify the conversation started, since another plugin may have blocked it.
+                if (!npcTalking.conversingPlayers.Contains(player))
+                    return;
+
+                DestroyButtonUi(player);
+            });
+        }
+
+        private void OnNpcConversationEnded(NPCTalking npcTalking, BasePlayer player) => MaybeCreateButtonUi(player);
 
         private void OnNetworkSubscriptionsUpdate(Network.Networkable networkable, List<Network.Visibility.Group> groupsToAdd, List<Network.Visibility.Group> groupsToRemove)
         {
