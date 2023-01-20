@@ -122,6 +122,7 @@ Default configuration:
   "Item restrictions": {
     "Enabled": false,
     "Enable legacy noblacklist permission": false,
+    "Feedback effect": "assets/prefabs/locks/keypad/effects/lock.code.denied.prefab",
     "Default ruleset": {
       "Allowed item categories": [
         "All"
@@ -209,6 +210,7 @@ Alternative backpacks images:
   - `Enabled` -- Determines whether player backpacks are subject to item restrictions. Set to `false` to disable item restrictions for all players. Set to `true` to make the below rulesets will apply. Note: Regardless of these settings, other plugins can prevent specific items from being added to Backpacks using the `CanBackpackAcceptItem` hook.
     - Note: In order for this feature to work, Oxide must be installed and the plugin must be loaded when the server boots for the first time with the new map. In rare cases, server owners make the mistake of booting their server after a Rust update without Oxide installed or with the plugin out of date (e.g., failing to compile), causing backpacks to not be wiped. If you make this mistake, it is advised that you wipe your server again by deleting your server save file and restarting the server again, because other plugins that rely on detecting map wipes would have also been affected. Alternatively, you may manually wipe all backpacks by unloading the plugin, deleting the `oxide/data/Backpacks` directory, then loading the plugin.
   - `Enable legacy noblacklist permission` (`true` or `false`; Default: `false`) -- Determines whether the `backpacks.noblacklist` permission is registered by the plugin. When upgrading the plugin to v3.9+, if you have the `"Use Whitelist (true/false)": true` or `"Use Blacklist (true/false)": true` config options set, this option will be automatically enabled for backwards compatibility. 
+  - `Feedback effect` -- The effect prefab to play when the player tries to add a disallowed item to their backpack. Set to `""` to disable the effect. The effect will play at most once per second.
   - `Default ruleset` -- The default ruleset applies to all players' backpacks, except for players who have been granted `backpacks.restrictions.<name>` permissions (which are generated via `Rulesets by permission` below).
     - `Allowed item categories` -- Determines which item categories are allowed in backpacks that are assigned this ruleset, **in addition** to any allowed item short names and skin IDs.
       - If you want to allow only specific item short names, leave this option blank (`[]`) and instead add those item short names to `Allowed item short names`.
@@ -395,6 +397,7 @@ Example rulesets:
   "User ID not Found": "Could not find player with ID '{0}'",
   "User Name not Found": "Could not find player with name '{0}'",
   "Multiple Players Found": "Multiple matching players found:\n{0}",
+  "Backpack Item Rejected": "That item is not allowed in the backpack.",
   "Backpack Items Rejected": "Your backpack rejected some items. They have been added to your inventory or dropped.",
   "Backpack Over Capacity": "Your backpack was over capacity. Overflowing items were added to your inventory or dropped.",
   "Blacklisted Items Removed": "Your backpack contained blacklisted items. They have been added to your inventory or dropped.",

@@ -60,6 +60,7 @@ namespace Oxide.Plugins
         private readonly BackpackManager _backpackManager;
 
         private ProtectionProperties _immortalProtection;
+        private Effect _reusableEffect = new Effect();
         private string _cachedButtonUi;
 
         private readonly ApiInstance _api;
@@ -920,6 +921,16 @@ namespace Oxide.Plugins
             container.GiveUID();
             container.entityOwner = entityOwner;
             return container;
+        }
+
+        private void SendEffect(BasePlayer player, string effectPrefab)
+        {
+            if (string.IsNullOrWhiteSpace(effectPrefab))
+                return;
+
+            _reusableEffect.Init(Effect.Type.Generic, player, 0, Vector3.zero, Vector3.forward);
+            _reusableEffect.pooledString = effectPrefab;
+            EffectNetwork.Send(_reusableEffect, player.net.connection);
         }
 
         private void RegisterAsItemSupplier()
@@ -3508,9 +3519,6 @@ namespace Oxide.Plugins
 
             private Backpack _backpack;
 
-            private Backpacks _plugin => _backpack.Plugin;
-            private Configuration _config => _plugin._config;
-
             public VirtualContainerAdapter Setup(Backpack backpack, int pageIndex, int capacity)
             {
                 #if DEBUG_POOLING
@@ -3788,6 +3796,16 @@ namespace Oxide.Plugins
                     // Explicitly track hook time so server owners can be informed of the cost.
                     _plugin.TrackStart();
                     var result = _backpack.ShouldAcceptItem(item, ItemContainer);
+                    if (!result)
+                    {
+                        var feedbackRecipient = _backpack.DetermineFeedbackRecipientIfEligible();
+                        if ((object)feedbackRecipient != null)
+                        {
+                            feedbackRecipient.ChatMessage(_plugin.GetMessage(feedbackRecipient, "Backpack Item Rejected"));
+                            _plugin.SendEffect(feedbackRecipient, _config.ItemRestrictions.FeedbackEffect);
+                            _backpack.TimeSinceLastFeedback = 0;
+                        }
+                    }
                     _plugin.TrackEnd();
                     return result;
                 };
@@ -4162,6 +4180,8 @@ namespace Oxide.Plugins
         [JsonConverter(typeof(PoolConverter<Backpack>))]
         private class Backpack : Pool.IPooled
         {
+            private const float FeedbackThrottleSeconds = 1f;
+
             private static int CalculatePageIndexForItemPosition(int position)
             {
                 return position / _maxCapacityPerPage;
@@ -4181,6 +4201,7 @@ namespace Oxide.Plugins
             public bool RestrictionRulesetNeedsRefresh = true;
             public string OwnerIdString;
             public bool IsDirty;
+            public RealTimeSince TimeSinceLastFeedback;
 
             private BackpackCapacity ActualCapacity;
             private BackpackCapacity _allowedCapacity;
@@ -4636,6 +4657,21 @@ namespace Oxide.Plugins
                 {
                     PaginationUi.AddPaginationUi(looter, allowedPageCount, pageIndex, itemContainerAdapter.Capacity);
                 }
+            }
+
+            public BasePlayer DetermineFeedbackRecipientIfEligible()
+            {
+                if (_looters.Count == 0)
+                    return null;
+
+                if (TimeSinceLastFeedback < FeedbackThrottleSeconds)
+                    return null;
+
+                // Can't know who tried to place the item if there are multiple looters.
+                if (_looters.Count > 1)
+                    return null;
+
+                return _looters.FirstOrDefault();
             }
 
             public void OnClosed(BasePlayer looter)
@@ -6010,6 +6046,9 @@ namespace Oxide.Plugins
             [JsonProperty("Enable legacy noblacklist permission")]
             public bool EnableLegacyPermission;
 
+            [JsonProperty("Feedback effect")]
+            public string FeedbackEffect = "assets/prefabs/locks/keypad/effects/lock.code.denied.prefab";
+
             [JsonProperty("Default ruleset")]
             public RestrictionRuleset DefaultRuleset = new RestrictionRuleset
             {
@@ -6464,6 +6503,7 @@ namespace Oxide.Plugins
                 ["User ID not Found"] = "Could not find player with ID '{0}'",
                 ["User Name not Found"] = "Could not find player with name '{0}'",
                 ["Multiple Players Found"] = "Multiple matching players found:\n{0}",
+                ["Backpack Item Rejected"] = "That item is not allowed in the backpack.",
                 ["Backpack Items Rejected"] = "Your backpack rejected some items. They have been added to your inventory or dropped.",
                 ["Backpack Over Capacity"] = "Your backpack was over capacity. Overflowing items were added to your inventory or dropped.",
                 ["Blacklisted Items Removed"] = "Your backpack contained blacklisted items. They have been added to your inventory or dropped.",
