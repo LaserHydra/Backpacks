@@ -47,6 +47,7 @@ namespace Oxide.Plugins
         private const string GUIPermission = "backpacks.gui";
         private const string FetchPermission = "backpacks.fetch";
         private const string GatherPermission = "backpacks.gather";
+        private const string RetrievePermission = "backpacks.retrieve";
         private const string AdminPermission = "backpacks.admin";
         private const string KeepOnDeathPermission = "backpacks.keepondeath";
         private const string LegacyKeepOnWipePermission = "backpacks.keeponwipe";
@@ -95,6 +96,7 @@ namespace Oxide.Plugins
             permission.RegisterPermission(GUIPermission, this);
             permission.RegisterPermission(FetchPermission, this);
             permission.RegisterPermission(GatherPermission, this);
+            permission.RegisterPermission(RetrievePermission, this);
             permission.RegisterPermission(AdminPermission, this);
             permission.RegisterPermission(KeepOnDeathPermission, this);
 
@@ -267,6 +269,10 @@ namespace Oxide.Plugins
             {
                 _backpackManager.HandleGatherPermissionChangedForGroup(groupName);
             }
+            else if (perm.Equals(RetrievePermission))
+            {
+                _backpackManager.HandleRetrievePermissionChangedForGroup(groupName);
+            }
             else if (perm.Equals(GUIPermission))
             {
                 foreach (var player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, groupName)))
@@ -292,6 +298,10 @@ namespace Oxide.Plugins
             else if (perm.Equals(GatherPermission))
             {
                 _backpackManager.HandleGatherPermissionChangedForGroup(groupName);
+            }
+            else if (perm.Equals(RetrievePermission))
+            {
+                _backpackManager.HandleRetrievePermissionChangedForGroup(groupName);
             }
             else if (perm.Equals(GUIPermission))
             {
@@ -322,6 +332,10 @@ namespace Oxide.Plugins
             {
                 _backpackManager.HandleGatherPermissionChangedForUser(userId);
             }
+            else if (perm.Equals(RetrievePermission))
+            {
+                _backpackManager.HandleRetrievePermissionChangedForUser(userId);
+            }
             else if (perm.Equals(GUIPermission))
             {
                 var player = BasePlayer.Find(userId);
@@ -348,6 +362,10 @@ namespace Oxide.Plugins
             else if (perm.Equals(GatherPermission))
             {
                 _backpackManager.HandleGatherPermissionChangedForUser(userId);
+            }
+            else if (perm.Equals(RetrievePermission))
+            {
+                _backpackManager.HandleRetrievePermissionChangedForUser(userId);
             }
             else if (perm.Equals(GUIPermission) && !permission.UserHasPermission(userId, GUIPermission))
             {
@@ -870,6 +888,28 @@ namespace Oxide.Plugins
             backpack.ToggleGatherMode(basePlayer, pageIndex);
         }
 
+        [Command("backpack.toggleretrieve")]
+        private void ToggleRetrieveCommand(IPlayer player, string cmd, string[] args)
+        {
+            BasePlayer basePlayer;
+            if (!VerifyPlayer(player, out basePlayer))
+                return;
+
+            var lootingContainer = basePlayer.inventory.loot.containers.FirstOrDefault();
+            if (lootingContainer == null)
+                return;
+
+            Backpack backpack;
+            int pageIndex;
+            if (!_backpackManager.IsBackpack(lootingContainer, out backpack, out pageIndex)
+                || pageIndex > 31
+                || backpack.OwnerId != basePlayer.userID
+                || !backpack.CanRetrieve)
+                return;
+
+            backpack.ToggleRetrieve(basePlayer, pageIndex);
+        }
+
         #endregion
 
         #region Helper Methods
@@ -1010,49 +1050,49 @@ namespace Oxide.Plugins
                 ["FindPlayerItems"] = new Action<BasePlayer, Dictionary<string, object>, List<Item>>((player, rawItemQuery, collect) =>
                 {
                     var backpack = _backpackManager.GetBackpackIfCached(player.userID);
-                    if (backpack == null)
+                    if (backpack == null || !backpack.CanRetrieve)
                         return;
 
                     var itemQuery = ItemQuery.Parse(rawItemQuery);
-                    backpack.FindItems(ref itemQuery, collect);
+                    backpack.FindItems(ref itemQuery, collect, forItemRetriever: true);
                 }),
 
                 ["FindPlayerAmmo"] = new Action<BasePlayer, AmmoTypes, List<Item>>((player, ammoType, collect) =>
                 {
                     var backpack = _backpackManager.GetBackpackIfCached(player.userID);
-                    if (backpack == null)
+                    if (backpack == null || !backpack.CanRetrieve)
                         return;
 
-                    backpack.FindAmmo(ammoType, collect);
+                    backpack.FindAmmo(ammoType, collect, forItemRetriever: true);
                 }),
 
                 ["SumPlayerItems"] = new Func<BasePlayer, Dictionary<string, object>, int>((player, rawItemQuery) =>
                 {
                     var backpack = _backpackManager.GetBackpackIfCached(player.userID);
-                    if (backpack == null)
+                    if (backpack == null || !backpack.CanRetrieve)
                         return 0;
 
                     var itemQuery = ItemQuery.Parse(rawItemQuery);
-                    return backpack.SumItems(ref itemQuery);
+                    return backpack.SumItems(ref itemQuery, forItemRetriever: true);
                 }),
 
                 ["TakePlayerItems"] = new Func<BasePlayer, Dictionary<string, object>, int, List<Item>, int>((player, rawItemQuery, amount, collect) =>
                 {
                     var backpack = _backpackManager.GetBackpackIfCached(player.userID);
-                    if (backpack == null)
+                    if (backpack == null || !backpack.CanRetrieve)
                         return 0;
 
                     var itemQuery = ItemQuery.Parse(rawItemQuery);
-                    return backpack.TakeItems(ref itemQuery, amount, collect);
+                    return backpack.TakeItems(ref itemQuery, amount, collect, forItemRetriever: true);
                 }),
 
                 ["SerializeForNetwork"] = new Action<BasePlayer, List<ProtoBuf.Item>>((player, saveList) =>
                 {
                     var backpack = _backpackManager.GetBackpackIfCached(player.userID);
-                    if (backpack == null)
+                    if (backpack == null || !backpack.CanRetrieve)
                         return;
 
-                    backpack.SerializeForNetwork(saveList);
+                    backpack.SerializeForNetwork(saveList, forItemRetriever: true);
                 }),
             });
         }
@@ -2273,6 +2313,62 @@ namespace Oxide.Plugins
             }
         }
 
+        private struct StatefulLayoutProvider : ILayoutProvider
+        {
+            public Layout.Option Options;
+            public Vector2 Offset;
+            public Vector2 Size;
+            public float Spacing;
+
+            public static StatefulLayoutProvider operator +(StatefulLayoutProvider layoutProvider, Vector2 vector)
+            {
+                layoutProvider.Offset += vector;
+                return layoutProvider;
+            }
+
+            public static StatefulLayoutProvider operator -(StatefulLayoutProvider layoutProvider, Vector2 vector)
+            {
+                layoutProvider.Offset -= vector;
+                return layoutProvider;
+            }
+
+            public UiRect Current(Vector2 size)
+            {
+                return StatelessLayoutProvider.GetRect(0, Options, size, Spacing, Offset);
+            }
+
+            public UiRect Current()
+            {
+                return Current(Size);
+            }
+
+            public UiRect Next(Vector2 size)
+            {
+                var position = Current(size);
+
+                if (Options.HasFlag(Layout.Option.Vertical))
+                {
+                    Offset.y += size.y + Spacing;
+                }
+                else
+                {
+                    Offset.x += size.x + Spacing;
+                }
+
+                return position;
+            }
+
+            public UiRect Next(float x, float y)
+            {
+                return Next(new Vector2(x, y));
+            }
+
+            public UiRect Next()
+            {
+                return Next(Size);
+            }
+        }
+
         #endregion
 
         #region UI Components
@@ -2749,6 +2845,11 @@ namespace Oxide.Plugins
             private const float PageButtonWidth = 25;
             private const float PageButtonHeight = PageButtonWidth;
 
+            private const string BlueButtonColor = "0.25 0.5 0.75 1";
+            private const string BlueButtonTextColor = "0.75 0.85 1 1";
+            private const string GreenButtonColor = "0.451 0.553 0.271 1";
+            private const string GreenButtonTextColor = "0.659 0.918 0.2 1";
+
             private const string Name = "Backpacks.Container";
 
             public static void CreateContainerUi(BasePlayer player, int numPages, int activePageIndex, int capacity, Backpack backpack)
@@ -2770,9 +2871,20 @@ namespace Oxide.Plugins
                     }
                 });
 
+                var buttonLayoutProvider = new StatefulLayoutProvider
+                {
+                    Options = Layout.Option.AnchorBottom,
+                    Spacing = 6
+                };
+
                 if (backpack.CanGather)
                 {
-                    AddGatherModeButton(builder, player, backpack, activePageIndex);
+                    AddGatherModeButton(builder, ref buttonLayoutProvider, player, backpack, activePageIndex);
+                }
+
+                if (backpack.CanRetrieve)
+                {
+                    AddRetrieveButton(builder, ref buttonLayoutProvider, player, backpack, activePageIndex);
                 }
 
                 if (numPages > 1)
@@ -2789,7 +2901,7 @@ namespace Oxide.Plugins
                 CuiHelper.DestroyUi(player, Name);
             }
 
-            private static void AddGatherModeButton(UiBuilder builder, BasePlayer player, Backpack backpack, int activePageIndex)
+            private static void AddGatherModeButton(UiBuilder builder, ref StatefulLayoutProvider layoutProvider, BasePlayer player, Backpack backpack, int activePageIndex)
             {
                 var gatherMode = backpack.GetGatherModeForPage(activePageIndex);
 
@@ -2799,31 +2911,55 @@ namespace Oxide.Plugins
                     Name = "Backpacks.Container.Gather",
                     Button =
                     {
-                        new UiRectComponent(new UiRect
-                        {
-                            Anchor = Layout.AnchorBottomLeft,
-                            XMin = 0,
-                            YMin = 0,
-                            XMax = 110,
-                            YMax = HeaderHeight
-                        }),
+                        new UiRectComponent(layoutProvider.Next(115, HeaderHeight)),
                         new UiButtonComponent
                         {
                             Command = "backpack.togglegather",
-                            Color = "0.788 0.459 0.243 1"
+                            Color = gatherMode == GatherMode.None ? GreenButtonColor : BlueButtonColor
                         }
                     },
                     Text =
                     {
                         new UiTextComponent
                         {
-                            Text = gatherMode == GatherMode.All
-                                ? backpack.Plugin.GetMessage(player, "UI - Gather All")
+                            Text = backpack.Plugin.GetMessage(player, gatherMode == GatherMode.All
+                                ? "UI - Gather All"
                                 : gatherMode == GatherMode.Existing
-                                ? backpack.Plugin.GetMessage(player, "UI - Gather Existing")
-                                : backpack.Plugin.GetMessage(player, "UI - Gather None"),
+                                    ? "UI - Gather Existing"
+                                    : "UI - Gather Off"),
                             TextAlign = TextAnchor.MiddleCenter,
-                            Color = "0.984 0.816 0.714 1"
+                            Color = gatherMode == GatherMode.None ? GreenButtonTextColor : BlueButtonTextColor
+                        }
+                    }
+                });
+            }
+
+            private static void AddRetrieveButton(UiBuilder builder, ref StatefulLayoutProvider layoutProvider, BasePlayer player, Backpack backpack, int activePageIndex)
+            {
+                var retrieve = backpack.AllowsRetrieveForPage(activePageIndex);
+
+                builder.AddSerializable(new UiButtonElement<UiComponents<UiRectComponent, UiButtonComponent>, UiComponents<UiTextComponent>>
+                {
+                    Parent = Name,
+                    Name = "Backpacks.Container.Retrieve",
+                    Button =
+                    {
+                        new UiRectComponent(layoutProvider.Next(95, HeaderHeight)),
+                        new UiButtonComponent
+                        {
+                            Command = "backpack.toggleretrieve",
+                            Color = retrieve ? BlueButtonColor : GreenButtonColor
+                        }
+                    },
+                    Text =
+                    {
+                        new UiTextComponent
+                        {
+                            Text = backpack.Plugin.GetMessage(player, retrieve
+                                ? "UI - Retrieve On"
+                                : "UI - Retrieve Off"),
+                            TextAlign = TextAnchor.MiddleCenter,
+                            Color = retrieve ? BlueButtonTextColor : GreenButtonTextColor
                         }
                     }
                 });
@@ -2847,6 +2983,9 @@ namespace Oxide.Plugins
 
                     var name = DefaultStringCache.Instance.Get(i, n => $"{Name}.{n.ToString()}");
 
+                    var buttonColor = isActivePage ? BlueButtonColor : GreenButtonColor;
+                    var buttonTextColor = isActivePage ? BlueButtonTextColor : GreenButtonTextColor;
+
                     builder.AddSerializable(new UiButtonElement<UiComponents<UiRectComponent, UiButtonComponent>, UiComponents<UiTextComponent>>
                     {
                         Parent = Name,
@@ -2856,7 +2995,7 @@ namespace Oxide.Plugins
                             new UiRectComponent(buttonLayoutProvider[i]),
                             new UiButtonComponent
                             {
-                                Color = isActivePage ? "0.25 0.5 0.75 1" : "0.451 0.553 0.271 1",
+                                Color = buttonColor,
                                 Command = isActivePage ? "" : DefaultStringCache.Instance.Get(visiblePageNumber, n => $"backpack.open {n.ToString()}"),
                             }
                         },
@@ -2866,29 +3005,49 @@ namespace Oxide.Plugins
                             {
                                 Text = DefaultStringCache.Instance.Get(visiblePageNumber),
                                 TextAlign = TextAnchor.MiddleCenter,
-                                Color = isActivePage ? "0.75 0.85 1 1" : "0.659 0.918 0.2 1"
+                                Color = buttonTextColor
                             }
                         }
                     });
 
+                    var arrowSize = new Vector2(PageButtonWidth / 2, PageButtonHeight / 2);
+                    var arrowOffset = new Vector2(0, 1);
+
                     if (backpack.CanGather && backpack.GetGatherModeForPage(pageIndex) != GatherMode.None)
                     {
-                        builder.AddSerializable(new UiElement<UiComponents<UiRectComponent, UiImageComponent>>
+                        builder.AddSerializable(new UiElement<UiComponents<UiRectComponent, UiTextComponent>>
                         {
                             Parent = name,
                             Components =
                             {
-                                new UiRectComponent(new UiRect
+                                new UiRectComponent(StatelessLayoutProvider.GetRect(0, Layout.Option.AnchorBottom | Layout.Option.AnchorRight | Layout.Option.Vertical, arrowSize, offset: arrowOffset)),
+                                new UiTextComponent
                                 {
-                                    Anchor = Layout.AnchorBottomLeft,
-                                    XMin = PageButtonWidth - 6,
-                                    YMin = PageButtonWidth - 6,
-                                    XMax = PageButtonWidth - 2,
-                                    YMax = PageButtonWidth - 2
-                                }),
-                                new UiImageComponent
+                                    Text = "↓",
+                                    FontSize = 10,
+                                    TextAlign = TextAnchor.LowerRight,
+                                    Color = buttonTextColor,
+                                    VerticalWrapMode = VerticalWrapMode.Overflow
+                                }
+                            }
+                        });
+                    }
+
+                    if (backpack.CanRetrieve && backpack.AllowsRetrieveForPage(pageIndex))
+                    {
+                        builder.AddSerializable(new UiElement<UiComponents<UiRectComponent, UiTextComponent>>
+                        {
+                            Parent = name,
+                            Components =
+                            {
+                                new UiRectComponent(StatelessLayoutProvider.GetRect(0, Layout.Option.AnchorRight | Layout.Option.Vertical, arrowSize, offset: -arrowOffset)),
+                                new UiTextComponent
                                 {
-                                    Color =  "1 0.5 0.25 1",
+                                    Text = "↑",
+                                    FontSize = 10,
+                                    TextAlign = TextAnchor.UpperRight,
+                                    Color = buttonTextColor,
+                                    VerticalWrapMode = VerticalWrapMode.Overflow
                                 }
                             }
                         });
@@ -3162,19 +3321,36 @@ namespace Oxide.Plugins
                 backpack.CanGatherNeedsRefresh = true;
             }
 
-            public void HandleGroupChangeForUser(string userIdString)
+            public void HandleRetrievePermissionChangedForGroup(string groupName)
             {
-                ulong userId;
-                if (!ulong.TryParse(userIdString, out userId))
+                foreach (var backpack in _cachedBackpacks.Values)
+                {
+                    if (!_plugin.permission.UserHasGroup(backpack.OwnerIdString, groupName))
+                        continue;
+
+                    backpack.CanRetrieveNeedsRefresh = true;
+                }
+            }
+
+            public void HandleRetrievePermissionChangedForUser(string userIdString)
+            {
+                var backpack = GetBackpackIfCached(userIdString);
+                if (backpack == null)
                     return;
 
-                Backpack backpack;
-                if (!_cachedBackpacks.TryGetValue(userId, out backpack))
+                backpack.CanRetrieveNeedsRefresh = true;
+            }
+
+            public void HandleGroupChangeForUser(string userIdString)
+            {
+                var backpack = GetBackpackIfCached(userIdString);
+                if (backpack == null)
                     return;
 
                 backpack.AllowedCapacityNeedsRefresh = true;
                 backpack.RestrictionRulesetNeedsRefresh = true;
                 backpack.CanGatherNeedsRefresh = true;
+                backpack.CanRetrieveNeedsRefresh = true;
             }
 
             public bool IsBackpack(ItemContainer container)
@@ -4568,6 +4744,9 @@ namespace Oxide.Plugins
             [JsonProperty("GatherMode", ItemConverterType = typeof(StringEnumConverter))]
             private Dictionary<int, GatherMode> GatherModeByPage = new Dictionary<int, GatherMode>();
 
+            [JsonProperty("Retrieve", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            private int RetrieveFromPagesMask;
+
             [JsonProperty("Items", Order = 2)]
             private List<ItemData> ItemDataCollection = new List<ItemData>();
 
@@ -4578,6 +4757,7 @@ namespace Oxide.Plugins
             public bool AllowedCapacityNeedsRefresh = true;
             public bool RestrictionRulesetNeedsRefresh = true;
             public bool CanGatherNeedsRefresh = true;
+            public bool CanRetrieveNeedsRefresh = true;
             public string OwnerIdString;
             public bool IsDirty;
             public RealTimeSince TimeSinceLastFeedback;
@@ -4588,6 +4768,7 @@ namespace Oxide.Plugins
             private RestrictionRuleset _restrictionRuleset;
             private bool _processedRestrictedItems;
             private bool _canGather;
+            private bool _canRetrieve;
             private DynamicConfigFile _dataFile;
             private StorageContainer _storageContainer;
             private BasePlayer _owner;
@@ -4679,6 +4860,22 @@ namespace Oxide.Plugins
                 }
             }
 
+            public bool CanRetrieve
+            {
+                get
+                {
+                    if (Plugin.ItemRetriever == null)
+                        return false;
+
+                    if (CanRetrieveNeedsRefresh)
+                    {
+                        _canRetrieve = Plugin.permission.UserHasPermission(OwnerIdString, RetrievePermission);
+                    }
+
+                    return _canRetrieve;
+                }
+            }
+
             private bool HasItems
             {
                 get
@@ -4729,6 +4926,7 @@ namespace Oxide.Plugins
                 AllowedCapacityNeedsRefresh = true;
                 RestrictionRulesetNeedsRefresh = true;
                 CanGatherNeedsRefresh = true;
+                CanRetrieveNeedsRefresh = true;
                 OwnerIdString = null;
                 IsDirty = false;
                 ActualCapacity = default(BackpackCapacity);
@@ -4736,6 +4934,7 @@ namespace Oxide.Plugins
                 _restrictionRuleset = null;
                 _processedRestrictedItems = false;
                 _canGather = false;
+                _canRetrieve = false;
                 _dataFile = null;
                 _storageContainer = null;
                 _owner = null;
@@ -4780,6 +4979,18 @@ namespace Oxide.Plugins
                 {
                     Owner?.inventory?.containerMain?.MarkDirty();
                 }
+            }
+
+            public bool AllowsRetrieveForPage(int pageIndex)
+            {
+                var flag = 1 << pageIndex;
+                return (RetrieveFromPagesMask & flag) != 0;
+            }
+
+            public void ToggleRetrieve(BasePlayer player, int pageIndex)
+            {
+                SetRetrieveForPage(pageIndex, !AllowsRetrieveForPage(pageIndex));
+                ContainerUi.CreateContainerUi(player,  AllowedCapacity.PageCount, pageIndex, EnsurePage(pageIndex).Capacity, this);
             }
 
             public GatherMode GetGatherModeForPage(int pageIndex)
@@ -5003,43 +5214,59 @@ namespace Oxide.Plugins
                 return count;
             }
 
-            public void FindItems(ref ItemQuery itemQuery, List<Item> collect)
+            public void FindItems(ref ItemQuery itemQuery, List<Item> collect, bool forItemRetriever = false)
             {
                 foreach (var containerAdapter in _containerAdapters)
                 {
+                    if (forItemRetriever && !AllowsRetrieveForPage(containerAdapter.PageIndex))
+                        continue;
+
                     (containerAdapter as ItemContainerAdapter)?.FindItems(ref itemQuery, collect);
                 }
             }
 
-            public void FindAmmo(AmmoTypes ammoType, List<Item> collect)
+            public void FindAmmo(AmmoTypes ammoType, List<Item> collect, bool forItemRetriever = false)
             {
                 foreach (var containerAdapter in _containerAdapters)
                 {
+                    if (forItemRetriever && !AllowsRetrieveForPage(containerAdapter.PageIndex))
+                        continue;
+
                     (containerAdapter as ItemContainerAdapter)?.FindAmmo(ammoType, collect);
                 }
             }
 
-            public int SumItems(ref ItemQuery itemQuery)
+            public int SumItems(ref ItemQuery itemQuery, bool forItemRetriever = false)
             {
                 var sum = 0;
+
                 foreach (var containerAdapter in _containerAdapters)
                 {
+                    if (forItemRetriever && !AllowsRetrieveForPage(containerAdapter.PageIndex))
+                        continue;
+
                     sum += containerAdapter.SumItems(ref itemQuery);
                 }
+
                 return sum;
             }
 
-            public int TakeItems(ref ItemQuery itemQuery, int amount, List<Item> collect)
+            public int TakeItems(ref ItemQuery itemQuery, int amount, List<Item> collect, bool forItemRetriever = false)
             {
                 var amountTaken = 0;
+
                 foreach (var containerAdapter in _containerAdapters)
                 {
+                    if (forItemRetriever && !AllowsRetrieveForPage(containerAdapter.PageIndex))
+                        continue;
+
                     var amountToTake = amount - amountTaken;
                     if (amountToTake <= 0)
                         break;
 
                     amountTaken += containerAdapter.TakeItems(ref itemQuery, amountToTake, collect);
                 }
+
                 return amountTaken;
             }
 
@@ -5061,10 +5288,13 @@ namespace Oxide.Plugins
                 return false;
             }
 
-            public void SerializeForNetwork(List<ProtoBuf.Item> saveList)
+            public void SerializeForNetwork(List<ProtoBuf.Item> saveList, bool forItemRetriever = false)
             {
                 foreach (var containerAdapter in _containerAdapters)
                 {
+                    if (forItemRetriever && !AllowsRetrieveForPage(containerAdapter.PageIndex))
+                        continue;
+
                     containerAdapter.SerializeForNetwork(saveList);
                 }
             }
@@ -5853,6 +6083,25 @@ namespace Oxide.Plugins
                         ReclaimManager.instance.AddPlayerReclaim(OwnerId, allItemsToReclaim);
                     }
                 }
+            }
+
+            private void SetRetrieveForPage(int pageIndex, bool retrieve)
+            {
+                if (pageIndex > 31)
+                    return;
+
+                var flag = 1 << pageIndex;
+
+                if (retrieve)
+                {
+                    RetrieveFromPagesMask |= flag;
+                }
+                else
+                {
+                    RetrieveFromPagesMask &= ~flag;
+                }
+
+                MarkDirty();
             }
 
             private void SetGatherModeForPage(int pageIndex, GatherMode gatherMode)
@@ -7079,9 +7328,11 @@ namespace Oxide.Plugins
                 ["Items Fetched"] = "Fetched {0} \"{1}\" from backpack.",
                 ["Fetch Failed"] = "Couldn't fetch \"{0}\" from backpack. Inventory may be full.",
                 ["Toggled Backpack GUI"] = "Toggled backpack GUI button.",
-                ["UI - Gather All"] = "Gather: All",
-                ["UI - Gather Existing"] = "Gather: Existing",
-                ["UI - Gather None"] = "Gather: None",
+                ["UI - Gather All"] = "Gather: All ↓",
+                ["UI - Gather Existing"] = "Gather: Existing ↓",
+                ["UI - Gather Off"] = "Gather: Off",
+                ["UI - Retrieve On"] = "Retrieve: On ↑",
+                ["UI - Retrieve Off"] = "Retrieve: Off"
             }, this);
         }
 
