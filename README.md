@@ -389,28 +389,6 @@ Example rulesets:
 
 ## Localization
 
-```json
-{
-  "No Permission": "You don't have permission to use this command.",
-  "May Not Open Backpack In Event": "You may not open a backpack while participating in an event!",
-  "View Backpack Syntax": "Syntax: /viewbackpack <name or id>",
-  "User ID not Found": "Could not find player with ID '{0}'",
-  "User Name not Found": "Could not find player with name '{0}'",
-  "Multiple Players Found": "Multiple matching players found:\n{0}",
-  "Backpack Item Rejected": "That item is not allowed in the backpack.",
-  "Backpack Items Rejected": "Your backpack rejected some items. They have been added to your inventory or dropped.",
-  "Backpack Over Capacity": "Your backpack was over capacity. Overflowing items were added to your inventory or dropped.",
-  "Blacklisted Items Removed": "Your backpack contained blacklisted items. They have been added to your inventory or dropped.",
-  "Backpack Fetch Syntax": "Syntax: backpack.fetch <item short name or id> <amount>",
-  "Invalid Item": "Invalid Item Name or ID.",
-  "Invalid Item Amount": "Item amount must be an integer greater than 0.",
-  "Item Not In Backpack": "Item \"{0}\" not found in backpack.",
-  "Items Fetched": "Fetched {0} \"{1}\" from backpack.",
-  "Fetch Failed": "Couldn't fetch \"{0}\" from backpack. Inventory may be full.",
-  "Toggled Backpack GUI": "Toggled backpack GUI button."
-}
-```
-
 ## FAQ
 
 #### Why are backpacks not dropping when players die?
