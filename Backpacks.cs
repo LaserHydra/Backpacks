@@ -2912,7 +2912,7 @@ namespace Oxide.Plugins
                     Name = "Backpacks.Container.Gather",
                     Button =
                     {
-                        new UiRectComponent(layoutProvider.Next(115, HeaderHeight)),
+                        new UiRectComponent(layoutProvider.Next(105, HeaderHeight)),
                         new UiButtonComponent
                         {
                             Command = "backpack.togglegather",
@@ -2928,8 +2928,9 @@ namespace Oxide.Plugins
                                 : gatherMode == GatherMode.Existing
                                     ? "UI - Gather Existing"
                                     : "UI - Gather Off"),
+                            Color = gatherMode == GatherMode.None ? GreenButtonTextColor : BlueButtonTextColor,
                             TextAlign = TextAnchor.MiddleCenter,
-                            Color = gatherMode == GatherMode.None ? GreenButtonTextColor : BlueButtonTextColor
+                            FontSize = 12
                         }
                     }
                 });
@@ -2945,7 +2946,7 @@ namespace Oxide.Plugins
                     Name = "Backpacks.Container.Retrieve",
                     Button =
                     {
-                        new UiRectComponent(layoutProvider.Next(95, HeaderHeight)),
+                        new UiRectComponent(layoutProvider.Next(85, HeaderHeight)),
                         new UiButtonComponent
                         {
                             Command = "backpack.toggleretrieve",
@@ -2959,8 +2960,9 @@ namespace Oxide.Plugins
                             Text = backpack.Plugin.GetMessage(player, retrieve
                                 ? "UI - Retrieve On"
                                 : "UI - Retrieve Off"),
+                            Color = retrieve ? BlueButtonTextColor : GreenButtonTextColor,
                             TextAlign = TextAnchor.MiddleCenter,
-                            Color = retrieve ? BlueButtonTextColor : GreenButtonTextColor
+                            FontSize = 12
                         }
                     }
                 });
