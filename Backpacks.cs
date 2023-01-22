@@ -41,6 +41,7 @@ namespace Oxide.Plugins
         private const int SlotsPerRow = 6;
         private const int ReclaimEntryMaxSize = 40;
         private const float StandardLootDelay = 0.1f;
+        private const Item.Flag UnsearchableItemFlag = (Item.Flag)(1 << 24);
 
         private const string UsagePermission = "backpacks.use";
         private const string SizePermission = "backpacks.size";
@@ -1705,7 +1706,7 @@ namespace Oxide.Plugins
             private static bool HasSearchableContainer(Item item, out List<Item> itemList)
             {
                 itemList = item.contents?.itemList;
-                return itemList?.Count > 0 && HasSearchableContainer(item.info);
+                return itemList?.Count > 0 && !item.HasFlag(UnsearchableItemFlag) && HasSearchableContainer(item.info);
             }
 
             private static bool HasSearchableContainer(int itemId)
@@ -1720,7 +1721,7 @@ namespace Oxide.Plugins
             private static bool HasSearchableContainer(ItemData itemData, out List<ItemData> itemDataList)
             {
                 itemDataList = itemData.Contents;
-                return itemDataList?.Count > 0 && HasSearchableContainer(itemData.ID);
+                return itemDataList?.Count > 0 && !itemData.Flags.HasFlag(UnsearchableItemFlag) && HasSearchableContainer(itemData.ID);
             }
 
             private static void TakeItemAmount(Item item, int amount, List<Item> collect)
