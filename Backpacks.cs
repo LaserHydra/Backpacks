@@ -22,6 +22,7 @@ using Oxide.Core.Libraries;
 using Rust;
 using UnityEngine;
 using UnityEngine.UI;
+using Time = UnityEngine.Time;
 
 namespace Oxide.Plugins
 {
@@ -45,6 +46,7 @@ namespace Oxide.Plugins
         private const string SizePermission = "backpacks.size";
         private const string GUIPermission = "backpacks.gui";
         private const string FetchPermission = "backpacks.fetch";
+        private const string GatherPermission = "backpacks.gather";
         private const string AdminPermission = "backpacks.admin";
         private const string KeepOnDeathPermission = "backpacks.keepondeath";
         private const string LegacyKeepOnWipePermission = "backpacks.keeponwipe";
@@ -92,6 +94,7 @@ namespace Oxide.Plugins
             permission.RegisterPermission(UsagePermission, this);
             permission.RegisterPermission(GUIPermission, this);
             permission.RegisterPermission(FetchPermission, this);
+            permission.RegisterPermission(GatherPermission, this);
             permission.RegisterPermission(AdminPermission, this);
             permission.RegisterPermission(KeepOnDeathPermission, this);
 
@@ -249,6 +252,9 @@ namespace Oxide.Plugins
 
         private void OnGroupPermissionGranted(string groupName, string perm)
         {
+            if (!perm.StartsWith("backpacks"))
+                return;
+
             if (perm.StartsWith(SizePermission) || perm.StartsWith(UsagePermission))
             {
                 _backpackManager.HandleCapacityPermissionChangedForGroup(groupName);
@@ -256,6 +262,10 @@ namespace Oxide.Plugins
             else if (perm.StartsWith(RestrictionRuleset.FullPermissionPrefix) || perm.Equals(LegacyNoBlacklistPermission))
             {
                 _backpackManager.HandleRestrictionPermissionChangedForGroup(groupName);
+            }
+            else if (perm.Equals(GatherPermission))
+            {
+                _backpackManager.HandleGatherPermissionChangedForGroup(groupName);
             }
             else if (perm.Equals(GUIPermission))
             {
@@ -268,6 +278,9 @@ namespace Oxide.Plugins
 
         private void OnGroupPermissionRevoked(string groupName, string perm)
         {
+            if (!perm.StartsWith("backpacks"))
+                return;
+
             if (perm.StartsWith(SizePermission) || perm.StartsWith(UsagePermission))
             {
                 _backpackManager.HandleCapacityPermissionChangedForGroup(groupName);
@@ -275,6 +288,10 @@ namespace Oxide.Plugins
             else if (perm.StartsWith(RestrictionRuleset.FullPermissionPrefix) || perm.Equals(LegacyNoBlacklistPermission))
             {
                 _backpackManager.HandleRestrictionPermissionChangedForGroup(groupName);
+            }
+            else if (perm.Equals(GatherPermission))
+            {
+                _backpackManager.HandleGatherPermissionChangedForGroup(groupName);
             }
             else if (perm.Equals(GUIPermission))
             {
@@ -290,6 +307,9 @@ namespace Oxide.Plugins
 
         private void OnUserPermissionGranted(string userId, string perm)
         {
+            if (!perm.StartsWith("backpacks"))
+                return;
+
             if (perm.StartsWith(SizePermission) || perm.StartsWith(UsagePermission))
             {
                 _backpackManager.HandleCapacityPermissionChangedForUser(userId);
@@ -297,6 +317,10 @@ namespace Oxide.Plugins
             else if (perm.StartsWith(RestrictionRuleset.FullPermissionPrefix) || perm.Equals(LegacyNoBlacklistPermission))
             {
                 _backpackManager.HandleRestrictionPermissionChangedForUser(userId);
+            }
+            else if (perm.Equals(GatherPermission))
+            {
+                _backpackManager.HandleGatherPermissionChangedForUser(userId);
             }
             else if (perm.Equals(GUIPermission))
             {
@@ -310,6 +334,9 @@ namespace Oxide.Plugins
 
         private void OnUserPermissionRevoked(string userId, string perm)
         {
+            if (!perm.StartsWith("backpacks"))
+                return;
+
             if (perm.StartsWith(SizePermission) || perm.StartsWith(UsagePermission))
             {
                 _backpackManager.HandleCapacityPermissionChangedForUser(userId);
@@ -317,6 +344,10 @@ namespace Oxide.Plugins
             else if (perm.StartsWith(RestrictionRuleset.FullPermissionPrefix) || perm.Equals(LegacyNoBlacklistPermission))
             {
                 _backpackManager.HandleRestrictionPermissionChangedForUser(userId);
+            }
+            else if (perm.Equals(GatherPermission))
+            {
+                _backpackManager.HandleGatherPermissionChangedForUser(userId);
             }
             else if (perm.Equals(GUIPermission) && !permission.UserHasPermission(userId, GUIPermission))
             {
@@ -340,9 +371,13 @@ namespace Oxide.Plugins
 
         private void OnPlayerConnected(BasePlayer player) => MaybeCreateButtonUi(player);
 
-        private void OnPlayerRespawned(BasePlayer player) => MaybeCreateButtonUi(player);
+        private void OnPlayerRespawned(BasePlayer player)
+        {
+            MaybeCreateButtonUi(player);
+            _backpackManager.GetBackpackIfCached(player.userID)?.PauseGatherMode(1f);
+        }
 
-        private void OnPlayerSleepEnded(BasePlayer player) => MaybeCreateButtonUi(player);
+        private void OnPlayerSleepEnded(BasePlayer player) => OnPlayerRespawned(player);
 
         private void OnPlayerSleep(BasePlayer player) => DestroyButtonUi(player);
 
@@ -814,6 +849,27 @@ namespace Oxide.Plugins
             player.Reply(GetMessage(player, "Toggled Backpack GUI"));
         }
 
+        [Command("backpack.togglegather")]
+        private void ToggleGatherCommand(IPlayer player, string cmd, string[] args)
+        {
+            BasePlayer basePlayer;
+            if (!VerifyPlayer(player, out basePlayer))
+                return;
+
+            var lootingContainer = basePlayer.inventory.loot.containers.FirstOrDefault();
+            if (lootingContainer == null)
+                return;
+
+            Backpack backpack;
+            int pageIndex;
+            if (!_backpackManager.IsBackpack(lootingContainer, out backpack, out pageIndex)
+                || backpack.OwnerId != basePlayer.userID
+                || !backpack.CanGather)
+                return;
+
+            backpack.ToggleGatherMode(basePlayer, pageIndex);
+        }
+
         #endregion
 
         #region Helper Methods
@@ -920,6 +976,20 @@ namespace Oxide.Plugins
             container.ServerInitialize(null, capacity);
             container.GiveUID();
             container.entityOwner = entityOwner;
+            return container;
+        }
+
+        private static ItemContainer GetRootContainer(Item item)
+        {
+            var container = item.parent;
+            if (container == null)
+                return null;
+
+            while (container.parent?.parent != null && container.parent != item)
+            {
+                container = container.parent.parent;
+            }
+
             return container;
         }
 
@@ -1338,6 +1408,32 @@ namespace Oxide.Plugins
 
         private static class ItemUtils
         {
+            public static int PositionOf(List<Item> itemList, ref ItemQuery itemQuery)
+            {
+                // Assumes the list is sorted.
+                foreach (var item in itemList)
+                {
+                    var usableAmount = itemQuery.GetUsableAmount(item);
+                    if (usableAmount > 0)
+                        return item.position;
+                }
+
+                return -1;
+            }
+
+            public static int PositionOf(List<ItemData> itemDataList, ref ItemQuery itemQuery)
+            {
+                // Assumes the list is sorted.
+                foreach (var itemData in itemDataList)
+                {
+                    var usableAmount = itemQuery.GetUsableAmount(itemData);
+                    if (usableAmount > 0)
+                        return itemData.Position;
+                }
+
+                return -1;
+            }
+
             public static void FindItems(List<Item> itemList, ref ItemQuery itemQuery, List<Item> collect)
             {
                 foreach (var item in itemList)
@@ -2641,25 +2737,28 @@ namespace Oxide.Plugins
 
         #region UI
 
-        private static class PaginationUi
+        private static class ContainerUi
         {
-            private const float BaseOffsetY = 135;
-            private const float PerRowOffsetY = 62;
-            private const float ButtonSpacing = 6;
-            private const float ButtonWidth = 25;
-            private const float ButtonHeight = ButtonWidth;
-            private const float OffsetX = 572.5f;
+            public const float BaseOffsetY = 112;
+            public const float BaseOffsetX = 192.5f;
+            public const float HeaderWidth = 380;
+            public const float HeaderHeight = 23;
+            public const float PerRowOffsetY = 62;
 
-            private const string Name = "Backpacks.Pagination";
+            private const float PageButtonSpacing = 6;
+            private const float PageButtonWidth = 25;
+            private const float PageButtonHeight = PageButtonWidth;
 
-            public static void AddPaginationUi(BasePlayer player, int numPages, int activePageIndex, int capacity)
+            private const string Name = "Backpacks.Container";
+
+            public static void CreateContainerUi(BasePlayer player, int numPages, int activePageIndex, int capacity, Backpack backpack)
             {
                 var numRows = 1 + (capacity - 1) / 6;
                 var offsetY = BaseOffsetY + numRows * PerRowOffsetY;
 
                 var builder = UiBuilder.Default;
-
                 builder.Start();
+
                 builder.AddSerializable(new UiElement<UiComponents<UiRectComponent>>
                 {
                     Parent = "Hud.Menu",
@@ -2667,27 +2766,91 @@ namespace Oxide.Plugins
                     DestroyName = Name,
                     Components =
                     {
-                        new UiRectComponent(OffsetX, offsetY, Layout.AnchorBottomCenter)
+                        new UiRectComponent(BaseOffsetX, offsetY, Layout.AnchorBottomCenter),
                     }
                 });
 
+                if (backpack.CanGather)
+                {
+                    AddGatherModeButton(builder, player, backpack, activePageIndex);
+                }
+
+                if (numPages > 1)
+                {
+                    AddPaginationUi(builder, backpack, numPages, activePageIndex);
+                }
+
+                builder.End();
+                builder.AddUi(player);
+            }
+
+            public static void DestroyUi(BasePlayer player)
+            {
+                CuiHelper.DestroyUi(player, Name);
+            }
+
+            private static void AddGatherModeButton(UiBuilder builder, BasePlayer player, Backpack backpack, int activePageIndex)
+            {
+                var gatherMode = backpack.GetGatherModeForPage(activePageIndex);
+
+                builder.AddSerializable(new UiButtonElement<UiComponents<UiRectComponent, UiButtonComponent>, UiComponents<UiTextComponent>>
+                {
+                    Parent = Name,
+                    Name = "Backpacks.Container.Gather",
+                    Button =
+                    {
+                        new UiRectComponent(new UiRect
+                        {
+                            Anchor = Layout.AnchorBottomLeft,
+                            XMin = 0,
+                            YMin = 0,
+                            XMax = 110,
+                            YMax = HeaderHeight
+                        }),
+                        new UiButtonComponent
+                        {
+                            Command = "backpack.togglegather",
+                            Color = "0.788 0.459 0.243 1"
+                        }
+                    },
+                    Text =
+                    {
+                        new UiTextComponent
+                        {
+                            Text = gatherMode == GatherMode.All
+                                ? backpack.Plugin.GetMessage(player, "UI - Gather All")
+                                : gatherMode == GatherMode.Existing
+                                ? backpack.Plugin.GetMessage(player, "UI - Gather Existing")
+                                : backpack.Plugin.GetMessage(player, "UI - Gather None"),
+                            TextAlign = TextAnchor.MiddleCenter,
+                            Color = "0.984 0.816 0.714 1"
+                        }
+                    }
+                });
+            }
+
+            private static void AddPaginationUi(UiBuilder builder, Backpack backpack, int numPages, int activePageIndex)
+            {
                 var buttonLayoutProvider = new StatelessLayoutProvider
                 {
                     Options = Layout.Option.AnchorBottom | Layout.Option.AnchorRight,
-                    Offset = new Vector2(0, ButtonSpacing),
-                    Size = new Vector2(ButtonWidth, ButtonHeight),
-                    Spacing = ButtonSpacing
+                    Offset = new Vector2(-HeaderWidth, HeaderHeight + PageButtonSpacing),
+                    Size = new Vector2(PageButtonWidth, PageButtonHeight),
+                    Spacing = PageButtonSpacing
                 };
 
                 for (var i = 0; i < numPages; i++)
                 {
                     var visiblePageNumber = numPages - i;
+                    var pageIndex = visiblePageNumber - 1;
                     var isActivePage = activePageIndex == visiblePageNumber - 1;
+
+                    var name = DefaultStringCache.Instance.Get(i, n => $"{Name}.{n.ToString()}");
 
                     builder.AddSerializable(new UiButtonElement<UiComponents<UiRectComponent, UiButtonComponent>, UiComponents<UiTextComponent>>
                     {
                         Parent = Name,
-                        Name = DefaultStringCache.Instance.Get(i, n => $"{Name}.{n.ToString()}"),
+                        Name = name,
                         Button =
                         {
                             new UiRectComponent(buttonLayoutProvider[i]),
@@ -2707,15 +2870,30 @@ namespace Oxide.Plugins
                             }
                         }
                     });
+
+                    if (backpack.CanGather && backpack.GetGatherModeForPage(pageIndex) != GatherMode.None)
+                    {
+                        builder.AddSerializable(new UiElement<UiComponents<UiRectComponent, UiImageComponent>>
+                        {
+                            Parent = name,
+                            Components =
+                            {
+                                new UiRectComponent(new UiRect
+                                {
+                                    Anchor = Layout.AnchorBottomLeft,
+                                    XMin = PageButtonWidth - 6,
+                                    YMin = PageButtonWidth - 6,
+                                    XMax = PageButtonWidth - 2,
+                                    YMax = PageButtonWidth - 2
+                                }),
+                                new UiImageComponent
+                                {
+                                    Color =  "1 0.5 0.25 1",
+                                }
+                            }
+                        });
+                    }
                 }
-
-                builder.End();
-                builder.AddUi(player);
-            }
-
-            public static void DestroyUi(BasePlayer player)
-            {
-                CuiHelper.DestroyUi(player, Name);
             }
         }
 
@@ -2937,12 +3115,8 @@ namespace Oxide.Plugins
 
             public void HandleCapacityPermissionChangedForUser(string userIdString)
             {
-                ulong userId;
-                if (!ulong.TryParse(userIdString, out userId))
-                    return;
-
-                Backpack backpack;
-                if (!_cachedBackpacks.TryGetValue(userId, out backpack))
+                var backpack = GetBackpackIfCached(userIdString);
+                if (backpack == null)
                     return;
 
                 backpack.AllowedCapacityNeedsRefresh = true;
@@ -2961,15 +3135,31 @@ namespace Oxide.Plugins
 
             public void HandleRestrictionPermissionChangedForUser(string userIdString)
             {
-                ulong userId;
-                if (!ulong.TryParse(userIdString, out userId))
-                    return;
-
-                Backpack backpack;
-                if (!_cachedBackpacks.TryGetValue(userId, out backpack))
+                var backpack = GetBackpackIfCached(userIdString);
+                if (backpack == null)
                     return;
 
                 backpack.RestrictionRulesetNeedsRefresh = true;
+            }
+
+            public void HandleGatherPermissionChangedForGroup(string groupName)
+            {
+                foreach (var backpack in _cachedBackpacks.Values)
+                {
+                    if (!_plugin.permission.UserHasGroup(backpack.OwnerIdString, groupName))
+                        continue;
+
+                    backpack.CanGatherNeedsRefresh = true;
+                }
+            }
+
+            public void HandleGatherPermissionChangedForUser(string userIdString)
+            {
+                var backpack = GetBackpackIfCached(userIdString);
+                if (backpack == null)
+                    return;
+
+                backpack.CanGatherNeedsRefresh = true;
             }
 
             public void HandleGroupChangeForUser(string userIdString)
@@ -2984,6 +3174,12 @@ namespace Oxide.Plugins
 
                 backpack.AllowedCapacityNeedsRefresh = true;
                 backpack.RestrictionRulesetNeedsRefresh = true;
+                backpack.CanGatherNeedsRefresh = true;
+            }
+
+            public bool IsBackpack(ItemContainer container)
+            {
+                return _backpackContainers.ContainsKey(container);
             }
 
             public bool IsBackpack(ItemContainer container, out Backpack backpack, out int pageIndex)
@@ -3104,47 +3300,6 @@ namespace Oxide.Plugins
                 return GetBackpack(backpackOwnerId).TryOpen(looter, pageIndex);
             }
 
-            private string GetBackpackPath(ulong userId)
-            {
-                string filepath;
-                if (!_backpackPathCache.TryGetValue(userId, out filepath))
-                {
-                    filepath = DetermineBackpackPath(userId);
-                    _backpackPathCache[userId] = filepath;
-                }
-
-                return filepath;
-            }
-
-            private Backpack Load(ulong userId)
-            {
-                #if DEBUG_BACKPACK_LIFECYCLE
-                LogDebug($"Backpack::Load | {userId.ToString()}");
-                #endif
-
-                var filePath = GetBackpackPath(userId);
-
-                Backpack backpack = null;
-
-                var dataFile = Interface.Oxide.DataFileSystem.GetFile(filePath);
-                if (dataFile.Exists())
-                {
-                    backpack = dataFile.ReadObject<Backpack>();
-                }
-
-                // Note: Even if the user has a backpack file, the file contents may be null in some edge cases.
-                // For example, if a data file cleaner plugin writes the file content as `null`.
-                if (backpack == null)
-                {
-                    backpack = Pool.Get<Backpack>();
-                }
-
-                backpack.Setup(_plugin, userId, dataFile);
-                _cachedBackpacks[userId] = backpack;
-
-                return backpack;
-            }
-
             public void ClearBackpackFile(ulong userId)
             {
                 Interface.Oxide.DataFileSystem.WriteObject<object>(DetermineBackpackPath(userId), null);
@@ -3201,6 +3356,56 @@ namespace Oxide.Plugins
                 }
 
                 _cachedBackpacks.Clear();
+            }
+
+            private string GetBackpackPath(ulong userId)
+            {
+                string filepath;
+                if (!_backpackPathCache.TryGetValue(userId, out filepath))
+                {
+                    filepath = DetermineBackpackPath(userId);
+                    _backpackPathCache[userId] = filepath;
+                }
+
+                return filepath;
+            }
+
+            private Backpack Load(ulong userId)
+            {
+                #if DEBUG_BACKPACK_LIFECYCLE
+                LogDebug($"Backpack::Load | {userId.ToString()}");
+                #endif
+
+                var filePath = GetBackpackPath(userId);
+
+                Backpack backpack = null;
+
+                var dataFile = Interface.Oxide.DataFileSystem.GetFile(filePath);
+                if (dataFile.Exists())
+                {
+                    backpack = dataFile.ReadObject<Backpack>();
+                }
+
+                // Note: Even if the user has a backpack file, the file contents may be null in some edge cases.
+                // For example, if a data file cleaner plugin writes the file content as `null`.
+                if (backpack == null)
+                {
+                    backpack = Pool.Get<Backpack>();
+                }
+
+                backpack.Setup(_plugin, userId, dataFile);
+                _cachedBackpacks[userId] = backpack;
+
+                return backpack;
+            }
+
+            private Backpack GetBackpackIfCached(string userIdString)
+            {
+                ulong userId;
+                if (!ulong.TryParse(userIdString, out userId))
+                    return null;
+
+                return GetBackpackIfCached(userId);
             }
         }
 
@@ -3344,6 +3549,19 @@ namespace Oxide.Plugins
 
         private struct ItemQuery
         {
+            public static ItemQuery FromItem(Item item)
+            {
+                return new ItemQuery
+                {
+                    BlueprintId = item.blueprintTarget,
+                    DataInt = item.instanceData?.dataInt ?? 0,
+                    DisplayName = item.name,
+                    ItemDefinition = item.info,
+                    ItemId = item.info.itemid,
+                    SkinId = item.skin,
+                };
+            }
+
             public static ItemQuery Parse(Dictionary<string, object> raw)
             {
                 var itemQuery = new ItemQuery();
@@ -3497,6 +3715,7 @@ namespace Oxide.Plugins
             int PageIndex { get; }
             int Capacity { get; set; }
             bool HasItems { get; }
+            int PositionOf(ref ItemQuery itemQuery);
             int CountItems(ref ItemQuery itemQuery);
             int SumItems(ref ItemQuery itemQuery);
             int TakeItems(ref ItemQuery itemQuery, int amount, List<Item> collect);
@@ -3553,6 +3772,12 @@ namespace Oxide.Plugins
             public void SortByPosition()
             {
                 ItemDataList.Sort((a, b) => a.Position.CompareTo(b.Position));
+            }
+
+            public int PositionOf(ref ItemQuery itemQuery)
+            {
+                SortByPosition();
+                return ItemUtils.PositionOf(ItemDataList, ref itemQuery);
             }
 
             public int CountItems(ref ItemQuery itemQuery)
@@ -3753,7 +3978,15 @@ namespace Oxide.Plugins
             {
                 var firstEmptyPosition = GetFirstEmptyPosition();
                 if (firstEmptyPosition >= Capacity)
+                {
+                    // To keep things simple, simply deny the item if there are no empty slots. This is done because
+                    // it's difficult to know whether the item can be stacked with an existing item without calling
+                    // stacking related hooks which require a physical page and item. This results in an edge case
+                    // where if all pages are full, and no physical pages can accept the item, then any full virtual
+                    // page would reject the item, even if upgrading the page would allow the item. In the future, the
+                    // page could be upgraded to a physical container to handle this edge case if necessary.
                     return false;
+                }
 
                 if (!_backpack.ShouldAcceptItem(item, null))
                     return false;
@@ -3866,6 +4099,12 @@ namespace Oxide.Plugins
                 ItemContainer.FindAmmo(collect, ammoType);
             }
 
+            public int PositionOf(ref ItemQuery itemQuery)
+            {
+                SortByPosition();
+                return ItemUtils.PositionOf(ItemContainer.itemList, ref itemQuery);
+            }
+
             public int CountItems(ref ItemQuery itemQuery)
             {
                 return ItemUtils.CountItems(ItemContainer.itemList, ref itemQuery);
@@ -3879,6 +4118,26 @@ namespace Oxide.Plugins
             public int TakeItems(ref ItemQuery itemQuery, int amount, List<Item> collect)
             {
                 return ItemUtils.TakeItems(ItemContainer.itemList, ref itemQuery, amount, collect);
+            }
+
+            public bool TryDepositItem(Item item)
+            {
+                return item.MoveToContainer(ItemContainer);
+            }
+
+            public bool TryInsertItem(Item item, ref ItemQuery itemQuery, int position)
+            {
+                for (var i = position; i < ItemContainer.capacity; i++)
+                {
+                    var existingItem = ItemContainer.GetSlot(i);
+                    if (existingItem != null && itemQuery.GetUsableAmount(existingItem) <= 0)
+                        continue;
+
+                    if (item.MoveToContainer(ItemContainer, i))
+                        return true;
+                }
+
+                return item.MoveToContainer(ItemContainer);
             }
 
             public void ReclaimFractionForSoftcore(float fraction, List<Item> collect)
@@ -3977,11 +4236,6 @@ namespace Oxide.Plugins
                     return;
 
                 ItemContainer.Kill();
-            }
-
-            public bool TryDepositItem(Item item)
-            {
-                return item.MoveToContainer(ItemContainer);
             }
 
             public ItemContainerAdapter CopyItemsFrom(List<ItemData> itemDataList)
@@ -4124,6 +4378,119 @@ namespace Oxide.Plugins
 
         #endregion
 
+        #region Player Inventory Watcher
+
+        private class InventoryWatcher : FacepunchBehaviour
+        {
+            public static InventoryWatcher AddToPlayer(BasePlayer player, Backpack backpack)
+            {
+                var component = player.gameObject.AddComponent<InventoryWatcher>();
+                component._player = player;
+                component._backpack = backpack;
+
+                if (player.inventory.containerMain != null)
+                    player.inventory.containerMain.onItemAddedRemoved += component._onItemAddedRemoved;
+
+                if (player.inventory.containerBelt != null)
+                    player.inventory.containerBelt.onItemAddedRemoved += component._onItemAddedRemoved;
+
+                if (player.inventory.containerWear != null)
+                    player.inventory.containerWear.onItemAddedRemoved += component._onItemAddedRemoved;
+
+                return component;
+            }
+
+            private BasePlayer _player;
+            private Backpack _backpack;
+
+            private Action<Item, bool> _onItemAddedRemoved;
+            private Item _lastRemovedItem;
+            private int _lastRemovedItemFrame;
+
+            public void DestroyImmediate() => DestroyImmediate(this);
+
+            private InventoryWatcher()
+            {
+                _onItemAddedRemoved = OnItemAddedRemoved;
+            }
+
+            private bool IsLootingBackpackOrChildContainer()
+            {
+                var lootingContainer = _player.inventory.loot.containers.FirstOrDefault();
+                if (lootingContainer == null)
+                    return false;
+
+                var rootContainer = lootingContainer.parent != null
+                    ? GetRootContainer(lootingContainer.parent)
+                    : lootingContainer;
+
+                return _backpack.Plugin._backpackManager.IsBackpack(rootContainer);
+            }
+
+            private void OnItemAddedRemoved(Item item, bool wasAdded)
+            {
+                if (_player.IsDestroyed
+                    || _player.IsDead()
+                    || _player.IsIncapacitated()
+                    || _player.IsSleeping()
+                    || _player.IsReceivingSnapshot
+                    || IsLootingBackpackOrChildContainer())
+                    return;
+
+                if (wasAdded)
+                {
+                    // Don't gather items from the wearable container.
+                    // We still listen to events from it in order to determine when an item is removed.
+                    if (item.parent == _player.inventory.containerWear)
+                        return;
+
+                    if (_lastRemovedItemFrame != 0)
+                    {
+                        var shouldGather = true;
+                        var shouldReset = _lastRemovedItemFrame != Time.frameCount;
+
+                        if (!shouldReset && item == _lastRemovedItem)
+                        {
+                            shouldGather = false;
+                            shouldReset = true;
+                        }
+
+                        if (shouldReset)
+                        {
+                            _lastRemovedItem = null;
+                            _lastRemovedItemFrame = 0;
+                        }
+
+                        if (!shouldGather)
+                            return;
+                    }
+
+                    _backpack.TryGatherItem(item);
+                }
+                else
+                {
+                    _lastRemovedItem = item;
+                    _lastRemovedItemFrame = Time.frameCount;
+                }
+            }
+
+            private void OnDestroy()
+            {
+                if (_player.inventory.containerMain != null)
+                    _player.inventory.containerMain.onItemAddedRemoved -= _onItemAddedRemoved;
+
+                if (_player.inventory.containerBelt != null)
+                    _player.inventory.containerBelt.onItemAddedRemoved -= _onItemAddedRemoved;
+
+                if (_player.inventory.containerWear != null)
+                    _player.inventory.containerWear.onItemAddedRemoved -= _onItemAddedRemoved;
+
+                _backpack.HandleGatheringStopped();
+            }
+        }
+
+        #endregion
+
         #region Backpack
 
         private struct BackpackCapacity
@@ -4176,6 +4543,14 @@ namespace Oxide.Plugins
             private int _capacity;
         }
 
+        private enum GatherMode
+        {
+            // Don't rename these since the names are persisted in data files.
+            None = 0,
+            All,
+            Existing
+        }
+
         [JsonObject(MemberSerialization.OptIn)]
         [JsonConverter(typeof(PoolConverter<Backpack>))]
         private class Backpack : Pool.IPooled
@@ -4188,7 +4563,10 @@ namespace Oxide.Plugins
             }
 
             [JsonProperty("OwnerID", Order = 0)]
-            public ulong OwnerId { get; set; }
+            public ulong OwnerId { get; private set; }
+
+            [JsonProperty("GatherMode", ItemConverterType = typeof(StringEnumConverter))]
+            private Dictionary<int, GatherMode> GatherModeByPage = new Dictionary<int, GatherMode>();
 
             [JsonProperty("Items", Order = 2)]
             private List<ItemData> ItemDataCollection = new List<ItemData>();
@@ -4199,6 +4577,7 @@ namespace Oxide.Plugins
             public BackpackNetworkController NetworkController { get; private set; }
             public bool AllowedCapacityNeedsRefresh = true;
             public bool RestrictionRulesetNeedsRefresh = true;
+            public bool CanGatherNeedsRefresh = true;
             public string OwnerIdString;
             public bool IsDirty;
             public RealTimeSince TimeSinceLastFeedback;
@@ -4208,15 +4587,19 @@ namespace Oxide.Plugins
 
             private RestrictionRuleset _restrictionRuleset;
             private bool _processedRestrictedItems;
+            private bool _canGather;
             private DynamicConfigFile _dataFile;
             private StorageContainer _storageContainer;
             private BasePlayer _owner;
             private ContainerAdapterCollection _containerAdapters;
             private readonly List<BasePlayer> _looters = new List<BasePlayer>();
+            private InventoryWatcher _inventoryWatcher;
+            private float _pauseGatherModeUntil;
 
             public bool HasLooters => _looters.Count > 0;
             private Configuration _config => Plugin._config;
             private BackpackManager _backpackManager => Plugin._backpackManager;
+            private bool _isGathering => (object)_inventoryWatcher != null;
 
             private BasePlayer Owner
             {
@@ -4283,6 +4666,19 @@ namespace Oxide.Plugins
                 }
             }
 
+            public bool CanGather
+            {
+                get
+                {
+                    if (CanGatherNeedsRefresh)
+                    {
+                        _canGather = Plugin.permission.UserHasPermission(OwnerIdString, GatherPermission);
+                    }
+
+                    return _canGather;
+                }
+            }
+
             private bool HasItems
             {
                 get
@@ -4315,29 +4711,6 @@ namespace Oxide.Plugins
                 SetupItemsAndContainers();
             }
 
-            private void SetupItemsAndContainers()
-            {
-                // Sort the items so it's easier to partition the list for multiple pages.
-                ItemDataCollection.Sort((a, b) => a.Position.CompareTo(b.Position));
-
-                // Allow the backpack to start beyond the allowed capacity.
-                // Overflowing items will be handled when the backpack is opened by its owner.
-                var highestUsedPosition = ItemDataCollection.LastOrDefault()?.Position ?? 0;
-                ActualCapacity.Capacity = Math.Max(_allowedCapacity.Capacity, highestUsedPosition + 1);
-
-                var pageCount = ActualCapacity.PageCount;
-                if (_containerAdapters == null)
-                {
-                    _containerAdapters = new ContainerAdapterCollection(pageCount);
-                }
-                else
-                {
-                    _containerAdapters.Resize(pageCount);
-                }
-
-                CreateContainerAdapters();
-            }
-
             public void EnterPool()
             {
                 #if DEBUG_POOLING
@@ -4355,17 +4728,20 @@ namespace Oxide.Plugins
                 NetworkController?.UnsubscribeAll();
                 AllowedCapacityNeedsRefresh = true;
                 RestrictionRulesetNeedsRefresh = true;
+                CanGatherNeedsRefresh = true;
                 OwnerIdString = null;
                 IsDirty = false;
                 ActualCapacity = default(BackpackCapacity);
                 _allowedCapacity = default(BackpackCapacity);
                 _restrictionRuleset = null;
                 _processedRestrictedItems = false;
+                _canGather = false;
                 _dataFile = null;
                 _storageContainer = null;
                 _owner = null;
                 _containerAdapters?.ResetPooledItemsAndClear();
                 _looters.Clear();
+                StopGathering();
                 if (_rejectedItems?.Count > 0)
                 {
                     foreach (var item in _rejectedItems)
@@ -4404,6 +4780,128 @@ namespace Oxide.Plugins
                 {
                     Owner?.inventory?.containerMain?.MarkDirty();
                 }
+            }
+
+            public GatherMode GetGatherModeForPage(int pageIndex)
+            {
+                GatherMode gatherMode;
+                return GatherModeByPage.TryGetValue(pageIndex, out gatherMode)
+                    ? gatherMode
+                    : GatherMode.None;
+            }
+
+            public void ToggleGatherMode(BasePlayer player, int pageIndex)
+            {
+                switch (GetGatherModeForPage(pageIndex))
+                {
+                    case GatherMode.All:
+                        SetGatherModeForPage(pageIndex, GatherMode.Existing);
+                        break;
+
+                    case GatherMode.Existing:
+                        SetGatherModeForPage(pageIndex, GatherMode.None);
+                        break;
+
+                    case GatherMode.None:
+                        SetGatherModeForPage(pageIndex, GatherMode.All);
+                        break;
+                }
+
+                if (GatherModeByPage.Count > 0)
+                {
+                    StartGathering(player);
+                }
+                else
+                {
+                    StopGathering();
+                }
+
+                ContainerUi.CreateContainerUi(player,  AllowedCapacity.PageCount, pageIndex, EnsurePage(pageIndex).Capacity, this);
+            }
+
+            public void HandleGatheringStopped()
+            {
+                _inventoryWatcher = null;
+            }
+
+            public void PauseGatherMode(float durationSeconds)
+            {
+                if (!_isGathering)
+                    return;
+
+                _pauseGatherModeUntil = Time.time + durationSeconds;
+            }
+
+            public bool TryGatherItem(Item item)
+            {
+                if (!CanGather)
+                {
+                    GatherModeByPage.Clear();
+                    IsDirty = true;
+                    StopGathering();
+                    return false;
+                }
+
+                // When overflowing, don't allow items to be added.
+                if (ActualCapacity > AllowedCapacity)
+                    return false;
+
+                if (_pauseGatherModeUntil != 0)
+                {
+                    if (_pauseGatherModeUntil > Time.time)
+                        return false;
+
+                    _pauseGatherModeUntil = 0;
+                }
+
+                // Optimization: Don't search pages for a matching item it's not allowed.
+                if (_config.ItemRestrictions.Enabled && !RestrictionRuleset.AllowsItem(item))
+                    return false;
+
+                var itemQuery = ItemQuery.FromItem(item);
+
+                var anyPagesWithGatherAll = false;
+
+                foreach (var containerAdapter in _containerAdapters)
+                {
+                    var gatherMode = GetGatherModeForPage(containerAdapter.PageIndex);
+                    if (gatherMode == GatherMode.None)
+                        continue;
+
+                    if (gatherMode == GatherMode.All)
+                    {
+                        anyPagesWithGatherAll = true;
+                        continue;
+                    }
+
+                    var position = containerAdapter.PositionOf(ref itemQuery);
+                    if (position == -1)
+                        continue;
+
+                    if (EnsureItemContainerAdapter(containerAdapter.PageIndex).TryInsertItem(item, ref itemQuery, position))
+                        return true;
+                }
+
+                if (anyPagesWithGatherAll)
+                {
+                    foreach (var containerAdapter in _containerAdapters)
+                    {
+                        var gatherMode = GetGatherModeForPage(containerAdapter.PageIndex);
+                        if (gatherMode != GatherMode.All)
+                            continue;
+
+                        var position = containerAdapter.PositionOf(ref itemQuery);
+                        if (position == -1)
+                            continue;
+
+                        if (EnsureItemContainerAdapter(containerAdapter.PageIndex).TryInsertItem(item, ref itemQuery, position))
+                            return true;
+                    }
+
+                    return TryDepositItem(item);
+                }
+
+                return false;
             }
 
             public void AddRejectedItem(Item item)
@@ -4612,6 +5110,10 @@ namespace Oxide.Plugins
                     EjectRejectedItemsIfNeeded(looter);
                     EjectRestrictedItemsIfNeeded(looter);
                     ShrinkIfNeededAndEjectOverflowingItems(looter);
+                    if (CanGather && GatherModeByPage.Count > 0)
+                    {
+                        StartGathering(looter);
+                    }
                 }
 
                 if (!_looters.Contains(looter))
@@ -4623,9 +5125,9 @@ namespace Oxide.Plugins
                 ExposedHooks.OnBackpackOpened(looter, OwnerId, itemContainerAdapter.ItemContainer);
 
                 var allowedPageCount = allowedCapacity.PageCount;
-                if (allowedPageCount > 1)
+                if (CanGather || allowedPageCount > 1)
                 {
-                    PaginationUi.AddPaginationUi(looter,  allowedPageCount, pageIndex , itemContainerAdapter.Capacity);
+                    ContainerUi.CreateContainerUi(looter,  allowedPageCount, pageIndex , itemContainerAdapter.Capacity, this);
                 }
 
                 return true;
@@ -4653,9 +5155,9 @@ namespace Oxide.Plugins
                 playerLoot.SendImmediate();
                 ExposedHooks.OnBackpackOpened(looter, OwnerId, itemContainer);
                 var allowedPageCount = GetAllowedCapacityForLooter(looter.userID).PageCount;
-                if (allowedPageCount > 1)
+                if (CanGather || allowedPageCount > 1)
                 {
-                    PaginationUi.AddPaginationUi(looter, allowedPageCount, pageIndex, itemContainerAdapter.Capacity);
+                    ContainerUi.CreateContainerUi(looter, allowedPageCount, pageIndex, itemContainerAdapter.Capacity, this);
                 }
             }
 
@@ -4679,7 +5181,7 @@ namespace Oxide.Plugins
                 _looters.Remove(looter);
                 if (ActualCapacity.PageCount > 1)
                 {
-                    PaginationUi.DestroyUi(looter);
+                    ContainerUi.DestroyUi(looter);
                 }
 
                 // Clean up the subscription immediately if admin stopped looting.
@@ -4799,10 +5301,19 @@ namespace Oxide.Plugins
                 using (var collect = DisposableList<Item>.Get())
                 {
                     var amountTaken = TakeItems(ref itemQuery, desiredAmount, collect);
-                    foreach (var item in collect)
+
+                    if (amountTaken > 0)
                     {
-                        player.GiveItem(item);
+                        PauseGatherMode(1f);
+
+                        foreach (var item in collect)
+                        {
+                            player.GiveItem(item);
+                        }
+
+                        _pauseGatherModeUntil = 0;
                     }
+
                     return amountTaken;
                 }
             }
@@ -4902,6 +5413,29 @@ namespace Oxide.Plugins
 
                 // Clear the list, but don't reset the items to the pool, since they have been referenced in the container adapters.
                 ItemDataCollection.Clear();
+            }
+
+            private void SetupItemsAndContainers()
+            {
+                // Sort the items so it's easier to partition the list for multiple pages.
+                ItemDataCollection.Sort((a, b) => a.Position.CompareTo(b.Position));
+
+                // Allow the backpack to start beyond the allowed capacity.
+                // Overflowing items will be handled when the backpack is opened by its owner.
+                var highestUsedPosition = ItemDataCollection.LastOrDefault()?.Position ?? 0;
+                ActualCapacity.Capacity = Math.Max(_allowedCapacity.Capacity, highestUsedPosition + 1);
+
+                var pageCount = ActualCapacity.PageCount;
+                if (_containerAdapters == null)
+                {
+                    _containerAdapters = new ContainerAdapterCollection(pageCount);
+                }
+                else
+                {
+                    _containerAdapters.Resize(pageCount);
+                }
+
+                CreateContainerAdapters();
             }
 
             private VirtualContainerAdapter CreateVirtualContainerAdapter(int pageIndex)
@@ -5319,6 +5853,37 @@ namespace Oxide.Plugins
                         ReclaimManager.instance.AddPlayerReclaim(OwnerId, allItemsToReclaim);
                     }
                 }
+            }
+
+            private void SetGatherModeForPage(int pageIndex, GatherMode gatherMode)
+            {
+                if (gatherMode == GatherMode.None)
+                {
+                    GatherModeByPage.Remove(pageIndex);
+                }
+                else
+                {
+                    GatherModeByPage[pageIndex] = gatherMode;
+                }
+
+                IsDirty = true;
+            }
+
+            private void StartGathering(BasePlayer player)
+            {
+                if (_isGathering)
+                    return;
+
+                _inventoryWatcher = InventoryWatcher.AddToPlayer(player, this);
+            }
+
+            private void StopGathering()
+            {
+                if (!_isGathering)
+                    return;
+
+                _inventoryWatcher.DestroyImmediate();
+                _pauseGatherModeUntil = 0;
             }
         }
 
@@ -6514,6 +7079,9 @@ namespace Oxide.Plugins
                 ["Items Fetched"] = "Fetched {0} \"{1}\" from backpack.",
                 ["Fetch Failed"] = "Couldn't fetch \"{0}\" from backpack. Inventory may be full.",
                 ["Toggled Backpack GUI"] = "Toggled backpack GUI button.",
+                ["UI - Gather All"] = "Gather: All",
+                ["UI - Gather Existing"] = "Gather: Existing",
+                ["UI - Gather None"] = "Gather: None",
             }, this);
         }
 
