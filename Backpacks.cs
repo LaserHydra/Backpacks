@@ -5859,6 +5859,22 @@ namespace Oxide.Plugins
                 }
             }
 
+            // Backwards compatibility for 3.8+ pre-releases.
+            [JsonProperty("Default Backpack Size")]
+            private int DeprecatedDefaultBackpackSize { set { BackpackSize.DefaultSize = value; } }
+
+            // Backwards compatibility for 3.8+ pre-releases.
+            [JsonProperty("Max Size Per Page")]
+            private int DeprecatedMaxSizePerPage { set { BackpackSize.MaxCapacityPerPage = value; } }
+
+            // Backwards compatibility for 3.8+ pre-releases.
+            [JsonProperty("Backpack Permission Sizes")]
+            private int[] DeprecatedPermissionSizes { set { BackpackSize.PermissionSizes = value; } }
+
+            // Backwards compatibility for 3.8+ pre-releases.
+            [JsonProperty("Enable Legacy Row Permissions (true/false)")]
+            private bool EnableLegacyRowPermissions { set { BackpackSize.EnableLegacyRowPermissions = value; } }
+
             [JsonProperty("Drop on Death (true/false)")]
             public bool DropOnDeath = true;
 
