@@ -286,7 +286,7 @@ Example rulesets:
 ### Clear backpacks on wipe
 
 - `Clear on wipe`
-  - `Enabled` (`Default: `false`) -- While `true`, the contents of player backpacks may be cleared when the map is wiped, according to the below rulesets.
+  - `Enabled` (Default: `false`) -- While `true`, the contents of player backpacks may be cleared when the map is wiped, according to the below rulesets.
   - `Enable legacy keeponwipe permission` (`true` or `false`; Default: `false`) -- Determines whether the `backpacks.keeponwipe` permission is registered by the plugin. When upgrading the plugin to v3.9+, if you have the `"Clear Backpacks on Map-Wipe (true/false)": true` config option set, this option will be automatically enabled for backwards compatibility. That permission is superseded by the `backpacks.keeponwipe.all` permission.
   - `Default ruleset` -- The default ruleset applies to all players' backpacks, except for players who have been granted `backpacks.keeponwipe.<name>` permissions (which are generated via `Rulesets by permission` below).
     - `Max slots to keep` -- Determines how many item slots may be kept across wipes. Set to `-1` to keep unlimited item slots, up to the size of the backpack.
