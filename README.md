@@ -31,6 +31,8 @@ Allows players to have backpacks that provide them with extra inventory space.
 - `backpacks.gui` -- Required to see the GUI button.
 - `backpacks.fetch` -- Required to use the `backpack.fetch` command.
 - `backpacks.keepondeath` -- Exempts players from having their backpack erased or dropped on death.
+- `backpacks.gather` -- Allows the player to enable gather mode per backpack page, which automatically transfers newly acquired inventory items to the backpack.
+- `backpacks.retrieve` -- Allows the player to enable retrieve mode per backpack page. Requires the Item Retriever plugin. When retrieve mode is enabled, the player can build, craft and more using items from their designated backpack pages.
 
 ### Size permissions
 
