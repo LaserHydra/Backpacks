@@ -224,6 +224,7 @@ namespace Oxide.Plugins
 
         private void OnPlayerDisconnected(BasePlayer player)
         {
+            _backpackCapacityManager.ForgetCachedCapacity(player.userID);
             _backpackManager.GetBackpackIfCached(player.userID)?.NetworkController?.Unsubscribe(player);
         }
 
@@ -3177,6 +3178,7 @@ namespace Oxide.Plugins
             private readonly Backpacks _plugin;
             private Configuration _config;
             private BackpackSize[] _sortedBackpackSizes;
+            private readonly Dictionary<ulong, int> _cachedPlayerBackpackSizes = new Dictionary<ulong, int>();
 
             public BackpackCapacityManager(Backpacks plugin)
             {
@@ -3217,7 +3219,23 @@ namespace Oxide.Plugins
                 }
             }
 
-            public int DetermineCapacity(string userIdString)
+            public void ForgetCachedCapacity(ulong userId)
+            {
+                _cachedPlayerBackpackSizes.Remove(userId);
+            }
+
+            public int GetCapacity(ulong userId, string userIdString)
+            {
+                int capacity;
+                if (_cachedPlayerBackpackSizes.TryGetValue(userId, out capacity))
+                    return capacity;
+
+                capacity = DetermineCapacityFromPermission(userIdString);
+                _cachedPlayerBackpackSizes[userId] = capacity;
+                return capacity;
+            }
+
+            private int DetermineCapacityFromPermission(string userIdString)
             {
                 if (!_plugin.permission.UserHasPermission(userIdString, UsagePermission))
                     return 0;
@@ -3226,9 +3244,7 @@ namespace Oxide.Plugins
                 {
                     var backpackSize = _sortedBackpackSizes[i];
                     if (_plugin.permission.UserHasPermission(userIdString, backpackSize.Permission))
-                    {
                         return backpackSize.Capacity;
-                    }
                 }
 
                 return _config.BackpackSize.DefaultSize;
@@ -3271,6 +3287,7 @@ namespace Oxide.Plugins
                     if (!_plugin.permission.UserHasGroup(backpack.OwnerIdString, groupName))
                         continue;
 
+                    _plugin._backpackCapacityManager.ForgetCachedCapacity(backpack.OwnerId);
                     backpack.AllowedCapacityNeedsRefresh = true;
                 }
             }
@@ -3281,6 +3298,7 @@ namespace Oxide.Plugins
                 if (backpack == null)
                     return;
 
+                _plugin._backpackCapacityManager.ForgetCachedCapacity(backpack.OwnerId);
                 backpack.AllowedCapacityNeedsRefresh = true;
             }
 
@@ -3350,6 +3368,7 @@ namespace Oxide.Plugins
                 if (backpack == null)
                     return;
 
+                _plugin._backpackCapacityManager.ForgetCachedCapacity(backpack.OwnerId);
                 backpack.AllowedCapacityNeedsRefresh = true;
                 backpack.RestrictionRulesetNeedsRefresh = true;
                 backpack.CanGatherNeedsRefresh = true;
@@ -4830,16 +4849,11 @@ namespace Oxide.Plugins
                 {
                     if (AllowedCapacityNeedsRefresh)
                     {
-                        _allowedCapacity.Capacity = Math.Max(MinCapacity, Plugin._backpackCapacityManager.DetermineCapacity(OwnerIdString));
+                        _allowedCapacity.Capacity = Math.Max(MinCapacity, Plugin._backpackCapacityManager.GetCapacity(OwnerId, OwnerIdString));
                         AllowedCapacityNeedsRefresh = false;
                     }
 
                     return _allowedCapacity;
-                }
-
-                set
-                {
-                    _allowedCapacity = value;
                 }
             }
 
