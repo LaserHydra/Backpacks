@@ -454,6 +454,7 @@ namespace Oxide.Plugins
                     [nameof(EraseBackpack)] = new Action<ulong>(EraseBackpack),
                     [nameof(DropBackpack)] = new Func<BasePlayer, List<DroppedItemContainer>, DroppedItemContainer>(DropBackpack),
                     [nameof(GetBackpackOwnerId)] = new Func<ItemContainer, ulong>(GetBackpackOwnerId),
+                    [nameof(GetBackpackCapacity)] = new Func<BasePlayer, int>(GetBackpackCapacity),
                     [nameof(GetBackpackContainer)] = new Func<ulong, ItemContainer>(GetBackpackContainer),
                     [nameof(GetBackpackItemAmount)] = new Func<ulong, int, ulong, int>(GetBackpackItemAmount),
                     [nameof(TryOpenBackpack)] = new Func<BasePlayer, ulong, bool>(TryOpenBackpack),
@@ -490,6 +491,11 @@ namespace Oxide.Plugins
             public ulong GetBackpackOwnerId(ItemContainer container)
             {
                 return _backpackManager.GetCachedBackpackForContainer(container)?.OwnerId ?? 0;
+            }
+
+            public int GetBackpackCapacity(BasePlayer player)
+            {
+                return _plugin._backpackCapacityManager.GetCapacity(player.userID, player.UserIDString);
             }
 
             public ItemContainer GetBackpackContainer(ulong ownerId)
@@ -580,6 +586,12 @@ namespace Oxide.Plugins
         public object API_GetBackpackOwnerId(ItemContainer container)
         {
             return ObjectCache.Get(_api.GetBackpackOwnerId(container));
+        }
+
+        [HookMethod(nameof(API_GetBackpackCapacity))]
+        public object API_GetBackpackCapacity(BasePlayer player)
+        {
+            return ObjectCache.Get(_api.GetBackpackCapacity(player));
         }
 
         [HookMethod(nameof(API_GetBackpackContainer))]
