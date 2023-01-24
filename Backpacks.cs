@@ -532,8 +532,15 @@ namespace Oxide.Plugins
 
             public int CountBackpackItems(ulong ownerId, Dictionary<string, object> dict)
             {
+                var backpack = _backpackManager.GetBackpackIfExists(ownerId);
+                if (backpack == null)
+                    return 0;
+
+                if (dict == null)
+                    return backpack.ItemCount;
+
                 var itemQuery = ItemQuery.Parse(dict);
-                return _backpackManager.GetBackpackIfExists(ownerId)?.CountItems(ref itemQuery) ?? 0;
+                return backpack.CountItems(ref itemQuery);
             }
 
             public int TakeBackpackItems(ulong ownerId, Dictionary<string, object> dict, int amount, List<Item> collect)
@@ -3924,6 +3931,7 @@ namespace Oxide.Plugins
         {
             int PageIndex { get; }
             int Capacity { get; set; }
+            int ItemCount { get; }
             bool HasItems { get; }
             int PositionOf(ref ItemQuery itemQuery);
             int CountItems(ref ItemQuery itemQuery);
@@ -3944,7 +3952,8 @@ namespace Oxide.Plugins
             public int PageIndex { get; private set; }
             public int Capacity { get; set; }
             public List<ItemData> ItemDataList { get; } = new List<ItemData>(_maxCapacityPerPage);
-            public bool HasItems => ItemDataList.Count > 0;
+            public int ItemCount => ItemDataList.Count;
+            public bool HasItems => ItemCount > 0;
 
             private Backpack _backpack;
 
@@ -4221,7 +4230,8 @@ namespace Oxide.Plugins
                 set { ItemContainer.capacity = value; }
             }
             public ItemContainer ItemContainer { get; private set; }
-            public bool HasItems => ItemContainer.itemList.Count > 0;
+            public int ItemCount => ItemContainer.itemList.Count;
+            public bool HasItems => ItemCount > 0;
 
             private Backpack _backpack;
 
@@ -4921,18 +4931,22 @@ namespace Oxide.Plugins
                 }
             }
 
-            private bool HasItems
+            public int ItemCount
             {
                 get
                 {
+                    var count = 0;
+
                     foreach (var containerAdapter in _containerAdapters)
                     {
-                        if (containerAdapter.HasItems)
-                            return true;
+                        count += containerAdapter.ItemCount;
                     }
-                    return false;
+
+                    return count;
                 }
             }
+
+            private bool HasItems => ItemCount > 0;
 
             public void Setup(Backpacks plugin, ulong ownerId, DynamicConfigFile dataFile)
             {
@@ -5270,10 +5284,12 @@ namespace Oxide.Plugins
             public int CountItems(ref ItemQuery itemQuery)
             {
                 var count = 0;
+
                 foreach (var containerAdapter in _containerAdapters)
                 {
                     count += containerAdapter.CountItems(ref itemQuery);
                 }
+
                 return count;
             }
 
