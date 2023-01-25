@@ -455,6 +455,8 @@ namespace Oxide.Plugins
                     [nameof(DropBackpack)] = new Func<BasePlayer, List<DroppedItemContainer>, DroppedItemContainer>(DropBackpack),
                     [nameof(GetBackpackOwnerId)] = new Func<ItemContainer, ulong>(GetBackpackOwnerId),
                     [nameof(GetBackpackCapacity)] = new Func<BasePlayer, int>(GetBackpackCapacity),
+                    [nameof(IsBackpackGathering)] = new Func<BasePlayer, bool>(IsBackpackGathering),
+                    [nameof(IsBackpackRetrieving)] = new Func<BasePlayer, bool>(IsBackpackRetrieving),
                     [nameof(GetBackpackContainer)] = new Func<ulong, ItemContainer>(GetBackpackContainer),
                     [nameof(GetBackpackItemAmount)] = new Func<ulong, int, ulong, int>(GetBackpackItemAmount),
                     [nameof(TryOpenBackpack)] = new Func<BasePlayer, ulong, bool>(TryOpenBackpack),
@@ -496,6 +498,16 @@ namespace Oxide.Plugins
             public int GetBackpackCapacity(BasePlayer player)
             {
                 return _plugin._backpackCapacityManager.GetCapacity(player.userID, player.UserIDString);
+            }
+
+            public bool IsBackpackGathering(BasePlayer player)
+            {
+                return _backpackManager.GetBackpackIfCached(player.userID)?.IsGathering ?? false;
+            }
+
+            public bool IsBackpackRetrieving(BasePlayer player)
+            {
+                return _backpackManager.GetBackpackIfCached(player.userID)?.IsRetrieving ?? false;
             }
 
             public ItemContainer GetBackpackContainer(ulong ownerId)
@@ -599,6 +611,18 @@ namespace Oxide.Plugins
         public object API_GetBackpackCapacity(BasePlayer player)
         {
             return ObjectCache.Get(_api.GetBackpackCapacity(player));
+        }
+
+        [HookMethod(nameof(API_IsBackpackGathering))]
+        public object API_IsBackpackGathering(BasePlayer player)
+        {
+            return ObjectCache.Get(_api.IsBackpackGathering(player));
+        }
+
+        [HookMethod(nameof(API_IsBackpackRetrieving))]
+        public object API_IsBackpackRetrieving(BasePlayer player)
+        {
+            return ObjectCache.Get(_api.IsBackpackRetrieving(player));
         }
 
         [HookMethod(nameof(API_GetBackpackContainer))]
@@ -2958,7 +2982,7 @@ namespace Oxide.Plugins
 
             private static void AddRetrieveButton(UiBuilder builder, ref StatefulLayoutProvider layoutProvider, BasePlayer player, Backpack backpack, int activePageIndex)
             {
-                var retrieve = backpack.AllowsRetrieveForPage(activePageIndex);
+                var retrieve = backpack.IsRetrievingFromPage(activePageIndex);
 
                 builder.AddSerializable(new UiButtonElement<UiComponents<UiRectComponent, UiButtonComponent>, UiComponents<UiTextComponent>>
                 {
@@ -3056,7 +3080,7 @@ namespace Oxide.Plugins
                         });
                     }
 
-                    if (backpack.CanRetrieve && backpack.AllowsRetrieveForPage(pageIndex))
+                    if (backpack.CanRetrieve && backpack.IsRetrievingFromPage(pageIndex))
                     {
                         builder.AddSerializable(new UiElement<UiComponents<UiRectComponent, UiTextComponent>>
                         {
@@ -4836,6 +4860,7 @@ namespace Oxide.Plugins
             private float _pauseGatherModeUntilTime;
 
             public bool HasLooters => _looters.Count > 0;
+            public bool IsGathering => (object)_inventoryWatcher != null;
             private Configuration _config => Plugin._config;
             private BackpackManager _backpackManager => Plugin._backpackManager;
             private bool _isGathering => (object)_inventoryWatcher != null;
@@ -4946,6 +4971,25 @@ namespace Oxide.Plugins
                 }
             }
 
+            public bool IsRetrieving
+            {
+                get
+                {
+                    if (!CanRetrieve)
+                        return false;
+
+                    var allowedPageCount = AllowedCapacity.PageCount;
+
+                    for (var pageIndex = 0; pageIndex < allowedPageCount; pageIndex++)
+                    {
+                        if (IsRetrievingFromPage(pageIndex))
+                            return true;
+                    }
+
+                    return false;
+                }
+            }
+
             private bool HasItems => ItemCount > 0;
 
             public void Setup(Backpacks plugin, ulong ownerId, DynamicConfigFile dataFile)
@@ -5041,7 +5085,7 @@ namespace Oxide.Plugins
                 }
             }
 
-            public bool AllowsRetrieveForPage(int pageIndex)
+            public bool IsRetrievingFromPage(int pageIndex)
             {
                 var flag = 1 << pageIndex;
                 return (RetrieveFromPagesMask & flag) != 0;
@@ -5049,7 +5093,7 @@ namespace Oxide.Plugins
 
             public void ToggleRetrieve(BasePlayer player, int pageIndex)
             {
-                SetRetrieveForPage(pageIndex, !AllowsRetrieveForPage(pageIndex));
+                SetRetrieveFromPage(pageIndex, !IsRetrievingFromPage(pageIndex));
                 MaybeCreateContainerUi(player,  AllowedCapacity.PageCount, pageIndex, EnsurePage(pageIndex).Capacity);
             }
 
@@ -5297,7 +5341,7 @@ namespace Oxide.Plugins
             {
                 foreach (var containerAdapter in _containerAdapters)
                 {
-                    if (forItemRetriever && !AllowsRetrieveForPage(containerAdapter.PageIndex))
+                    if (forItemRetriever && !IsRetrievingFromPage(containerAdapter.PageIndex))
                         continue;
 
                     (containerAdapter as ItemContainerAdapter)?.FindItems(ref itemQuery, collect);
@@ -5308,7 +5352,7 @@ namespace Oxide.Plugins
             {
                 foreach (var containerAdapter in _containerAdapters)
                 {
-                    if (forItemRetriever && !AllowsRetrieveForPage(containerAdapter.PageIndex))
+                    if (forItemRetriever && !IsRetrievingFromPage(containerAdapter.PageIndex))
                         continue;
 
                     (containerAdapter as ItemContainerAdapter)?.FindAmmo(ammoType, collect);
@@ -5321,7 +5365,7 @@ namespace Oxide.Plugins
 
                 foreach (var containerAdapter in _containerAdapters)
                 {
-                    if (forItemRetriever && !AllowsRetrieveForPage(containerAdapter.PageIndex))
+                    if (forItemRetriever && !IsRetrievingFromPage(containerAdapter.PageIndex))
                         continue;
 
                     sum += containerAdapter.SumItems(ref itemQuery);
@@ -5336,7 +5380,7 @@ namespace Oxide.Plugins
 
                 foreach (var containerAdapter in _containerAdapters)
                 {
-                    if (forItemRetriever && !AllowsRetrieveForPage(containerAdapter.PageIndex))
+                    if (forItemRetriever && !IsRetrievingFromPage(containerAdapter.PageIndex))
                         continue;
 
                     var amountToTake = amount - amountTaken;
@@ -5371,7 +5415,7 @@ namespace Oxide.Plugins
             {
                 foreach (var containerAdapter in _containerAdapters)
                 {
-                    if (forItemRetriever && !AllowsRetrieveForPage(containerAdapter.PageIndex))
+                    if (forItemRetriever && !IsRetrievingFromPage(containerAdapter.PageIndex))
                         continue;
 
                     containerAdapter.SerializeForNetwork(saveList);
@@ -6163,7 +6207,7 @@ namespace Oxide.Plugins
                 }
             }
 
-            private void SetRetrieveForPage(int pageIndex, bool retrieve)
+            private void SetRetrieveFromPage(int pageIndex, bool retrieve)
             {
                 if (pageIndex > 31)
                     return;
