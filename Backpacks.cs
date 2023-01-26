@@ -4309,7 +4309,7 @@ namespace Oxide.Plugins
                 for (var i = position; i < ItemContainer.capacity; i++)
                 {
                     var existingItem = ItemContainer.GetSlot(i);
-                    if (existingItem != null && itemQuery.GetUsableAmount(existingItem) <= 0)
+                    if (existingItem != null && (itemQuery.GetUsableAmount(existingItem) <= 0 || !existingItem.CanStack(item)))
                         continue;
 
                     if (item.MoveToContainer(ItemContainer, i))
