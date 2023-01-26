@@ -4898,17 +4898,18 @@ namespace Oxide.Plugins
 
             private void EjectRejectedItemsIfNeeded(BasePlayer receiver)
             {
-                if (_rejectedItems?.Count > 0)
+                if (_rejectedItems == null || _rejectedItems.Count == 0)
+                    return;
+
+                foreach (var item in _rejectedItems)
                 {
-                    foreach (var item in _rejectedItems)
-                    {
-                        receiver.GiveItem(item);
-                    }
-
-                    _rejectedItems.Clear();
-
-                    receiver.ChatMessage(Plugin.GetMessage(receiver, "Backpack Items Rejected"));
+                    receiver.GiveItem(item);
                 }
+
+                _rejectedItems.Clear();
+                IsDirty = true;
+
+                receiver.ChatMessage(Plugin.GetMessage(receiver, "Backpack Items Rejected"));
             }
 
             private void EjectRestrictedItemsIfNeeded(BasePlayer receiver)
