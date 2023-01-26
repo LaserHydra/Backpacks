@@ -5438,7 +5438,7 @@ namespace Oxide.Plugins
                 if (amount == 0)
                     return null;
 
-                Item item = ItemManager.CreateByItemID(ID, Amount, Skin);
+                Item item = ItemManager.CreateByItemID(ID, amount, Skin);
                 if (item == null)
                     return null;
 
