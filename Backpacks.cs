@@ -4842,6 +4842,7 @@ namespace Oxide.Plugins
                     if (CanGatherNeedsRefresh)
                     {
                         _canGather = Plugin.permission.UserHasPermission(OwnerIdString, GatherPermission);
+                        CanGatherNeedsRefresh = false;
                     }
 
                     return _canGather;
@@ -4858,6 +4859,7 @@ namespace Oxide.Plugins
                     if (CanRetrieveNeedsRefresh)
                     {
                         _canRetrieve = Plugin.permission.UserHasPermission(OwnerIdString, RetrievePermission);
+                        CanRetrieveNeedsRefresh = false;
                     }
 
                     return _canRetrieve;
