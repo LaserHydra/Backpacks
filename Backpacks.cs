@@ -3331,7 +3331,7 @@ namespace Oxide.Plugins
                         continue;
 
                     _plugin._backpackCapacityManager.ForgetCachedCapacity(backpack.OwnerId);
-                    backpack.AllowedCapacityNeedsRefresh = true;
+                    backpack.SetFlag(Backpack.Flag.CapacityCached, false);
                 }
             }
 
@@ -3342,7 +3342,7 @@ namespace Oxide.Plugins
                     return;
 
                 _plugin._backpackCapacityManager.ForgetCachedCapacity(backpack.OwnerId);
-                backpack.AllowedCapacityNeedsRefresh = true;
+                backpack.SetFlag(Backpack.Flag.CapacityCached, false);
             }
 
             public void HandleRestrictionPermissionChangedForGroup(string groupName)
@@ -3352,7 +3352,7 @@ namespace Oxide.Plugins
                     if (!_plugin.permission.UserHasGroup(backpack.OwnerIdString, groupName))
                         continue;
 
-                    backpack.RestrictionRulesetNeedsRefresh = true;
+                    backpack.SetFlag(Backpack.Flag.RestrictionsCached, false);
                 }
             }
 
@@ -3362,7 +3362,7 @@ namespace Oxide.Plugins
                 if (backpack == null)
                     return;
 
-                backpack.RestrictionRulesetNeedsRefresh = true;
+                backpack.SetFlag(Backpack.Flag.RestrictionsCached, false);
             }
 
             public void HandleGatherPermissionChangedForGroup(string groupName)
@@ -3372,17 +3372,13 @@ namespace Oxide.Plugins
                     if (!_plugin.permission.UserHasGroup(backpack.OwnerIdString, groupName))
                         continue;
 
-                    backpack.CanGatherNeedsRefresh = true;
+                    backpack.SetFlag(Backpack.Flag.GatherCached, false);
                 }
             }
 
             public void HandleGatherPermissionChangedForUser(string userIdString)
             {
-                var backpack = GetBackpackIfCached(userIdString);
-                if (backpack == null)
-                    return;
-
-                backpack.CanGatherNeedsRefresh = true;
+                GetBackpackIfCached(userIdString)?.SetFlag(Backpack.Flag.GatherCached, false);
             }
 
             public void HandleRetrievePermissionChangedForGroup(string groupName)
@@ -3392,17 +3388,13 @@ namespace Oxide.Plugins
                     if (!_plugin.permission.UserHasGroup(backpack.OwnerIdString, groupName))
                         continue;
 
-                    backpack.CanRetrieveNeedsRefresh = true;
+                    backpack.SetFlag(Backpack.Flag.RetrieveCached, false);
                 }
             }
 
             public void HandleRetrievePermissionChangedForUser(string userIdString)
             {
-                var backpack = GetBackpackIfCached(userIdString);
-                if (backpack == null)
-                    return;
-
-                backpack.CanRetrieveNeedsRefresh = true;
+                GetBackpackIfCached(userIdString)?.SetFlag(Backpack.Flag.RetrieveCached, false);
             }
 
             public void HandleGroupChangeForUser(string userIdString)
@@ -3412,10 +3404,10 @@ namespace Oxide.Plugins
                     return;
 
                 _plugin._backpackCapacityManager.ForgetCachedCapacity(backpack.OwnerId);
-                backpack.AllowedCapacityNeedsRefresh = true;
-                backpack.RestrictionRulesetNeedsRefresh = true;
-                backpack.CanGatherNeedsRefresh = true;
-                backpack.CanRetrieveNeedsRefresh = true;
+                backpack.SetFlag(Backpack.Flag.CapacityCached, false);
+                backpack.SetFlag(Backpack.Flag.RestrictionsCached, false);
+                backpack.SetFlag(Backpack.Flag.GatherCached, false);
+                backpack.SetFlag(Backpack.Flag.RetrieveCached, false);
             }
 
             public bool IsBackpack(ItemContainer container)
@@ -4038,7 +4030,7 @@ namespace Oxide.Plugins
                 var amountTaken = ItemUtils.TakeItems(ItemDataList, ref itemQuery, amount, collect);
                 if (amountTaken > 0)
                 {
-                    _backpack.IsDirty = true;
+                    _backpack.SetFlag(Backpack.Flag.Dirty, true);
                 }
 
                 return amountTaken;
@@ -4081,7 +4073,7 @@ namespace Oxide.Plugins
 
                     ItemDataList.RemoveAt(indexToTake);
                     Pool.Free(ref itemDataToTake);
-                    _backpack.IsDirty = true;
+                    _backpack.SetFlag(Backpack.Flag.Dirty, true);
                 }
             }
 
@@ -4104,7 +4096,7 @@ namespace Oxide.Plugins
 
                     ItemDataList.RemoveAt(i);
                     Pool.Free(ref itemData);
-                    _backpack.IsDirty = true;
+                    _backpack.SetFlag(Backpack.Flag.Dirty, true);
                 }
             }
 
@@ -4129,7 +4121,7 @@ namespace Oxide.Plugins
 
                     ItemDataList.RemoveAt(i--);
                     Pool.Free(ref itemData);
-                    _backpack.IsDirty = true;
+                    _backpack.SetFlag(Backpack.Flag.Dirty, true);
                 }
             }
 
@@ -4153,7 +4145,7 @@ namespace Oxide.Plugins
                     if (ItemDataList.Count > 0)
                     {
                         PoolUtils.ResetItemsAndClear(ItemDataList);
-                        _backpack.IsDirty = true;
+                        _backpack.SetFlag(Backpack.Flag.Dirty, true);
                     }
                     return;
                 }
@@ -4172,7 +4164,7 @@ namespace Oxide.Plugins
 
                     ItemDataList.RemoveAt(i--);
                     Pool.Free(ref itemData);
-                    _backpack.IsDirty = true;
+                    _backpack.SetFlag(Backpack.Flag.Dirty, true);
                 }
             }
 
@@ -4240,7 +4232,7 @@ namespace Oxide.Plugins
                 item.RemoveFromContainer();
                 item.Remove();
 
-                _backpack.IsDirty = true;
+                _backpack.SetFlag(Backpack.Flag.Dirty, true);
                 return true;
             }
         }
@@ -4812,6 +4804,17 @@ namespace Oxide.Plugins
         [JsonConverter(typeof(PoolConverter<Backpack>))]
         private class Backpack : Pool.IPooled
         {
+            [Flags]
+            public enum Flag
+            {
+                CapacityCached = 1 << 0,
+                RestrictionsCached = 1 << 1,
+                GatherCached = 1 << 2,
+                RetrieveCached = 1 << 3,
+                ProcessedRestrictedItems = 1 << 4,
+                Dirty = 1 << 5,
+            }
+
             private const float FeedbackThrottleSeconds = 1f;
 
             private static int CalculatePageIndexForItemPosition(int position)
@@ -4835,19 +4838,14 @@ namespace Oxide.Plugins
 
             public Backpacks Plugin;
             public BackpackNetworkController NetworkController { get; private set; }
-            public bool AllowedCapacityNeedsRefresh = true;
-            public bool RestrictionRulesetNeedsRefresh = true;
-            public bool CanGatherNeedsRefresh = true;
-            public bool CanRetrieveNeedsRefresh = true;
             public string OwnerIdString;
-            public bool IsDirty;
             public RealTimeSince TimeSinceLastFeedback;
 
             private BackpackCapacity ActualCapacity;
             private BackpackCapacity _allowedCapacity;
 
+            private Flag _flags;
             private RestrictionRuleset _restrictionRuleset;
-            private bool _processedRestrictedItems;
             private bool _canGather;
             private bool _canRetrieve;
             private DynamicConfigFile _dataFile;
@@ -4894,10 +4892,10 @@ namespace Oxide.Plugins
             {
                 get
                 {
-                    if (AllowedCapacityNeedsRefresh)
+                    if (!HasFlag(Flag.CapacityCached))
                     {
                         _allowedCapacity.Capacity = Math.Max(MinCapacity, Plugin._backpackCapacityManager.GetCapacity(OwnerId, OwnerIdString));
-                        AllowedCapacityNeedsRefresh = false;
+                        SetFlag(Flag.CapacityCached, true);
                     }
 
                     return _allowedCapacity;
@@ -4908,17 +4906,17 @@ namespace Oxide.Plugins
             {
                 get
                 {
-                    if (RestrictionRulesetNeedsRefresh)
+                    if (!HasFlag(Flag.RestrictionsCached))
                     {
                         var restrictionRuleset = _config.ItemRestrictions.GetForPlayer(OwnerIdString);
                         if (restrictionRuleset != _restrictionRuleset)
                         {
                             // Re-evaluate existing items when the backpack is next opened.
-                            _processedRestrictedItems = false;
+                            SetFlag(Flag.ProcessedRestrictedItems, false);
                         }
 
                         _restrictionRuleset = restrictionRuleset;
-                        RestrictionRulesetNeedsRefresh = false;
+                        SetFlag(Flag.RestrictionsCached, true);
                     }
 
                     return _restrictionRuleset;
@@ -4929,10 +4927,10 @@ namespace Oxide.Plugins
             {
                 get
                 {
-                    if (CanGatherNeedsRefresh)
+                    if (!HasFlag(Flag.GatherCached))
                     {
                         _canGather = Plugin.permission.UserHasPermission(OwnerIdString, GatherPermission);
-                        CanGatherNeedsRefresh = false;
+                        SetFlag(Flag.GatherCached, true);
                     }
 
                     return _canGather;
@@ -4946,10 +4944,10 @@ namespace Oxide.Plugins
                     if (Plugin.ItemRetriever == null)
                         return false;
 
-                    if (CanRetrieveNeedsRefresh)
+                    if (!HasFlag(Flag.RetrieveCached))
                     {
                         _canRetrieve = Plugin.permission.UserHasPermission(OwnerIdString, RetrievePermission);
-                        CanRetrieveNeedsRefresh = false;
+                        SetFlag(Flag.RetrieveCached, true);
                     }
 
                     return _canRetrieve;
@@ -5026,16 +5024,11 @@ namespace Oxide.Plugins
 
                 // Don't remove the NetworkController. Will reuse it for the next Backpack owner.
                 NetworkController?.UnsubscribeAll();
-                AllowedCapacityNeedsRefresh = true;
-                RestrictionRulesetNeedsRefresh = true;
-                CanGatherNeedsRefresh = true;
-                CanRetrieveNeedsRefresh = true;
+                _flags = 0;
                 OwnerIdString = null;
-                IsDirty = false;
                 ActualCapacity = default(BackpackCapacity);
                 _allowedCapacity = default(BackpackCapacity);
                 _restrictionRuleset = null;
-                _processedRestrictedItems = false;
                 _canGather = false;
                 _canRetrieve = false;
                 _dataFile = null;
@@ -5063,6 +5056,23 @@ namespace Oxide.Plugins
                 #endif
             }
 
+            public void SetFlag(Flag flag, bool value)
+            {
+                if (value)
+                {
+                    _flags |= flag;
+                }
+                else
+                {
+                    _flags &= ~flag;
+                }
+            }
+
+            public bool HasFlag(Flag flag)
+            {
+                return (_flags & flag) == flag;
+            }
+
             public void DiscoverBags(Plugin bagOfHolding)
             {
                 foreach (var containerAdapter in _containerAdapters)
@@ -5077,7 +5087,7 @@ namespace Oxide.Plugins
 
             public void MarkDirty()
             {
-                IsDirty = true;
+                SetFlag(Flag.Dirty, true);
 
                 if (Plugin.ItemRetriever != null)
                 {
@@ -5152,7 +5162,7 @@ namespace Oxide.Plugins
                 if (!CanGather)
                 {
                     GatherModeByPage.Clear();
-                    IsDirty = true;
+                    SetFlag(Flag.Dirty, true);
                     StopGathering();
                     return false;
                 }
@@ -5619,7 +5629,7 @@ namespace Oxide.Plugins
 
             public bool SaveIfChanged()
             {
-                if (!IsDirty)
+                if (!HasFlag(Flag.Dirty))
                     return false;
 
                 #if DEBUG_BACKPACK_LIFECYCLE
@@ -5636,7 +5646,7 @@ namespace Oxide.Plugins
                     SerializeRejectedItems(itemsToReleaseToPool);
 
                     _dataFile.WriteObject(this);
-                    IsDirty = false;
+                    SetFlag(Flag.Dirty, false);
 
                     // After saving, unused ItemData instances can be pooled.
                     PoolUtils.ResetItemsAndClear(itemsToReleaseToPool);
@@ -5737,7 +5747,7 @@ namespace Oxide.Plugins
 
                 SetupItemsAndContainers();
 
-                IsDirty = true;
+                SetFlag(Flag.Dirty, true);
                 SaveIfChanged();
             }
 
@@ -5842,7 +5852,7 @@ namespace Oxide.Plugins
                 }
 
                 _rejectedItems.Clear();
-                IsDirty = true;
+                SetFlag(Flag.Dirty, true);
 
                 receiver.ChatMessage(Plugin.GetMessage(receiver, "Backpack Items Rejected"));
             }
@@ -5853,7 +5863,7 @@ namespace Oxide.Plugins
                     return;
 
                 // Optimization: Avoid processing item restrictions every time the backpack is opened.
-                if (_processedRestrictedItems)
+                if (HasFlag(Flag.ProcessedRestrictedItems))
                     return;
 
                 using (var ejectedItems = DisposableList<Item>.Get())
@@ -5874,7 +5884,7 @@ namespace Oxide.Plugins
                     }
                 }
 
-                _processedRestrictedItems = true;
+                SetFlag(Flag.ProcessedRestrictedItems, true);
             }
 
             private void ShrinkIfNeededAndEjectOverflowingItems(BasePlayer overflowRecipient)
@@ -6237,7 +6247,7 @@ namespace Oxide.Plugins
                     GatherModeByPage[pageIndex] = gatherMode;
                 }
 
-                IsDirty = true;
+                SetFlag(Flag.Dirty, true);
             }
 
             private void StartGathering(BasePlayer player)
