@@ -4304,21 +4304,6 @@ namespace Oxide.Plugins
                 return item.MoveToContainer(ItemContainer);
             }
 
-            public bool TryInsertItem(Item item, ref ItemQuery itemQuery, int position)
-            {
-                for (var i = position; i < ItemContainer.capacity; i++)
-                {
-                    var existingItem = ItemContainer.GetSlot(i);
-                    if (existingItem != null && (itemQuery.GetUsableAmount(existingItem) <= 0 || !existingItem.CanStack(item)))
-                        continue;
-
-                    if (item.MoveToContainer(ItemContainer, i))
-                        return true;
-                }
-
-                return item.MoveToContainer(ItemContainer);
-            }
-
             public void ReclaimFractionForSoftcore(float fraction, List<Item> collect)
             {
                 var itemList = ItemContainer.itemList;
@@ -5092,7 +5077,7 @@ namespace Oxide.Plugins
                     if (position == -1)
                         continue;
 
-                    if (EnsureItemContainerAdapter(containerAdapter.PageIndex).TryInsertItem(item, ref itemQuery, position))
+                    if (EnsureItemContainerAdapter(containerAdapter.PageIndex).TryDepositItem(item))
                         return true;
                 }
 
@@ -5108,7 +5093,7 @@ namespace Oxide.Plugins
                         if (position == -1)
                             continue;
 
-                        if (EnsureItemContainerAdapter(containerAdapter.PageIndex).TryInsertItem(item, ref itemQuery, position))
+                        if (EnsureItemContainerAdapter(containerAdapter.PageIndex).TryDepositItem(item))
                             return true;
                     }
 
