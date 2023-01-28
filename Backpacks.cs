@@ -4588,6 +4588,9 @@ namespace Oxide.Plugins
                     ? GetRootContainer(lootingContainer.parent)
                     : lootingContainer;
 
+                if (rootContainer == null)
+                    return false;
+
                 return _backpack.Plugin._backpackManager.IsBackpack(rootContainer);
             }
 
