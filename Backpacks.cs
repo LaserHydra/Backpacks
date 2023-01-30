@@ -1770,17 +1770,18 @@ namespace Oxide.Plugins
 
         private class UiBuilder : IUiBuilder
         {
-            private static bool ClientRPCStart(BaseEntity entity, string funcName)
+            private static NetWrite ClientRPCStart(BaseEntity entity, string funcName)
             {
-                if (Net.sv.IsConnected() && entity.net != null && Net.sv.write.Start())
+                if (Net.sv.IsConnected() && entity.net != null)
                 {
-                    Net.sv.write.PacketID(Message.Type.RPCMessage);
-                    Net.sv.write.UInt32(entity.net.ID);
-                    Net.sv.write.UInt32(StringPool.Get(funcName));
-                    Net.sv.write.UInt64(0);
-                    return true;
+                    var write = Net.sv.StartWrite();
+                    write.PacketID(Message.Type.RPCMessage);
+                    write.UInt32(entity.net.ID);
+                    write.UInt32(StringPool.Get(funcName));
+                    write.UInt64(0);
+                    return write;
                 }
-                return false;
+                return null;
             }
 
             public static readonly UiBuilder Default = new UiBuilder(65536);
@@ -1930,11 +1931,12 @@ namespace Oxide.Plugins
 
             public void AddUi(SendInfo sendInfo)
             {
-                if (ClientRPCStart(CommunityEntity.ServerInstance, "AddUI"))
+                var write = ClientRPCStart(CommunityEntity.ServerInstance, "AddUI");
+                if (write != null)
                 {
                     var byteCount = Encoding.UTF8.GetBytes(_chars, 0, Length, _bytes, 0);
-                    Net.sv.write.BytesWithSize(_bytes, byteCount);
-                    Net.sv.write.Send(sendInfo);
+                    write.BytesWithSize(_bytes, byteCount);
+                    write.Send(sendInfo);
                 }
             }
 
