@@ -5360,6 +5360,9 @@ namespace Oxide.Plugins
 
             public void SwitchToPage(BasePlayer looter, int pageIndex)
             {
+                // In case the backpack size permissions changed while open (e.g., a backpack upgrade button).
+                EnlargeIfNeeded();
+
                 var itemContainerAdapter = EnsureItemContainerAdapter(pageIndex);
                 var itemContainer = itemContainerAdapter.ItemContainer;
                 var playerLoot = looter.inventory.loot;
@@ -5371,6 +5374,9 @@ namespace Oxide.Plugins
                 if (looter.userID == OwnerId)
                 {
                     EjectRejectedItemsIfNeeded(looter);
+
+                    // In case the backpack size permissions changed while open.
+                    ShrinkIfNeededAndEjectOverflowingItems(looter);
                 }
 
                 playerLoot.containers.Clear();
