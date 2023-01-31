@@ -4765,6 +4765,7 @@ namespace Oxide.Plugins
             private BasePlayer _owner;
             private ContainerAdapterCollection _containerAdapters;
             private readonly List<BasePlayer> _looters = new List<BasePlayer>();
+            private readonly List<BasePlayer> _uiViewers = new List<BasePlayer>();
             private InventoryWatcher _inventoryWatcher;
             private float _pauseGatherModeUntil;
 
@@ -4933,6 +4934,7 @@ namespace Oxide.Plugins
                 _owner = null;
                 _containerAdapters?.ResetPooledItemsAndClear();
                 _looters.Clear();
+                _uiViewers.Clear();
                 StopGathering();
                 if (_rejectedItems?.Count > 0)
                 {
@@ -4983,7 +4985,7 @@ namespace Oxide.Plugins
             public void ToggleRetrieve(BasePlayer player, int pageIndex)
             {
                 SetRetrieveForPage(pageIndex, !AllowsRetrieveForPage(pageIndex));
-                ContainerUi.CreateContainerUi(player,  AllowedCapacity.PageCount, pageIndex, EnsurePage(pageIndex).Capacity, this);
+                CreateContainerUi(player,  AllowedCapacity.PageCount, pageIndex, EnsurePage(pageIndex).Capacity);
             }
 
             public GatherMode GetGatherModeForPage(int pageIndex)
@@ -5020,7 +5022,7 @@ namespace Oxide.Plugins
                     StopGathering();
                 }
 
-                ContainerUi.CreateContainerUi(player,  AllowedCapacity.PageCount, pageIndex, EnsurePage(pageIndex).Capacity, this);
+                CreateContainerUi(player,  AllowedCapacity.PageCount, pageIndex, EnsurePage(pageIndex).Capacity);
             }
 
             public void HandleGatheringStopped()
@@ -5350,7 +5352,7 @@ namespace Oxide.Plugins
                 var allowedPageCount = allowedCapacity.PageCount;
                 if (CanGather || allowedPageCount > 1)
                 {
-                    ContainerUi.CreateContainerUi(looter,  allowedPageCount, pageIndex , itemContainerAdapter.Capacity, this);
+                    CreateContainerUi(looter,  allowedPageCount, pageIndex , itemContainerAdapter.Capacity);
                 }
 
                 return true;
@@ -5380,7 +5382,7 @@ namespace Oxide.Plugins
                 var allowedPageCount = GetAllowedCapacityForLooter(looter.userID).PageCount;
                 if (CanGather || allowedPageCount > 1)
                 {
-                    ContainerUi.CreateContainerUi(looter, allowedPageCount, pageIndex, itemContainerAdapter.Capacity, this);
+                    CreateContainerUi(looter, allowedPageCount, pageIndex, itemContainerAdapter.Capacity);
                 }
             }
 
@@ -5402,9 +5404,11 @@ namespace Oxide.Plugins
             public void OnClosed(BasePlayer looter)
             {
                 _looters.Remove(looter);
-                if (ActualCapacity.PageCount > 1)
+
+                if (_uiViewers.Contains(looter))
                 {
                     ContainerUi.DestroyUi(looter);
+                    _uiViewers.Remove(looter);
                 }
 
                 // Clean up the subscription immediately if admin stopped looting.
@@ -6126,6 +6130,16 @@ namespace Oxide.Plugins
 
                 _inventoryWatcher.DestroyImmediate();
                 _pauseGatherModeUntil = 0;
+            }
+
+            private void CreateContainerUi(BasePlayer looter, int allowedPageCount, int pageIndex, int containerCapacity)
+            {
+                ContainerUi.CreateContainerUi(looter, allowedPageCount, pageIndex, containerCapacity, this);
+
+                if (!_uiViewers.Contains(looter))
+                {
+                    _uiViewers.Add(looter);
+                }
             }
         }
 
