@@ -89,10 +89,6 @@ namespace Oxide.Plugins
 
         private void Init()
         {
-            _config.Init(this);
-
-            _maxCapacityPerPage = Mathf.Clamp(_config.BackpackSize.MaxCapacityPerPage, MinCapacity, MaxCapacity);
-
             permission.RegisterPermission(UsagePermission, this);
             permission.RegisterPermission(GUIPermission, this);
             permission.RegisterPermission(FetchPermission, this);
@@ -100,6 +96,10 @@ namespace Oxide.Plugins
             permission.RegisterPermission(RetrievePermission, this);
             permission.RegisterPermission(AdminPermission, this);
             permission.RegisterPermission(KeepOnDeathPermission, this);
+
+            _config.Init(this);
+
+            _maxCapacityPerPage = Mathf.Clamp(_config.BackpackSize.MaxCapacityPerPage, MinCapacity, MaxCapacity);
 
             _backpackCapacityManager.Init(_config);
 
