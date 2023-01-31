@@ -4985,7 +4985,7 @@ namespace Oxide.Plugins
             public void ToggleRetrieve(BasePlayer player, int pageIndex)
             {
                 SetRetrieveForPage(pageIndex, !AllowsRetrieveForPage(pageIndex));
-                CreateContainerUi(player,  AllowedCapacity.PageCount, pageIndex, EnsurePage(pageIndex).Capacity);
+                MaybeCreateContainerUi(player,  AllowedCapacity.PageCount, pageIndex, EnsurePage(pageIndex).Capacity);
             }
 
             public GatherMode GetGatherModeForPage(int pageIndex)
@@ -5022,7 +5022,7 @@ namespace Oxide.Plugins
                     StopGathering();
                 }
 
-                CreateContainerUi(player,  AllowedCapacity.PageCount, pageIndex, EnsurePage(pageIndex).Capacity);
+                MaybeCreateContainerUi(player,  AllowedCapacity.PageCount, pageIndex, EnsurePage(pageIndex).Capacity);
             }
 
             public void HandleGatheringStopped()
@@ -5348,12 +5348,7 @@ namespace Oxide.Plugins
 
                 StartLooting(looter, itemContainerAdapter.ItemContainer, _storageContainer);
                 ExposedHooks.OnBackpackOpened(looter, OwnerId, itemContainerAdapter.ItemContainer);
-
-                var allowedPageCount = allowedCapacity.PageCount;
-                if (CanGather || allowedPageCount > 1)
-                {
-                    CreateContainerUi(looter,  allowedPageCount, pageIndex , itemContainerAdapter.Capacity);
-                }
+                MaybeCreateContainerUi(looter,  allowedCapacity.PageCount, pageIndex, itemContainerAdapter.Capacity);
 
                 return true;
             }
@@ -5385,11 +5380,7 @@ namespace Oxide.Plugins
                 playerLoot.AddContainer(itemContainer);
                 playerLoot.SendImmediate();
                 ExposedHooks.OnBackpackOpened(looter, OwnerId, itemContainer);
-                var allowedPageCount = GetAllowedCapacityForLooter(looter.userID).PageCount;
-                if (CanGather || allowedPageCount > 1)
-                {
-                    CreateContainerUi(looter, allowedPageCount, pageIndex, itemContainerAdapter.Capacity);
-                }
+                MaybeCreateContainerUi(looter, GetAllowedCapacityForLooter(looter.userID).PageCount, pageIndex, itemContainerAdapter.Capacity);
             }
 
             public BasePlayer DetermineFeedbackRecipientIfEligible()
@@ -6138,8 +6129,11 @@ namespace Oxide.Plugins
                 _pauseGatherModeUntil = 0;
             }
 
-            private void CreateContainerUi(BasePlayer looter, int allowedPageCount, int pageIndex, int containerCapacity)
+            private void MaybeCreateContainerUi(BasePlayer looter, int allowedPageCount, int pageIndex, int containerCapacity)
             {
+                if (!CanGather && !CanRetrieve && allowedPageCount <= 1)
+                    return;
+
                 ContainerUi.CreateContainerUi(looter, allowedPageCount, pageIndex, containerCapacity, this);
 
                 if (!_uiViewers.Contains(looter))
