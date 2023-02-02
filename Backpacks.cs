@@ -2300,10 +2300,10 @@ namespace Oxide.Plugins
             public void Serialize(IUiBuilder builder)
             {
                 if (Sprite == default(string))
-                    Sprite= DefaultSprite;
+                    Sprite = DefaultSprite;
 
                 if (Color == default(string))
-                    Sprite= DefaultColor;
+                    Color = DefaultColor;
 
                 builder.StartComponent();
                 builder.AddField("type", Type);
