@@ -5068,9 +5068,10 @@ namespace Oxide.Plugins
 
                 var anyPagesWithGatherAll = false;
 
-                foreach (var containerAdapter in _containerAdapters)
+                // Use a for loop so empty pages aren't skipped.
+                for (var i = 0; i < _containerAdapters.Count; i++)
                 {
-                    var gatherMode = GetGatherModeForPage(containerAdapter.PageIndex);
+                    var gatherMode = GetGatherModeForPage(i);
                     if (gatherMode == GatherMode.None)
                         continue;
 
@@ -5080,21 +5081,26 @@ namespace Oxide.Plugins
                         continue;
                     }
 
+                    var containerAdapter = _containerAdapters[i];
+                    if (containerAdapter == null)
+                        continue;
+
                     var position = containerAdapter.PositionOf(ref itemQuery);
                     if (position == -1)
                         continue;
 
-                    if (EnsureItemContainerAdapter(containerAdapter.PageIndex).TryDepositItem(item))
+                    if (EnsureItemContainerAdapter(i).TryDepositItem(item))
                         return true;
                 }
 
                 if (anyPagesWithGatherAll)
                 {
                     // Try to add the item to a Gather:All page that has a matching stack.
+                    // Use a foreach loop to skip uninitialized pages (which are empty).
                     foreach (var containerAdapter in _containerAdapters)
                     {
                         var gatherMode = GetGatherModeForPage(containerAdapter.PageIndex);
-                        if (gatherMode != GatherMode.All)
+                        if (gatherMode != GatherMode.All || !containerAdapter.HasItems)
                             continue;
 
                         var position = containerAdapter.PositionOf(ref itemQuery);
@@ -5106,13 +5112,14 @@ namespace Oxide.Plugins
                     }
 
                     // Try to add the item to any Gather:All page.
-                    foreach (var containerAdapter in _containerAdapters)
+                    // Use a for loop so uninitialized pages aren't skipped.
+                    for (var i = 0; i < _containerAdapters.Count; i++)
                     {
-                        var gatherMode = GetGatherModeForPage(containerAdapter.PageIndex);
+                        var gatherMode = GetGatherModeForPage(i);
                         if (gatherMode != GatherMode.All)
                             continue;
 
-                        if (EnsureItemContainerAdapter(containerAdapter.PageIndex).TryDepositItem(item))
+                        if (EnsureItemContainerAdapter(i).TryDepositItem(item))
                             return true;
                     }
                 }
