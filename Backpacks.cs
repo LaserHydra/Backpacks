@@ -5090,6 +5090,7 @@ namespace Oxide.Plugins
 
                 if (anyPagesWithGatherAll)
                 {
+                    // Try to add the item to a Gather:All page that has a matching stack.
                     foreach (var containerAdapter in _containerAdapters)
                     {
                         var gatherMode = GetGatherModeForPage(containerAdapter.PageIndex);
@@ -5104,7 +5105,16 @@ namespace Oxide.Plugins
                             return true;
                     }
 
-                    return TryDepositItem(item);
+                    // Try to add the item to any Gather:All page.
+                    foreach (var containerAdapter in _containerAdapters)
+                    {
+                        var gatherMode = GetGatherModeForPage(containerAdapter.PageIndex);
+                        if (gatherMode != GatherMode.All)
+                            continue;
+
+                        if (EnsureItemContainerAdapter(containerAdapter.PageIndex).TryDepositItem(item))
+                            return true;
+                    }
                 }
 
                 return false;
