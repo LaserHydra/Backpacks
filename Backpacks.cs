@@ -4633,12 +4633,32 @@ namespace Oxide.Plugins
                         _pauseGatherModeUntilFrame = 0;
                     }
 
+                    var itemQuery = ItemQuery.FromItem(item);
+                    if (HasMatchingItem(_player.inventory.containerMain.itemList, item, ref itemQuery, 24)
+                        || HasMatchingItem(_player.inventory.containerBelt.itemList, item, ref itemQuery, 6))
+                        return;
+
                     _backpack.TryGatherItem(item);
                 }
                 else
                 {
                     _pauseGatherModeUntilFrame = Time.frameCount + 1;
                 }
+            }
+
+            private bool HasMatchingItem(List<Item> itemList, Item item, ref ItemQuery itemQuery, int maxSlots)
+            {
+                for (var i = 0; i < itemList.Count; i++)
+                {
+                    var possibleItem = itemList[i];
+                    if (possibleItem == item || possibleItem.position >= maxSlots)
+                        continue;
+
+                    if (itemQuery.GetUsableAmount(possibleItem) > 0)
+                        return true;
+                }
+
+                return false;
             }
 
             private void OnDestroy()
