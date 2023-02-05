@@ -4568,8 +4568,7 @@ namespace Oxide.Plugins
             private Backpack _backpack;
 
             private Action<Item, bool> _onItemAddedRemoved;
-            private Item _lastRemovedItem;
-            private int _lastRemovedItemFrame;
+            private int _pauseGatherModeUntilFrame;
 
             public void DestroyImmediate() => DestroyImmediate(this);
 
@@ -4611,33 +4610,19 @@ namespace Oxide.Plugins
                     if (item.parent == _player.inventory.containerWear)
                         return;
 
-                    if (_lastRemovedItemFrame != 0)
+                    if (_pauseGatherModeUntilFrame != 0)
                     {
-                        var shouldGather = true;
-                        var shouldReset = _lastRemovedItemFrame != Time.frameCount;
-
-                        if (!shouldReset && item == _lastRemovedItem)
-                        {
-                            shouldGather = false;
-                            shouldReset = true;
-                        }
-
-                        if (shouldReset)
-                        {
-                            _lastRemovedItem = null;
-                            _lastRemovedItemFrame = 0;
-                        }
-
-                        if (!shouldGather)
+                        if (_pauseGatherModeUntilFrame > Time.frameCount)
                             return;
+
+                        _pauseGatherModeUntilFrame = 0;
                     }
 
                     _backpack.TryGatherItem(item);
                 }
                 else
                 {
-                    _lastRemovedItem = item;
-                    _lastRemovedItemFrame = Time.frameCount;
+                    _pauseGatherModeUntilFrame = Time.frameCount + 1;
                 }
             }
 
@@ -4767,7 +4752,7 @@ namespace Oxide.Plugins
             private readonly List<BasePlayer> _looters = new List<BasePlayer>();
             private readonly List<BasePlayer> _uiViewers = new List<BasePlayer>();
             private InventoryWatcher _inventoryWatcher;
-            private float _pauseGatherModeUntil;
+            private float _pauseGatherModeUntilTime;
 
             public bool HasLooters => _looters.Count > 0;
             private Configuration _config => Plugin._config;
@@ -5035,7 +5020,7 @@ namespace Oxide.Plugins
                 if (!_isGathering)
                     return;
 
-                _pauseGatherModeUntil = Time.time + durationSeconds;
+                _pauseGatherModeUntilTime = Time.time + durationSeconds;
             }
 
             public bool TryGatherItem(Item item)
@@ -5052,12 +5037,12 @@ namespace Oxide.Plugins
                 if (ActualCapacity > AllowedCapacity)
                     return false;
 
-                if (_pauseGatherModeUntil != 0)
+                if (_pauseGatherModeUntilTime != 0)
                 {
-                    if (_pauseGatherModeUntil > Time.time)
+                    if (_pauseGatherModeUntilTime > Time.time)
                         return false;
 
-                    _pauseGatherModeUntil = 0;
+                    _pauseGatherModeUntilTime = 0;
                 }
 
                 // Optimization: Don't search pages for a matching item it's not allowed.
@@ -5552,7 +5537,7 @@ namespace Oxide.Plugins
                             player.GiveItem(item);
                         }
 
-                        _pauseGatherModeUntil = 0;
+                        _pauseGatherModeUntilTime = 0;
                     }
 
                     return amountTaken;
@@ -6143,7 +6128,7 @@ namespace Oxide.Plugins
                     return;
 
                 _inventoryWatcher.DestroyImmediate();
-                _pauseGatherModeUntil = 0;
+                _pauseGatherModeUntilTime = 0;
             }
 
             private void MaybeCreateContainerUi(BasePlayer looter, int allowedPageCount, int pageIndex, int containerCapacity)
