@@ -4304,6 +4304,21 @@ namespace Oxide.Plugins
                 return item.MoveToContainer(ItemContainer);
             }
 
+            public bool TryInsertItem(Item item, ref ItemQuery itemQuery, int position)
+            {
+                for (var i = position; i < ItemContainer.capacity; i++)
+                {
+                    var existingItem = ItemContainer.GetSlot(i);
+                    if (existingItem != null && itemQuery.GetUsableAmount(existingItem) <= 0)
+                        continue;
+
+                    if (item.MoveToContainer(ItemContainer, i, allowSwap: false))
+                        return true;
+                }
+
+                return item.MoveToContainer(ItemContainer);
+            }
+
             public void ReclaimFractionForSoftcore(float fraction, List<Item> collect)
             {
                 var itemList = ItemContainer.itemList;
@@ -5050,11 +5065,11 @@ namespace Oxide.Plugins
                     return false;
 
                 var itemQuery = ItemQuery.FromItem(item);
-
                 var anyPagesWithGatherAll = false;
+                var allowedPageCount = AllowedCapacity.PageCount;
 
                 // Use a for loop so empty pages aren't skipped.
-                for (var i = 0; i < _containerAdapters.Count; i++)
+                for (var i = 0; i < allowedPageCount; i++)
                 {
                     var gatherMode = GetGatherModeForPage(i);
                     if (gatherMode == GatherMode.None)
@@ -5067,14 +5082,14 @@ namespace Oxide.Plugins
                     }
 
                     var containerAdapter = _containerAdapters[i];
-                    if (containerAdapter == null)
+                    if (containerAdapter == null || !containerAdapter.HasItems)
                         continue;
 
                     var position = containerAdapter.PositionOf(ref itemQuery);
                     if (position == -1)
                         continue;
 
-                    if (EnsureItemContainerAdapter(i).TryDepositItem(item))
+                    if (EnsureItemContainerAdapter(i).TryInsertItem(item, ref itemQuery, position))
                         return true;
                 }
 
@@ -5092,13 +5107,13 @@ namespace Oxide.Plugins
                         if (position == -1)
                             continue;
 
-                        if (EnsureItemContainerAdapter(containerAdapter.PageIndex).TryDepositItem(item))
+                        if (EnsureItemContainerAdapter(containerAdapter.PageIndex).TryInsertItem(item, ref itemQuery, position))
                             return true;
                     }
 
                     // Try to add the item to any Gather:All page.
                     // Use a for loop so uninitialized pages aren't skipped.
-                    for (var i = 0; i < _containerAdapters.Count; i++)
+                    for (var i = 0; i < allowedPageCount; i++)
                     {
                         var gatherMode = GetGatherModeForPage(i);
                         if (gatherMode != GatherMode.All)
