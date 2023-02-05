@@ -759,6 +759,10 @@ namespace Oxide.Plugins
             );
         }
 
+        // Alias for older versions of Player Administration (which should ideally not be calling this method directly).
+        private void ViewBackpack(BasePlayer player, string cmd, string[] args) =>
+            ViewBackpackCommand(player.IPlayer, cmd, args);
+
         [Command("backpackgui")]
         private void ToggleBackpackGUI(IPlayer player, string cmd, string[] args)
         {
