@@ -1597,7 +1597,7 @@ namespace Oxide.Plugins
                     List<Item> childItemList;
                     if (amountToTake > 0 && HasSearchableContainer(item, out childItemList))
                     {
-                        totalAmountTaken += TakeItems(childItemList, ref itemQuery, amount, collect);
+                        totalAmountTaken += TakeItems(childItemList, ref itemQuery, amountToTake, collect);
                     }
                 }
 
