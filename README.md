@@ -10,6 +10,42 @@ Allows players to have backpacks that provide them with extra inventory space.
 
 **Note:** To bind a key to open the backpack, use: `bind <key> backpack.open` in your F1 client console. For example, `bind b backpack.open`.
 
+## How it works
+
+### Gather mode
+
+If you have the `backpacks.gather` permission, you may enable gather mode per backpack page, which causes your backpack to automatically collect items that enter your inventory.
+
+When multiple pages in the backpack have gather mode enabled, pages will collect new items in the following priority order.
+
+- Backpack pages in "Gather: Existing" mode which have a matching item.
+- Backpack pages in "Gather: All" mode which have a matching item.
+- Backpack pages in "Gather: All" mode that do not have a matching item.
+
+Backpack pages in "Gather: Off" mode will never collect new items.
+
+Gather mode has no effect during the following circumstances.
+
+- You have not opened your backpack since you (re)connected to the server. This is because the plugin does not load your backpack until you access it (to save server resources), and the plugin doesn't know whether any of your backpack pages have gather mode enabled until the backpack is loaded.
+- You are dead, incapacitated, sleeping, loading, or spectating. You generally don't receive items during this time anyway, so this probably doesn't matter to you.
+- You respawned or woke up in the past second. This allows your inventory to be populated after respawn, without your loadout items being moved into your backpack.
+- Your backpack is open, or you have an inner item open (such as a Bag of Holding bag that is inside your backpack). This allows you to move items from your backpack to your inventory without the item being automatically gathered.
+- The new item matches another item in your inventory. This allows you to split items in your inventory, without them being automatically gathered.
+- An item was removed from your inventory this frame. This allows you to move items between inventory containers, and allows you to swap items between your inventory and another container, without those items being automatically gathered.
+
+As an admin, when you are viewing another player's backpack, you can see whether they have gather mode enabled for each page, but you cannot toggle it.
+
+### Retrieve mode
+
+If you have the `backpacks.retrieve` permission, you may enable retrieve mode per backpack page, which allows you to perform actions such as crafting and building using the resources in those backpack pages. This requires the Item Retriever plugin to be installed (no permissions or configuration necessary).
+
+Retrieve mode has the following limitations.
+
+- You must have accessed your backpack since you (re)connected to the server. This is because the plugin does not load your backpack until you access it (to save server resources), and the plugin doesn't know what items are in your backpack until the backpack is loaded.
+- Reloading weapon ammo, switching weapon ammo, purchasing items from vending machines, and purchasing vehicles from NPC vendors will only work if the corresponding ammo or currency are in pages that you have accessed since you (re)connected to the server. This is because the plugin does not fully load each backpack page until it has been accessed (to save server resources), and because partially loaded pages do not support those four interaction types due to limitations in the Item Retriever plugin.
+
+As an admin, when you are viewing another player's backpack, you can see whether they have retrieve mode enabled for each page, but you cannot toggle it.
+
 ## Commands
 
 - `backpack` / `backpack.open` -- Opens your own backpack. Requires the `backpacks.use` permission. If the backpack is already open, this will advance to the next page, or will close the player inventory if there are no more pages.
