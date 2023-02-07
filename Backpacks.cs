@@ -4476,7 +4476,7 @@ namespace Oxide.Plugins
                 // before any changes have been made, and avoids unnecessary CanBackpackAcceptItem hook calls.
                 ItemContainer.onDirty += _onDirty;
                 ItemContainer.canAcceptItem = _canAcceptItem;
-                ItemContainer.onItemAddedRemoved = _onItemAddedRemoved;
+                ItemContainer.onItemAddedRemoved += _onItemAddedRemoved;
                 return this;
             }
 
