@@ -62,8 +62,8 @@ The following permissions come with the plugin's **default configuration**.
 
 ### Legacy permissions
 
-- `backpacks.use.1 - 8` -- These permissions will be generated when the `"Enable legacy backpacks.use.1-8 row permissions": true` config option is present, which will be automatically added to your config when upgrading from a previous version of the plugin, if you have the `"Backpack Size (1-8 Rows)"` config option present at that time. These permissions function like `backpacks.size.*` but assign the specified number of rows rather than number of slots.
-- `backpacks.noblacklist` -- This permission is present when the `"Enable legacy noblacklist permission": true` config option is present, which will be automatically added to your config when upgrading from a previous version of the plugin, if you have the `"Use Whitelist (true/false)": true` or `"Use Blacklist (true/false)": true` config options present at that time. This permission exempts players from item restrictions, allowing any item to be placed in their backpack.
+- `backpacks.use.1 - 8` -- These permissions will be generated when the `"Enable legacy backpacks.use.1-8 row permissions": true` config option is set, which will be automatically set when upgrading from a previous version of the plugin, if you have the `"Backpack Size (1-8 Rows)"` config option present at that time. These permissions function like `backpacks.size.*` but assign the specified number of rows rather than number of slots.
+- `backpacks.noblacklist` -- This permission is present when the `"Enable legacy noblacklist permission": true` config option is set, which will be automatically set when upgrading from a previous version of the plugin, if you have the `"Use Whitelist (true/false)": true` or `"Use Blacklist (true/false)": true` config options present at that time. This permission exempts players from item restrictions, allowing any item to be placed in their backpack.
 
 ## Configuration
 
@@ -74,6 +74,7 @@ Default configuration:
   "Backpack size": {
     "Default size": 6,
     "Max size per page": 48,
+    "Enable legacy backpacks.use.1-8 row permissions": false,
     "Permission sizes": [
       6,
       12,
@@ -106,6 +107,7 @@ Default configuration:
   },
   "Item restrictions": {
     "Enabled": false,
+    "Enable legacy noblacklist permission": false,
     "Default ruleset": {
       "Allowed item categories": [
         "All"
@@ -138,12 +140,14 @@ Default configuration:
 - `Backpack size`
   - `Default size` (Default: `6`) -- Determines the capacity (in slots) of backpacks for players who have the `backpacks.use` permission. Players who have the `backpacks.size.<number>` permissions may have greater capacity.
   - `Max size per page` (Default: `48`, Max: `48`) -- Determines the capacity (in slots) per backpack page. For example, if you grant a player `60` backpack capacity, and set the max size per page to `48`, their backpack will have two pages: one page with `48` capacity, and another page with `12` capacity.
+  - `Enable legacy backpacks.use.1-8 row permissions` (`true` or `false`; Default: `false`) -- Determines whether the `backpacks.use.1-8` permissions are registered by the plugin. When upgrading the plugin to 3.9+, if you have the `"Backpack Size (1-8 Rows)"` config option set, this option will be automatically enabled for backwards compatibility. Even if you are installing the plugin for the first time, there are valid uses cases to enable this option, such as if you use another plugin that manages those permissions. As of this writing, the XPerience and Backpack Upgrader plugins both use these permissions to allow players to increase capacity through a progression system, but that might have changed by the time you read this.
   - `Permission sizes` -- Each number in this list generates a permission of the format `backpacks.size.<number>`. Granting that permission to a player or group assigns that much capacity to their backpack. This is useful if you want some players to have more capacity than the above default. Note: If a player is granted multiple size permissions, the highest will apply.
 
 ### Item restrictions
 
 - `Item restrictions`
   - `Enabled` -- Determines whether player backpacks are subject to item restrictions. Set to `false` to disable item restrictions for all players. Set to `true` to make the below rulesets will apply. Note: Regardless of these settings, other plugins can prevent specific items from being added to Backpacks using the `CanBackpackAcceptItem` hook.
+  - `Enable legacy noblacklist permission` (`true` or `false`; Default: `false`) -- Determines whether the `backpacks.noblacklist` permission is registered by the plugin. When upgrading the plugin to v3.9+, if you have the `"Use Whitelist (true/false)": true` or `"Use Blacklist (true/false)": true` config options set, this option will be automatically enabled for backwards compatibility. 
   - `Default ruleset` -- The default ruleset applies to all players' backpacks, except for players who have been granted `backpacks.restrictions.<name>` permissions (which are generated via `"Rulesets by permission"` below).
     - `Allowed item categories` -- Determines which item categories are allowed in backpacks that are assigned this ruleset, **in addition** to any allowed item short names and skin IDs.
       - If you want to allow only specific item short names, leave this option blank (`[]`) and instead add those item short names to `"Allowed item short names"`.

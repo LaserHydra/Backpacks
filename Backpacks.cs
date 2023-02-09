@@ -5769,7 +5769,7 @@ namespace Oxide.Plugins
             [JsonProperty("Enabled")]
             public bool Enabled;
 
-            [JsonProperty("Enable legacy noblacklist permission", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            [JsonProperty("Enable legacy noblacklist permission")]
             public bool EnableLegacyPermission;
 
             [JsonProperty("Default ruleset")]
@@ -5833,7 +5833,7 @@ namespace Oxide.Plugins
             [JsonProperty("Max size per page")]
             public int MaxCapacityPerPage = 48;
 
-            [JsonProperty("Enable legacy backpacks.use.1-8 row permissions", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            [JsonProperty("Enable legacy backpacks.use.1-8 row permissions")]
             public bool EnableLegacyRowPermissions;
 
             [JsonProperty("Permission sizes")]
