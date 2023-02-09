@@ -4638,7 +4638,12 @@ namespace Oxide.Plugins
                         || HasMatchingItem(_player.inventory.containerBelt.itemList, item, ref itemQuery, 6))
                         return;
 
-                    _backpack.TryGatherItem(item);
+                    var originalPauseGatherModeUntilFrame = _pauseGatherModeUntilFrame;
+                    if (_backpack.TryGatherItem(item) && originalPauseGatherModeUntilFrame != _pauseGatherModeUntilFrame)
+                    {
+                        // Don't pause gather mode due to gathering an item.
+                        _pauseGatherModeUntilFrame = 0;
+                    }
                 }
                 else
                 {
