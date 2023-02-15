@@ -2962,8 +2962,7 @@ namespace Oxide.Plugins
             public const float PerRowOffsetY = 62;
 
             private const float PageButtonSpacing = 6;
-            private const float PageButtonWidth = 25;
-            private const float PageButtonHeight = PageButtonWidth;
+            private const float PageButtonSize = HeaderHeight;
 
             private const string BlueButtonColor = "0.25 0.5 0.75 1";
             private const string BlueButtonTextColor = "0.75 0.85 1 1";
@@ -3089,11 +3088,15 @@ namespace Oxide.Plugins
 
             private static void AddPaginationUi(UiBuilder builder, Backpack backpack, int numPages, int activePageIndex)
             {
+                var offsetY = backpack.Plugin._config.ContainerUi.ShowPageButtonsOnContainerBar
+                    ? 0
+                    : HeaderHeight + PageButtonSpacing;
+
                 var buttonLayoutProvider = new StatelessLayoutProvider
                 {
                     Options = Layout.Option.AnchorBottom | Layout.Option.AnchorRight,
-                    Offset = new Vector2(-HeaderWidth, HeaderHeight + PageButtonSpacing),
-                    Size = new Vector2(PageButtonWidth, PageButtonHeight),
+                    Offset = new Vector2(-HeaderWidth, offsetY),
+                    Size = new Vector2(PageButtonSize, PageButtonSize),
                     Spacing = PageButtonSpacing
                 };
 
@@ -3132,7 +3135,7 @@ namespace Oxide.Plugins
                         }
                     });
 
-                    var arrowSize = new Vector2(PageButtonWidth / 2, PageButtonHeight / 2);
+                    var arrowSize = new Vector2(PageButtonSize / 2, PageButtonSize / 2);
                     var arrowOffset = new Vector2(0, 1);
 
                     if (backpack.CanGather && backpack.GetGatherModeForPage(pageIndex) != GatherMode.None)
@@ -7448,6 +7451,13 @@ namespace Oxide.Plugins
         }
 
         [JsonObject(MemberSerialization.OptIn)]
+        private class ContainerUiOptions
+        {
+            [JsonProperty("Show page buttons on container bar")]
+            public bool ShowPageButtonsOnContainerBar;
+        }
+
+        [JsonObject(MemberSerialization.OptIn)]
         private class Configuration : BaseConfiguration
         {
             [JsonProperty("Backpack size")]
@@ -7525,6 +7535,9 @@ namespace Oxide.Plugins
 
             [JsonProperty("GUI Button")]
             public GUIButton GUI = new GUIButton();
+
+            [JsonProperty("Container UI")]
+            public ContainerUiOptions ContainerUi = new ContainerUiOptions();
 
             [JsonProperty("Softcore")]
             public SoftcoreOptions Softcore = new SoftcoreOptions();

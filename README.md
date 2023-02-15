@@ -143,6 +143,9 @@ Default configuration:
       "Offsets Max": "245 78"
     }
   },
+  "Container UI": {
+    "Show page buttons on container bar": false
+  },
   "Softcore": {
     "Reclaim Fraction": 0.5
   },
@@ -231,6 +234,19 @@ Alternative backpacks images:
 - [Right-side](https://i.imgur.com/h1HQEAB.png)
 - [Left-side](https://i.imgur.com/wLR9Z6V.png)
 - [Universal](https://i.imgur.com/5RE9II5.png)
+
+### Container UI
+
+- `Container UI` -- Controls the display of the backpack container UI.
+  - `Show page buttons on container bar` (`true` or `false`; Default: `false`) -- Determines whether the page buttons (e.g., 1, 2, 3) are shown on the container bar or above the container bar. By default, they are shown above the container bar, to allow for compatibility with the Sort Button plugin. However, if you are using the Quick Sort plugin and want to allow 48 slots of capacity per backpack page, you probably want to enable this option in order to move the page buttons down.
+
+**Recommended for [Sort Button](https://umod.org/plugins/sort-button) (default):**
+
+![](./Images/PageButtonsAboveBar.png)
+
+**Recommended for [Quick Sort](https://umod.org/plugins/quick-sort):**
+
+![](./Images/PageButtonsOnBar.png)
 
 ### Item restrictions
 
