@@ -10,29 +10,29 @@ Allows players to have backpacks that provide them with extra inventory space.
 - Optionally auto gather newly acquired items into your backpack
 - Optionally auto retrieve items from your backpack for crafting, building, etc.
 
-**Note:** To bind a key to open the backpack, use: `bind <key> backpack.open` in your F1 client console. For example, `bind b backpack.open`.
+**Note:** To bind a key to open the backpack, use: `bind <key> backpack` in your F1 client console. For example, `bind b backpack`.
 
-## How it works
+## Quick start
 
-### Gather mode
+### Allow players to open backpacks
 
-If you have the `backpacks.gather` permission, you may enable gather mode per backpack page, which causes your backpack to automatically collect items that enter your inventory.
+To allow **all players** to use backpacks, run the following command.
 
-When multiple pages in the backpack have gather mode enabled, pages will collect new items in the following priority order.
+```
+o.grant group default backpacks.use
+```
 
-- Backpack pages in "Gather: Existing" mode that have a matching item.
-- Backpack pages in "Gather: All" mode that have a matching item.
-- Backpack pages in "Gather: All" mode that do not have a matching item.
+That will allow all players to open their backpack with the `/backpack` chat command or the `backpack` console command. By default, all backpacks have 6 slots of capacity (1 row), but that can be changed in the configuration and by assigning permissions.
 
-Backpack pages in "Gather: Off" mode will never collect new items.
+### Allow players to use the GUI button
 
-**Note**: When you disconnect from the server and reconnect some time later, gather mode will not be activated until you open your backpack at least once.
+To allow **all players** to view the backpack GUI button, run the following command.
 
-### Retrieve mode
+```
+o.grant group default backpacks.gui
+```
 
-If you have the `backpacks.retrieve` permission, you may enable retrieve mode per backpack page, which allows you to perform actions such as crafting and building using the resources in those backpack pages. This requires the Item Retriever plugin to be installed (no permissions or configuration necessary in that plugin).
-
-**Note**: When you disconnect from the server and reconnect some time later, retrieve mode will not be activated until you open your backpack at least once. Additionally, reloading weapon ammo, switching weapon ammo, purchasing items from vending machines, and purchasing vehicles from NPC vendors will not be able to pull items from pages until you access those specific pages at least once after (re)connecting to the server.
+Players can click that button to open their backpack. They can also run the `/backpackgui` chat command to hide or show the button. If you want to disable the button by default, so that players have to enable it explicitly, you may do so in the configuration.
 
 ## Commands
 
@@ -54,9 +54,11 @@ If you have the `backpacks.retrieve` permission, you may enable retrieve mode pe
 - `backpacks.admin` -- Required to use the `viewbackpack` command.
 - `backpacks.gui` -- Required to see the GUI button.
 - `backpacks.fetch` -- Required to use the `backpack.fetch` command.
-- `backpacks.keepondeath` -- Exempts players from having their backpack erased or dropped on death.
-- `backpacks.gather` -- Allows the player to enable gather mode per backpack page, which automatically transfers newly acquired inventory items to the backpack.
-- `backpacks.retrieve` -- Allows the player to enable retrieve mode per backpack page. Requires the Item Retriever plugin. When retrieve mode is enabled, the player can build, craft and more using items from their designated backpack pages.
+- `backpacks.keepondeath` -- Exempts you from having your backpack erased or dropped on death.
+- `backpacks.gather` -- Allows you to enable gather mode per backpack page, which automatically transfers newly acquired inventory items to your backpack.
+  - **Note**: When you disconnect from the server and reconnect some time later, gather mode will not be activated until you open your backpack at least once.
+- `backpacks.retrieve` -- Allows you to enable retrieve mode per backpack page. When retrieve mode is enabled, you can build, craft and more using items from your designated backpack pages. Requires the Item Retriever plugin.
+  - **Note**: When you disconnect from the server and reconnect some time later, retrieve mode will not be activated until you open your backpack at least once. Additionally, reloading weapon ammo, switching weapon ammo, purchasing items from vending machines, and purchasing vehicles from NPC vendors will not be able to pull items from pages until you access those specific pages at least once after (re)connecting to the server.
 
 ### Size permissions
 
@@ -79,7 +81,7 @@ Additional permissions may be defined by simply adding them to the `Backpack siz
 
 ### Item restriction permissions
 
-If you want to allow backpacks of specific players or groups to accept different items than the default (`Item restrictions` -> `Default ruleset`), then you may do so via permissions. Each ruleset defined in the `Item restrictions` -> `Rulesets by permission` config option will cause the plugin to generate a permission of the format `backpacks.restrictions.<name>`, which assigns that ruleset to the corresponding players or groups.
+If you want to allow backpacks of specific players or groups to accept different items than the default (`Item restrictions` -> `Default ruleset`), then you may do so via permissions. Each ruleset defined in the `Item restrictions` -> `Rulesets by permission` config option will cause the plugin to generate a permission of the format `backpacks.restrictions.<name>`. Granting that permission assigns that ruleset to the corresponding players or groups.
 
 The following permissions come with the plugin's **default configuration**.
 
@@ -89,7 +91,7 @@ The following permissions come with the plugin's **default configuration**.
 
 ### Keep on wipe permissions
 
-If you want to allow backpacks of specific players or groups to retain different items than the default (`Clear on wipe` > `Default ruleset`), then you may do so via permissions. Each ruleset defined in the `Clear on wipe` > `Rulesets by permission` config option will cause the plugin to generate a permission of the format `backpacks.keeponwipe.<name>`, which assigns that ruleset to the corresponding players or groups.
+If you want to allow backpacks of specific players or groups to retain different items across wipes than the default (`Clear on wipe` > `Default ruleset`), then you may do so via permissions. Each ruleset defined in the `Clear on wipe` > `Rulesets by permission` config option will cause the plugin to generate a permission of the format `backpacks.keeponwipe.<name>`. Granting that permission assigns that ruleset to the corresponding players or groups.
 
 The following permissions come with the plugin's **default configuration**.
 
