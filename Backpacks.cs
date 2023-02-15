@@ -25,7 +25,7 @@ using UnityEngine.UI;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "WhiteThunder", "3.9.0")]
+    [Info("Backpacks", "WhiteThunder", "3.9.1")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : CovalencePlugin
     {
@@ -321,6 +321,16 @@ namespace Oxide.Plugins
                     DestroyButtonUi(player);
                 }
             }
+        }
+
+        private void OnUserGroupAdded(string userId, string groupName)
+        {
+            _backpackManager.HandleGroupChangeForUser(userId);
+        }
+
+        private void OnUserGroupRemoved(string userId, string groupName)
+        {
+            _backpackManager.HandleGroupChangeForUser(userId);
         }
 
         private void OnPlayerConnected(BasePlayer player) => MaybeCreateButtonUi(player);
@@ -2942,6 +2952,20 @@ namespace Oxide.Plugins
                 if (!_cachedBackpacks.TryGetValue(userId, out backpack))
                     return;
 
+                backpack.RestrictionRulesetNeedsRefresh = true;
+            }
+
+            public void HandleGroupChangeForUser(string userIdString)
+            {
+                ulong userId;
+                if (!ulong.TryParse(userIdString, out userId))
+                    return;
+
+                Backpack backpack;
+                if (!_cachedBackpacks.TryGetValue(userId, out backpack))
+                    return;
+
+                backpack.AllowedCapacityNeedsRefresh = true;
                 backpack.RestrictionRulesetNeedsRefresh = true;
             }
 
