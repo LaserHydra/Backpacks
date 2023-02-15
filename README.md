@@ -131,6 +131,7 @@ Default configuration:
   "Erase on Death (true/false)": false,
   "Minimum Despawn Time (Seconds)": 300.0,
   "GUI Button": {
+    "Enabled": true,
     "Enabled by default (for players with permission)": true,
     "Skin Id": 0,
     "Image": "https://i.imgur.com/CyF0QNV.png",
@@ -214,7 +215,8 @@ Default configuration:
 ### GUI Button
 
 - `GUI Button` -- Determines the display of the GUI button which players can click on to open and close their backpack.
-  - `Enabled by default (for players with permission)` -- Default: `true`.
+  - `Enabled` (`true` or `false`; Default: `true`) -- Determines whether the GUI button is enabled. If you don't intend to show the GUI button to any players, set this to `false` to improve performance. Disabling this will also unregister the `backpackgui` command so that another plugin can register it.
+  - `Enabled by default (for players with permission)` (`true` or `false`; Default: `true`) -- Determines whether the GUI button is shown for new players by default, if they have the `backpacks.gui` permission.
   - `Skin Id` (Default: `0`) -- Determines the skin ID used to display the GUI button, as an alternative to the `Image` URL.
   - `Image` (Default: `"https://i.imgur.com/CyF0QNV.png"`) -- Determines the URL of the image to display on the GUI button, as an alternative to `Skin Id`.
   - `Background Color` -- Default: `"0.969 0.922 0.882 0.035"`.

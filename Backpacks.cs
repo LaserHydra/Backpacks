@@ -110,6 +110,17 @@ namespace Oxide.Plugins
 
             Unsubscribe(nameof(OnPlayerSleep));
             Unsubscribe(nameof(OnPlayerSleepEnded));
+
+            if (_config.GUI.Enabled)
+            {
+                AddCovalenceCommand("backpackgui", nameof(ToggleBackpackGUICommand));
+            }
+            else
+            {
+                Unsubscribe(nameof(OnPlayerConnected));
+                Unsubscribe(nameof(OnNpcConversationStart));
+                Unsubscribe(nameof(OnNpcConversationEnded));
+            }
         }
 
         private void OnServerInitialized()
@@ -120,13 +131,19 @@ namespace Oxide.Plugins
 
             RegisterAsItemSupplier();
 
-            foreach (var player in BasePlayer.activePlayerList)
+            if (_config.GUI.Enabled)
             {
-                MaybeCreateButtonUi(player);
-            }
+                Subscribe(nameof(OnPlayerSleep));
+                Subscribe(nameof(OnPlayerSleepEnded));
+                Subscribe(nameof(OnPlayerConnected));
+                Subscribe(nameof(OnNpcConversationStart));
+                Subscribe(nameof(OnNpcConversationEnded));
 
-            Subscribe(nameof(OnPlayerSleep));
-            Subscribe(nameof(OnPlayerSleepEnded));
+                foreach (var player in BasePlayer.activePlayerList)
+                {
+                    MaybeCreateButtonUi(player);
+                }
+            }
         }
 
         private void Unload()
@@ -281,7 +298,7 @@ namespace Oxide.Plugins
             {
                 _backpackManager.HandleRetrievePermissionChangedForGroup(groupName);
             }
-            else if (perm.Equals(GUIPermission))
+            else if (_config.GUI.Enabled && perm.Equals(GUIPermission))
             {
                 foreach (var player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, groupName)))
                 {
@@ -311,7 +328,7 @@ namespace Oxide.Plugins
             {
                 _backpackManager.HandleRetrievePermissionChangedForGroup(groupName);
             }
-            else if (perm.Equals(GUIPermission))
+            else if (_config.GUI.Enabled && perm.Equals(GUIPermission))
             {
                 foreach (var player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, groupName)))
                 {
@@ -344,7 +361,7 @@ namespace Oxide.Plugins
             {
                 _backpackManager.HandleRetrievePermissionChangedForUser(userId);
             }
-            else if (perm.Equals(GUIPermission))
+            else if (_config.GUI.Enabled && perm.Equals(GUIPermission))
             {
                 var player = BasePlayer.Find(userId);
                 if (player != null)
@@ -375,7 +392,7 @@ namespace Oxide.Plugins
             {
                 _backpackManager.HandleRetrievePermissionChangedForUser(userId);
             }
-            else if (perm.Equals(GUIPermission) && !permission.UserHasPermission(userId, GUIPermission))
+            else if (_config.GUI.Enabled && perm.Equals(GUIPermission) && !permission.UserHasPermission(userId, GUIPermission))
             {
                 var player = BasePlayer.Find(userId);
                 if (player != null)
@@ -395,6 +412,7 @@ namespace Oxide.Plugins
             _backpackManager.HandleGroupChangeForUser(userId);
         }
 
+        // Only subscribed while the GUI button is enabled.
         private void OnPlayerConnected(BasePlayer player) => MaybeCreateButtonUi(player);
 
         private void OnPlayerRespawned(BasePlayer player)
@@ -403,10 +421,13 @@ namespace Oxide.Plugins
             _backpackManager.GetBackpackIfCached(player.userID)?.PauseGatherMode(1f);
         }
 
+        // Only subscribed while the GUI button is enabled.
         private void OnPlayerSleepEnded(BasePlayer player) => OnPlayerRespawned(player);
 
+        // Only subscribed while the GUI button is enabled.
         private void OnPlayerSleep(BasePlayer player) => DestroyButtonUi(player);
 
+        // Only subscribed while the GUI button is enabled.
         private void OnNpcConversationStart(NPCTalking npcTalking, BasePlayer player, ConversationData conversationData)
         {
             // This delay can be removed in the future if an OnNpcConversationStarted hook is created.
@@ -420,6 +441,7 @@ namespace Oxide.Plugins
             });
         }
 
+        // Only subscribed while the GUI button is enabled.
         private void OnNpcConversationEnded(NPCTalking npcTalking, BasePlayer player) => MaybeCreateButtonUi(player);
 
         private void OnNetworkSubscriptionsUpdate(Network.Networkable networkable, List<Network.Visibility.Group> groupsToAdd, List<Network.Visibility.Group> groupsToRemove)
@@ -942,8 +964,7 @@ namespace Oxide.Plugins
         private void ViewBackpack(BasePlayer player, string cmd, string[] args) =>
             ViewBackpackCommand(player.IPlayer, cmd, args);
 
-        [Command("backpackgui")]
-        private void ToggleBackpackGUI(IPlayer player, string cmd, string[] args)
+        private void ToggleBackpackGUICommand(IPlayer player, string cmd, string[] args)
         {
             BasePlayer basePlayer;
             if (!VerifyPlayer(player, out basePlayer)
@@ -1446,6 +1467,9 @@ namespace Oxide.Plugins
 
         private void MaybeCreateButtonUi(BasePlayer player)
         {
+            if (!_config.GUI.Enabled)
+                return;
+
             if (player == null || player.IsNpc || !player.IsAlive() || player.IsSleeping())
                 return;
 
@@ -7513,6 +7537,9 @@ namespace Oxide.Plugins
 
             public class GUIButton
             {
+                [JsonProperty("Enabled")]
+                public bool Enabled = true;
+
                 [JsonProperty("Enabled by default (for players with permission)")]
                 public bool EnabledByDefault = true;
 
