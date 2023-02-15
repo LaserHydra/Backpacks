@@ -430,6 +430,8 @@ Example rulesets:
 - `Erase on Death (true/false)` (Default: `false`) -- While `true`, the contents of players' backpacks will be erased when they die. Erased backpack contents cannot be recovered under any circumstances. Players with the `backpacks.keepondeath` permission will keep their backpack contents on death.
   - Note: Even while this option is enabled, players with the `backpacks.keepondeath` permission will keep their backpack contents on death.
 - `Minimum Despawn Time (Seconds)` (Default: `300.0`) -- Determines the minimum time (in seconds) that dropped backpacks will be protected from despawning. If the backpack contents are moderately rare, as determined by vanilla Rust, the backpack may take longer to despawn than this duration.
+- `Softcore` -- Determines options for Softcore mode.
+  - `Reclaim Fraction` (Default: `0.5`, Min: `0.0`, Max: `1.0`) -- Determines the percentage of backpack items that are sent to the reclaim terminal when you die, if drop on death is enabled. Note: Items sent from your backpack to the reclaim terminal are not accessible at your corpse.
 
 ## Localization
 
