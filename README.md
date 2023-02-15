@@ -46,7 +46,7 @@ If you have the `backpacks.retrieve` permission, you may enable retrieve mode pe
 
 ## Server commands
 
-- `backpack.erase <steam id>` -- Forcibly erases **all** the contents of a specific player's backpack, even if they have `backpack.keepondeath.*` permissions that would normally exempt them.
+- `backpack.erase <steam id>` -- Forcibly erases **all** the contents of a specific player's backpack, even if they have `backpack.keeponwipe.*` permissions that would normally exempt them.
 
 ## Permissions
 
