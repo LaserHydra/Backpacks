@@ -300,44 +300,17 @@ namespace Oxide.Plugins
             }
             else if (_config.GUI.Enabled && perm.Equals(GUIPermission))
             {
-                foreach (var player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, groupName)))
+                var groupName2 = groupName;
+                foreach (var player in BasePlayer.activePlayerList.Where(p => permission.UserHasGroup(p.UserIDString, groupName2)))
                 {
-                    MaybeCreateButtonUi(player.Object as BasePlayer);
+                    CreateOrDestroyButtonUi(player);
                 }
             }
         }
 
         private void OnGroupPermissionRevoked(string groupName, string perm)
         {
-            if (!perm.StartsWith("backpacks"))
-                return;
-
-            if (perm.StartsWith(SizePermission) || perm.StartsWith(UsagePermission))
-            {
-                _backpackManager.HandleCapacityPermissionChangedForGroup(groupName);
-            }
-            else if (perm.StartsWith(RestrictionRuleset.FullPermissionPrefix) || perm.Equals(LegacyNoBlacklistPermission))
-            {
-                _backpackManager.HandleRestrictionPermissionChangedForGroup(groupName);
-            }
-            else if (perm.Equals(GatherPermission))
-            {
-                _backpackManager.HandleGatherPermissionChangedForGroup(groupName);
-            }
-            else if (perm.Equals(RetrievePermission))
-            {
-                _backpackManager.HandleRetrievePermissionChangedForGroup(groupName);
-            }
-            else if (_config.GUI.Enabled && perm.Equals(GUIPermission))
-            {
-                foreach (var player in covalence.Players.Connected.Where(p => permission.UserHasGroup(p.Id, groupName)))
-                {
-                    if (!player.HasPermission(GUIPermission))
-                    {
-                        DestroyButtonUi(player.Object as BasePlayer);
-                    }
-                }
-            }
+            OnGroupPermissionGranted(groupName, perm);
         }
 
         private void OnUserPermissionGranted(string userId, string perm)
@@ -366,40 +339,14 @@ namespace Oxide.Plugins
                 var player = BasePlayer.Find(userId);
                 if (player != null)
                 {
-                    MaybeCreateButtonUi(BasePlayer.Find(userId));
+                    CreateOrDestroyButtonUi(player);
                 }
             }
         }
 
         private void OnUserPermissionRevoked(string userId, string perm)
         {
-            if (!perm.StartsWith("backpacks"))
-                return;
-
-            if (perm.StartsWith(SizePermission) || perm.StartsWith(UsagePermission))
-            {
-                _backpackManager.HandleCapacityPermissionChangedForUser(userId);
-            }
-            else if (perm.StartsWith(RestrictionRuleset.FullPermissionPrefix) || perm.Equals(LegacyNoBlacklistPermission))
-            {
-                _backpackManager.HandleRestrictionPermissionChangedForUser(userId);
-            }
-            else if (perm.Equals(GatherPermission))
-            {
-                _backpackManager.HandleGatherPermissionChangedForUser(userId);
-            }
-            else if (perm.Equals(RetrievePermission))
-            {
-                _backpackManager.HandleRetrievePermissionChangedForUser(userId);
-            }
-            else if (_config.GUI.Enabled && perm.Equals(GUIPermission) && !permission.UserHasPermission(userId, GUIPermission))
-            {
-                var player = BasePlayer.Find(userId);
-                if (player != null)
-                {
-                    DestroyButtonUi(player);
-                }
-            }
+            OnUserPermissionGranted(userId, perm);
         }
 
         private void OnUserGroupAdded(string userId, string groupName)
@@ -1495,6 +1442,18 @@ namespace Oxide.Plugins
                 return;
 
             ButtonUi.DestroyUi(player);
+        }
+
+        private void CreateOrDestroyButtonUi(BasePlayer player)
+        {
+            if (permission.UserHasPermission(player.UserIDString, GUIPermission))
+            {
+                MaybeCreateButtonUi(player);
+            }
+            else
+            {
+                DestroyButtonUi(player);
+            }
         }
 
         #endregion
