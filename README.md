@@ -460,10 +460,6 @@ Replace the `"GUI Button Position"` section of the plugin configuration with the
 }
 ```
 
-## Known limitations
-
-Paintable entities, photos, pagers, mobile phones, and cassettes will lose their data on map wipe. There are currently no plans to persist this data across wipes, but such a feature can be considered upon request.
-
 ## Developer API
 
 ### API_GetBackpackContainer
