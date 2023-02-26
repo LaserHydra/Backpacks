@@ -244,11 +244,11 @@ Alternative backpacks images:
 
 **Recommended for [Sort Button](https://umod.org/plugins/sort-button) (default):**
 
-![](./Images/PageButtonsAboveBar.png)
+![](https://raw.githubusercontent.com/LaserHydra/Backpacks/master/Images/PageButtonsAboveBar.png)
 
 **Recommended for [Quick Sort](https://umod.org/plugins/quick-sort):**
 
-![](./Images/PageButtonsOnBar.png)
+![](https://raw.githubusercontent.com/LaserHydra/Backpacks/master/Images/PageButtonsOnBar.png)
 
 ### Item restrictions
 
