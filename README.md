@@ -57,7 +57,7 @@ Players can click that button to open their backpack. They can also run the `/ba
 - `backpacks.keepondeath` -- Exempts you from having your backpack erased or dropped on death.
 - `backpacks.gather` -- Allows you to enable gather mode per backpack page, which automatically transfers newly acquired inventory items to your backpack.
   - **Note**: When you disconnect from the server and reconnect some time later, gather mode will not be activated until you open your backpack at least once.
-- `backpacks.retrieve` -- Allows you to enable retrieve mode per backpack page. When retrieve mode is enabled, you can build, craft and more using items from your designated backpack pages. Requires the Item Retriever plugin.
+- `backpacks.retrieve` -- Allows you to enable retrieve mode per backpack page. When retrieve mode is enabled, you can build, craft and more using items from your designated backpack pages. Requires the [Item Retriever](https://umod.org/plugins/item-retriever) plugin.
   - **Note**: When you disconnect from the server and reconnect some time later, retrieve mode will not be activated until you open your backpack at least once. Additionally, reloading weapon ammo, switching weapon ammo, purchasing items from vending machines, and purchasing vehicles from NPC vendors will not be able to pull items from pages until you access those specific pages at least once after (re)connecting to the server.
 
 ### Size permissions
