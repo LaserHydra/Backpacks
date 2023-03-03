@@ -26,7 +26,7 @@ using Time = UnityEngine.Time;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "WhiteThunder", "3.11.0")]
+    [Info("Backpacks", "WhiteThunder", "3.11.1")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : CovalencePlugin
     {
@@ -75,7 +75,7 @@ namespace Oxide.Plugins
         private Coroutine _saveRoutine;
 
         [PluginReference]
-        private readonly Plugin Arena, BagOfHolding, EventManager, ItemRetriever;
+        private readonly Plugin Arena, BagOfHolding, BackpackButton, EventManager, ItemRetriever;
 
         public Backpacks()
         {
@@ -129,6 +129,7 @@ namespace Oxide.Plugins
             _immortalProtection.name = "BackpacksProtection";
             _immortalProtection.Add(1);
 
+            CheckBackpackButtonPlugin();
             RegisterAsItemSupplier();
 
             if (_config.GUI.Enabled)
@@ -223,6 +224,9 @@ namespace Oxide.Plugins
         {
             switch (plugin.Name)
             {
+                case nameof(BackpackButton):
+                    CheckBackpackButtonPlugin();
+                    break;
                 case nameof(ItemRetriever):
                     RegisterAsItemSupplier();
                     break;
@@ -1105,6 +1109,23 @@ namespace Oxide.Plugins
             _reusableEffect.Init(Effect.Type.Generic, player, 0, Vector3.zero, Vector3.forward);
             _reusableEffect.pooledString = effectPrefab;
             EffectNetwork.Send(_reusableEffect, player.net.connection);
+        }
+
+        private void CheckBackpackButtonPlugin()
+        {
+            if (BackpackButton == null
+                || _config.UsingDefaults
+                || !_config.GUI.Enabled)
+                return;
+
+            foreach (var player in BasePlayer.activePlayerList)
+            {
+                DestroyButtonUi(player);
+            }
+
+            _config.GUI.Enabled = false;
+            SaveConfig();
+            LogWarning($"Disabled GUI button in the config because the {nameof(BackpackButton)} plugin was detected.");
         }
 
         private void RegisterAsItemSupplier()
@@ -7566,6 +7587,8 @@ namespace Oxide.Plugins
         [JsonObject(MemberSerialization.OptIn)]
         private class BaseConfiguration
         {
+            public bool UsingDefaults = false;
+
             private string ToJson() => JsonConvert.SerializeObject(this);
 
             public Dictionary<string, object> ToDictionary() => JsonHelper.Deserialize(ToJson()) as Dictionary<string, object>;
@@ -7685,6 +7708,7 @@ namespace Oxide.Plugins
                 PrintError(e.Message);
                 PrintWarning($"Configuration file {Name}.json is invalid; using defaults");
                 LoadDefaultConfig();
+                _config.UsingDefaults = true;
             }
         }
 
