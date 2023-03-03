@@ -6423,9 +6423,12 @@ namespace Oxide.Plugins
 
                 using (var allItemsToReclaim = DisposableList<Item>.Get())
                 {
-                    foreach (var containerAdapter in _containerAdapters)
+                    using (_itemCountChangedEvent.Pause())
                     {
-                        containerAdapter.ReclaimFractionForSoftcore(reclaimFraction, allItemsToReclaim);
+                        foreach (var containerAdapter in _containerAdapters)
+                        {
+                            containerAdapter.ReclaimFractionForSoftcore(reclaimFraction, allItemsToReclaim);
+                        }
                     }
 
                     if (allItemsToReclaim.Count > 0)
