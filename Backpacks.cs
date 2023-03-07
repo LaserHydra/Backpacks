@@ -26,7 +26,7 @@ using Time = UnityEngine.Time;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "WhiteThunder", "3.11.1")]
+    [Info("Backpacks", "WhiteThunder", "3.11.2")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : CovalencePlugin
     {
@@ -6839,6 +6839,8 @@ namespace Oxide.Plugins
                 LogDebug($"ItemData::Setup | {item.amount.ToString()} {item.info.shortname}");
                 #endif
 
+                var heldEntity = item.GetHeldEntity();
+
                 ID = item.info.itemid;
                 Position = item.position + positionOffset;
                 Amount = item.amount;
@@ -6846,11 +6848,11 @@ namespace Oxide.Plugins
                 BlueprintTarget = item.blueprintTarget;
                 Skin = item.skin;
                 Fuel = item.fuel;
-                FlameFuel = item.GetHeldEntity()?.GetComponent<FlameThrower>()?.ammo ?? 0;
+                FlameFuel = heldEntity?.GetComponent<FlameThrower>()?.ammo ?? 0;
                 Condition = item.condition;
                 MaxCondition = item.maxCondition;
-                Ammo = item.GetHeldEntity()?.GetComponent<BaseProjectile>()?.primaryMagazine?.contents ?? 0;
-                AmmoType = item.GetHeldEntity()?.GetComponent<BaseProjectile>()?.primaryMagazine?.ammoType?.itemid ?? 0;
+                Ammo = heldEntity?.GetComponent<BaseProjectile>()?.primaryMagazine?.contents ?? 0;
+                AmmoType = heldEntity?.GetComponent<BaseProjectile>()?.primaryMagazine?.ammoType?.itemid ?? 0;
                 DataInt = item.instanceData?.dataInt ?? 0;
                 Name = item.name;
                 Text = item.text;
@@ -6998,16 +7000,16 @@ namespace Oxide.Plugins
 
                 item.flags |= Flags;
 
-                var magazine = item.GetHeldEntity()?.GetComponent<BaseProjectile>()?.primaryMagazine;
-                var flameThrower = item.GetHeldEntity()?.GetComponent<FlameThrower>();
-
+                var heldEntity = item.GetHeldEntity();
+                var magazine = (heldEntity as BaseProjectile)?.primaryMagazine;
                 if (magazine != null)
                 {
                     magazine.contents = Ammo;
                     magazine.ammoType = ItemManager.FindItemDefinition(AmmoType);
                 }
 
-                if (flameThrower != null)
+                var flameThrower = heldEntity as FlameThrower;
+                if ((object)flameThrower != null)
                 {
                     flameThrower.ammo = FlameFuel;
                 }
@@ -7019,6 +7021,12 @@ namespace Oxide.Plugins
                         ShouldPool = false,
                         dataInt = DataInt,
                     };
+
+                    var detonator = heldEntity as Detonator;
+                    if ((object)detonator != null)
+                    {
+                        detonator.frequency = DataInt;
+                    }
                 }
 
                 item.text = Text;
