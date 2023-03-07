@@ -5231,6 +5231,9 @@ namespace Oxide.Plugins
                 #endif
 
                 OwnerId = 0;
+                GatherModeByPage.Clear();
+                RetrieveFromPagesMask = 0;
+
                 if (ItemDataCollection != null)
                 {
                     PoolUtils.ResetItemsAndClear(ItemDataCollection);
