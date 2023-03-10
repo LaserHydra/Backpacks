@@ -7711,6 +7711,7 @@ namespace Oxide.Plugins
                 if (_config.GUI.Image == "https://i.imgur.com/CyF0QNV.png")
                 {
                     _config.GUI.Image = "https://i.imgur.com/T6orn2Q.png";
+                    changed = true;
                 }
 
                 if (changed)
