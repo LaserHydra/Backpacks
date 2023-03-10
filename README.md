@@ -136,7 +136,7 @@ Default configuration:
     "Enabled": true,
     "Enabled by default (for players with permission)": true,
     "Skin Id": 0,
-    "Image": "https://i.imgur.com/CyF0QNV.png",
+    "Image": "https://i.imgur.com/T6orn2Q.png",
     "Background Color": "0.969 0.922 0.882 0.035",
     "GUI Button Position": {
       "Anchors Min": "0.5 0.0",

@@ -26,7 +26,7 @@ using Time = UnityEngine.Time;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "WhiteThunder", "3.11.2")]
+    [Info("Backpacks", "WhiteThunder", "3.11.3")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : CovalencePlugin
     {
@@ -7554,7 +7554,7 @@ namespace Oxide.Plugins
                 public ulong SkinId;
 
                 [JsonProperty("Image")]
-                public string Image = "https://i.imgur.com/CyF0QNV.png";
+                public string Image = "https://i.imgur.com/T6orn2Q.png";
 
                 [JsonProperty("Background Color")]
                 public string Color = "0.969 0.922 0.882 0.035";
@@ -7706,6 +7706,11 @@ namespace Oxide.Plugins
 
                     _config.ClearOnWipe.Enabled = true;
                     _config.ClearOnWipe.EnableLegacyPermission = true;
+                }
+
+                if (_config.GUI.Image == "https://i.imgur.com/CyF0QNV.png")
+                {
+                    _config.GUI.Image = "https://i.imgur.com/T6orn2Q.png";
                 }
 
                 if (changed)
