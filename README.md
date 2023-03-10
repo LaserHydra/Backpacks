@@ -233,8 +233,8 @@ Default configuration:
 
 Alternative backpacks images:
 
-- [Right-side](https://i.imgur.com/h1HQEAB.png)
-- [Left-side](https://i.imgur.com/wLR9Z6V.png)
+- [Right-side](https://i.imgur.com/wleeQkt.png)
+- [Left-side](https://i.imgur.com/1Tep5Ad.png)
 - [Universal](https://i.imgur.com/5RE9II5.png)
 
 ### Container UI
