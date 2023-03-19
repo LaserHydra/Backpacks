@@ -26,7 +26,7 @@ using Time = UnityEngine.Time;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "WhiteThunder", "3.11.3")]
+    [Info("Backpacks", "WhiteThunder", "3.11.4")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : CovalencePlugin
     {
@@ -1135,7 +1135,7 @@ namespace Oxide.Plugins
                 ["FindPlayerItems"] = new Action<BasePlayer, Dictionary<string, object>, List<Item>>((player, rawItemQuery, collect) =>
                 {
                     var backpack = _backpackManager.GetBackpackIfCached(player.userID);
-                    if (backpack == null || !backpack.CanRetrieve)
+                    if (backpack == null || !backpack.CanRetrieve || !backpack.CanAccess)
                         return;
 
                     var itemQuery = ItemQuery.Parse(rawItemQuery);
@@ -1145,7 +1145,7 @@ namespace Oxide.Plugins
                 ["FindPlayerAmmo"] = new Action<BasePlayer, AmmoTypes, List<Item>>((player, ammoType, collect) =>
                 {
                     var backpack = _backpackManager.GetBackpackIfCached(player.userID);
-                    if (backpack == null || !backpack.CanRetrieve)
+                    if (backpack == null || !backpack.CanRetrieve || !backpack.CanAccess)
                         return;
 
                     backpack.FindAmmo(ammoType, collect, forItemRetriever: true);
@@ -1154,7 +1154,7 @@ namespace Oxide.Plugins
                 ["SumPlayerItems"] = new Func<BasePlayer, Dictionary<string, object>, int>((player, rawItemQuery) =>
                 {
                     var backpack = _backpackManager.GetBackpackIfCached(player.userID);
-                    if (backpack == null || !backpack.CanRetrieve)
+                    if (backpack == null || !backpack.CanRetrieve || !backpack.CanAccess)
                         return 0;
 
                     var itemQuery = ItemQuery.Parse(rawItemQuery);
@@ -1164,7 +1164,7 @@ namespace Oxide.Plugins
                 ["TakePlayerItems"] = new Func<BasePlayer, Dictionary<string, object>, int, List<Item>, int>((player, rawItemQuery, amount, collect) =>
                 {
                     var backpack = _backpackManager.GetBackpackIfCached(player.userID);
-                    if (backpack == null || !backpack.CanRetrieve)
+                    if (backpack == null || !backpack.CanRetrieve || !backpack.CanAccess)
                         return 0;
 
                     var itemQuery = ItemQuery.Parse(rawItemQuery);
@@ -1174,6 +1174,8 @@ namespace Oxide.Plugins
                 ["SerializeForNetwork"] = new Action<BasePlayer, List<ProtoBuf.Item>>((player, saveList) =>
                 {
                     var backpack = _backpackManager.GetBackpackIfCached(player.userID);
+                    // Don't check CanAccess here to save on performance. This may result in minor issues like the
+                    // player attempting an action they can't perform.
                     if (backpack == null || !backpack.CanRetrieve)
                         return;
 
@@ -5064,6 +5066,7 @@ namespace Oxide.Plugins
             private readonly List<BasePlayer> _uiViewers = new List<BasePlayer>();
             private InventoryWatcher _inventoryWatcher;
             private float _pauseGatherModeUntilTime;
+            private int _checkedAccessOnFrame;
 
             public bool HasLooters => _looters.Count > 0;
             public bool IsGathering => (object)_inventoryWatcher != null;
@@ -5195,6 +5198,34 @@ namespace Oxide.Plugins
                     }
 
                     return false;
+                }
+            }
+
+            public bool CanAccess
+            {
+                get
+                {
+                    var frameCount = Time.frameCount;
+                    if (frameCount == _checkedAccessOnFrame)
+                    {
+                        // Access was already allowed this frame.
+                        return true;
+                    }
+
+                    if (frameCount == -_checkedAccessOnFrame)
+                    {
+                        // Access was already denied this frame.
+                        return false;
+                    }
+
+                    if (Plugin.IsPlayingEvent(Owner) || ExposedHooks.CanOpenBackpack(Owner, OwnerId) is string)
+                    {
+                        _checkedAccessOnFrame = -frameCount;
+                        return false;
+                    }
+
+                    _checkedAccessOnFrame = frameCount;
+                    return true;
                 }
             }
 
@@ -5408,6 +5439,9 @@ namespace Oxide.Plugins
 
                 // Optimization: Don't search pages for a matching item it's not allowed.
                 if (_config.ItemRestrictions.Enabled && !RestrictionRuleset.AllowsItem(item))
+                    return false;
+
+                if (!CanAccess)
                     return false;
 
                 var itemQuery = ItemQuery.FromItem(item);

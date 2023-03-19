@@ -529,8 +529,11 @@ Returns all backpack containers that are cached in the plugin's memory, keyed by
 string CanOpenBackpack(BasePlayer player, ulong backpackOwnerID)
 ```
 
-Called when a player tries to open a backpack.
-Returning a string will cancel backpack opening and send the string as a chat message to the player trying to open the backpack.
+- Called when a player tries to open a backpack.
+- Called when gather mode tries to automatically deposit items into the backpack. The result is cached per backpack per frame to reduce performance cost.
+- Called when the Item Retriever plugin attempts to automatically take items from the player's backpack. The result is cached per backpack per frame to reduce performance cost.
+
+Returning a `string` will prevent the action. If attempting to open the backpack, the string will be send as a chat message to the player.
 
 ### OnBackpackOpened
 
