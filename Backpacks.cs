@@ -1,7 +1,6 @@
 ﻿// #define DEBUG_POOLING
 // #define DEBUG_BACKPACK_LIFECYCLE
 
-using Facepunch;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Oxide.Core;
@@ -1532,7 +1531,7 @@ namespace Oxide.Plugins
                 LogDebug($"{typeof(PoolConverter<T>).Name}<{objectType.Name}>::Create");
                 #endif
 
-                return Pool.Get<T>();
+                return CustomPool.Get<T>();
             }
         }
 
@@ -1544,7 +1543,7 @@ namespace Oxide.Plugins
                 LogDebug($"{typeof(PoolListConverter<T>).Name}<{objectType.Name}>::Create");
                 #endif
 
-                return Pool.GetList<T>();
+                return CustomPool.GetList<T>();
             }
         }
 
@@ -1727,7 +1726,7 @@ namespace Oxide.Plugins
                         if (itemData.Amount <= 0)
                         {
                             itemDataList.RemoveAt(i);
-                            Pool.Free(ref itemData);
+                            CustomPool.Free(ref itemData);
                         }
 
                         totalAmountTaken += amountToTake;
@@ -1762,7 +1761,7 @@ namespace Oxide.Plugins
             {
                 foreach (var itemData in itemDataList)
                 {
-                    var serializedItemData = Pool.Get<ProtoBuf.Item>();
+                    var serializedItemData = CustomPool.Get<ProtoBuf.Item>();
                     serializedItemData.itemid = itemData.ID;
                     serializedItemData.amount = itemData.Amount;
 
@@ -1770,7 +1769,7 @@ namespace Oxide.Plugins
                     {
                         if (serializedItemData.instanceData == null)
                         {
-                            serializedItemData.instanceData = Pool.Get<ProtoBuf.Item.InstanceData>();
+                            serializedItemData.instanceData = CustomPool.Get<ProtoBuf.Item.InstanceData>();
                         }
 
                         serializedItemData.instanceData.dataInt = itemData.DataInt;
@@ -1858,11 +1857,125 @@ namespace Oxide.Plugins
 
         #region Pooling
 
+        private static class CustomPool
+        {
+            public interface IPooled
+            {
+                void EnterPool();
+                void LeavePool();
+            }
+
+            private static class StaticPool<T> where T : class, new()
+            {
+                public static readonly PoolCollection<T> Collection = new PoolCollection<T>();
+            }
+
+            private class PoolCollection<T> where T : class, new()
+            {
+                public const int DefaultPoolSize = 512;
+
+                private T[] _buffer;
+                public int ItemsCreated { get; private set; }
+                public int ItemsInStack { get; private set; }
+                public int ItemsInUse { get; private set; }
+                public int ItemsSpilled { get; private set; }
+                public int ItemsTaken { get; private set; }
+
+                public PoolCollection()
+                {
+                    Reset(DefaultPoolSize);
+                }
+
+                public void Reset(int size = 0)
+                {
+                    _buffer = size == 0 ? Array.Empty<T>() : new T[size];
+
+                    ItemsCreated = 0;
+                    ItemsInStack = 0;
+                    ItemsInUse = 0;
+                    ItemsSpilled = 0;
+                    ItemsTaken = 0;
+                }
+
+                public void Add(T obj)
+                {
+                    (obj as IPooled)?.EnterPool();
+
+                    ItemsInUse--;
+
+                    if (ItemsInStack >= _buffer.Length)
+                    {
+                        ItemsSpilled++;
+                        return;
+                    }
+
+                    _buffer[ItemsInStack] = obj;
+                    ItemsInStack++;
+                }
+
+                public T Take()
+                {
+                    if (ItemsInStack > 0)
+                    {
+                        ItemsInStack--;
+                        ItemsInUse++;
+                        var obj = _buffer[ItemsInStack];
+                        _buffer[ItemsInStack] = null;
+                        (obj as IPooled)?.LeavePool();
+                        ItemsTaken++;
+                        return obj;
+                    }
+
+                    ItemsCreated++;
+                    ItemsInUse++;
+                    return new T();
+                }
+            }
+
+            public static void Reset<T>(int size) where T : class, new()
+            {
+                StaticPool<T>.Collection.Reset(size);
+            }
+
+            public static string GetStats<T>() where T : class, new()
+            {
+                var pool = StaticPool<T>.Collection;
+                return $"{typeof(T).Name} | {pool.ItemsInUse.ToString()} used of {pool.ItemsCreated.ToString()} created | {pool.ItemsTaken.ToString()} taken";
+            }
+
+            public static T Get<T>() where T : class, new()
+            {
+                return StaticPool<T>.Collection.Take();
+            }
+
+            public static List<T> GetList<T>()
+            {
+                return Get<List<T>>();
+            }
+
+            public static void Free<T>(ref T obj) where T : class, new()
+            {
+                FreeInternal(ref obj);
+            }
+
+            public static void FreeList<T>(ref List<T> list) where T : class
+            {
+                list.Clear();
+                FreeInternal(ref list);
+            }
+
+            private static void FreeInternal<T>(ref T obj) where T : class, new()
+            {
+                StaticPool<T>.Collection.Add(obj);
+                obj = null;
+            }
+        }
+
         private static class PoolUtils
         {
             public const int BackpackPoolSize = 500;
 
-            public static void ResetItemsAndClear<T>(IList<T> list) where T : class, Pool.IPooled
+            public static void ResetItemsAndClear<T>(IList<T> list) where T : class, CustomPool.IPooled, new()
             {
                 for (var i = list.Count - 1; i >= 0; i--)
                 {
@@ -1870,7 +1983,7 @@ namespace Oxide.Plugins
                     if (item == null)
                         continue;
 
-                    Pool.Free(ref item);
+                    CustomPool.Free(ref item);
                 }
 
                 if (list.IsReadOnly)
@@ -1888,30 +2001,14 @@ namespace Oxide.Plugins
 
             public static void ResizePools(bool empty = false)
             {
-                ResetPool<ItemData>(empty ? 0 : 2 * BackpackPoolSize);
-                ResetPool<List<ItemData>>(empty ? 0 : BackpackPoolSize);
-                ResetPool<EntityData>(empty ? 0 : BackpackPoolSize / 4);
-                ResetPool<Backpack>(empty ? 0 : BackpackPoolSize);
-                ResetPool<VirtualContainerAdapter>(empty ? 0 : 2 * BackpackPoolSize);
-                ResetPool<ItemContainerAdapter>(empty ? 0 : 2 * BackpackPoolSize);
-                ResetPool<DisposableList<Item>>(empty ? 0 : 4);
-                ResetPool<DisposableList<ItemData>>(empty ? 0 : 4);
-            }
-
-            #if DEBUG_POOLING
-            public static string GetStats<T>() where T : class
-            {
-                var pool = Pool.FindCollection<T>();
-                return $"{typeof(T).Name} | {pool.ItemsInUse.ToString()} used of {pool.ItemsCreated.ToString()} created | {pool.ItemsTaken.ToString()} taken";
-            }
-            #endif
-
-            private static void ResetPool<T>(int size = 512) where T : class
-            {
-                var pool = Pool.FindCollection<T>();
-                pool.Reset();
-                pool.buffer = new T[size];
-                Pool.directory.Remove(typeof(T));
+                CustomPool.Reset<ItemData>(empty ? 0 : 2 * BackpackPoolSize);
+                CustomPool.Reset<List<ItemData>>(empty ? 0 : BackpackPoolSize);
+                CustomPool.Reset<EntityData>(empty ? 0 : BackpackPoolSize / 4);
+                CustomPool.Reset<Backpack>(empty ? 0 : BackpackPoolSize);
+                CustomPool.Reset<VirtualContainerAdapter>(empty ? 0 : 2 * BackpackPoolSize);
+                CustomPool.Reset<ItemContainerAdapter>(empty ? 0 : 2 * BackpackPoolSize);
+                CustomPool.Reset<DisposableList<Item>>(empty ? 0 : 4);
+                CustomPool.Reset<DisposableList<ItemData>>(empty ? 0 : 4);
             }
         }
 
@@ -1919,14 +2016,14 @@ namespace Oxide.Plugins
         {
             public static DisposableList<T> Get()
             {
-                return Pool.Get<DisposableList<T>>();
+                return CustomPool.Get<DisposableList<T>>();
             }
 
             public void Dispose()
             {
                 Clear();
                 var self = this;
-                Pool.Free(ref self);
+                CustomPool.Free(ref self);
             }
         }
 
@@ -3724,7 +3821,7 @@ namespace Oxide.Plugins
                         _cachedBackpacks.Remove(backpack.OwnerId);
                         _backpackPathCache.Remove(backpack.OwnerId);
                         var backpackToFree = backpack;
-                        Pool.Free(ref backpackToFree);
+                        CustomPool.Free(ref backpackToFree);
                     }
 
                     if (didSave && async)
@@ -3739,7 +3836,7 @@ namespace Oxide.Plugins
                 foreach (var backpack in _cachedBackpacks.Values)
                 {
                     var backpackToFree = backpack;
-                    Pool.Free(ref backpackToFree);
+                    CustomPool.Free(ref backpackToFree);
                 }
 
                 _cachedBackpacks.Clear();
@@ -3777,7 +3874,7 @@ namespace Oxide.Plugins
                 // For example, if a data file cleaner plugin writes the file content as `null`.
                 if (backpack == null)
                 {
-                    backpack = Pool.Get<Backpack>();
+                    backpack = CustomPool.Get<Backpack>();
                 }
 
                 backpack.Setup(_plugin, userId, dataFile);
@@ -4099,7 +4196,7 @@ namespace Oxide.Plugins
             public int SlotsKept;
         }
 
-        private interface IContainerAdapter : Pool.IPooled
+        private interface IContainerAdapter : CustomPool.IPooled
         {
             int PageIndex { get; }
             int Capacity { get; set; }
@@ -4117,6 +4214,7 @@ namespace Oxide.Plugins
             void SerializeTo(List<ItemData> saveList, List<ItemData> itemsToReleaseToPool);
             void EraseContents(WipeRuleset ruleset, ref WipeContext wipeContext);
             void Kill();
+            void FreeToPool();
         }
 
         private class VirtualContainerAdapter : IContainerAdapter
@@ -4144,7 +4242,7 @@ namespace Oxide.Plugins
             public void EnterPool()
             {
                 #if DEBUG_POOLING
-                LogDebug($"VirtualContainerAdapter::EnterPool | {PoolUtils.GetStats<VirtualContainerAdapter>()}");
+                LogDebug($"VirtualContainerAdapter::EnterPool | {CustomPool.GetStats<VirtualContainerAdapter>()}");
                 #endif
 
                 PageIndex = 0;
@@ -4156,7 +4254,7 @@ namespace Oxide.Plugins
             public void LeavePool()
             {
                 #if DEBUG_POOLING
-                LogDebug($"VirtualContainerAdapter::LeavePool | {PoolUtils.GetStats<VirtualContainerAdapter>()}");
+                LogDebug($"VirtualContainerAdapter::LeavePool | {CustomPool.GetStats<VirtualContainerAdapter>()}");
                 #endif
             }
 
@@ -4328,6 +4426,12 @@ namespace Oxide.Plugins
                 // Intentionally not implemented because there are no actual resources to destroy.
             }
 
+            public void FreeToPool()
+            {
+                var self = this;
+                CustomPool.Free(ref self);
+            }
+
             public VirtualContainerAdapter CopyItemsFrom(List<ItemData> itemDataList)
             {
                 var startPosition = PageIndex * _maxCapacityPerPage;
@@ -4365,7 +4469,7 @@ namespace Oxide.Plugins
                 if (!_backpack.ShouldAcceptItem(item, null))
                     return false;
 
-                var itemData = Pool.Get<ItemData>().Setup(item, firstEmptyPosition);
+                var itemData = CustomPool.Get<ItemData>().Setup(item, firstEmptyPosition);
                 ItemDataList.Add(itemData);
 
                 item.RemoveFromContainer();
@@ -4396,7 +4500,7 @@ namespace Oxide.Plugins
             {
                 var itemData = ItemDataList[index];
                 ItemDataList.RemoveAt(index);
-                Pool.Free(ref itemData);
+                CustomPool.Free(ref itemData);
                 _backpack.SetFlag(Backpack.Flag.Dirty, true);
                 _backpack.HandleItemCountChanged();
             }
@@ -4464,7 +4568,7 @@ namespace Oxide.Plugins
             public void EnterPool()
             {
                 #if DEBUG_POOLING
-                LogDebug($"ItemContainerAdapter::EnterPool | PageIndex: {PageIndex.ToString()} | Capacity: {Capacity.ToString()} | {PoolUtils.GetStats<ItemContainerAdapter>()}");
+                LogDebug($"ItemContainerAdapter::EnterPool | PageIndex: {PageIndex.ToString()} | Capacity: {Capacity.ToString()} | {CustomPool.GetStats<ItemContainerAdapter>()}");
                 #endif
 
                 PageIndex = 0;
@@ -4475,7 +4579,7 @@ namespace Oxide.Plugins
             public void LeavePool()
             {
                 #if DEBUG_POOLING
-                LogDebug($"ItemContainerAdapter::LeavePool | {PoolUtils.GetStats<ItemContainerAdapter>()}");
+                LogDebug($"ItemContainerAdapter::LeavePool | {CustomPool.GetStats<ItemContainerAdapter>()}");
                 #endif
             }
 
@@ -4619,7 +4723,7 @@ namespace Oxide.Plugins
 
                 foreach (var item in ItemContainer.itemList)
                 {
-                    var itemData = Pool.Get<ItemData>().Setup(item, positionOffset);
+                    var itemData = CustomPool.Get<ItemData>().Setup(item, positionOffset);
                     saveList.Add(itemData);
                     itemsToReleaseToPool.Add(itemData);
                 }
@@ -4641,6 +4745,12 @@ namespace Oxide.Plugins
                     return;
 
                 ItemContainer.Kill();
+            }
+
+            public void FreeToPool()
+            {
+                var self = this;
+                CustomPool.Free(ref self);
             }
 
             public ItemContainerAdapter CopyItemsFrom(List<ItemData> itemDataList)
@@ -4776,7 +4886,11 @@ namespace Oxide.Plugins
 
             public void ResetPooledItemsAndClear()
             {
-                PoolUtils.ResetItemsAndClear(_containerAdapters);
+                foreach (var containerAdapter in _containerAdapters)
+                {
+                    containerAdapter?.FreeToPool();
+                }
+
                 Count = 0;
             }
         }
@@ -4921,7 +5035,7 @@ namespace Oxide.Plugins
 
         [JsonObject(MemberSerialization.OptIn)]
         [JsonConverter(typeof(PoolConverter<Backpack>))]
-        private class Backpack : Pool.IPooled
+        private class Backpack : CustomPool.IPooled
         {
             [Flags]
             public enum Flag
@@ -5258,7 +5372,7 @@ namespace Oxide.Plugins
             public void EnterPool()
             {
                 #if DEBUG_POOLING
-                LogDebug($"Backpack::EnterPool | OwnerId: {OwnerIdString} | {PoolUtils.GetStats<Backpack>()}");
+                LogDebug($"Backpack::EnterPool | OwnerId: {OwnerIdString} | {CustomPool.GetStats<Backpack>()}");
                 #endif
 
                 OwnerId = 0;
@@ -5303,7 +5417,7 @@ namespace Oxide.Plugins
             public void LeavePool()
             {
                 #if DEBUG_POOLING
-                LogDebug($"LeavePool | {PoolUtils.GetStats<Backpack>()}");
+                LogDebug($"LeavePool | {CustomPool.GetStats<Backpack>()}");
                 #endif
             }
 
@@ -5978,8 +6092,7 @@ namespace Oxide.Plugins
 
                 foreach (var containerAdapter in _containerAdapters)
                 {
-                    var adapter = containerAdapter;
-                    KillContainerAdapter(ref adapter);
+                    KillContainerAdapter(containerAdapter);
                 }
 
                 if (_rejectedItems?.Count > 0)
@@ -6090,13 +6203,13 @@ namespace Oxide.Plugins
 
             private VirtualContainerAdapter CreateVirtualContainerAdapter(int pageIndex)
             {
-                return Pool.Get<VirtualContainerAdapter>().Setup(this, pageIndex, ActualCapacity.CapacityForPage(pageIndex));
+                return CustomPool.Get<VirtualContainerAdapter>().Setup(this, pageIndex, ActualCapacity.CapacityForPage(pageIndex));
             }
 
             private ItemContainerAdapter CreateItemContainerAdapter(int pageIndex)
             {
                 var container = CreateContainerForPage(pageIndex, ActualCapacity.CapacityForPage(pageIndex));
-                return Pool.Get<ItemContainerAdapter>().Setup(this, pageIndex, container);
+                return CustomPool.Get<ItemContainerAdapter>().Setup(this, pageIndex, container);
             }
 
             private ItemContainerAdapter UpgradeToItemContainer(VirtualContainerAdapter virtualContainerAdapter)
@@ -6107,7 +6220,7 @@ namespace Oxide.Plugins
                     .CopyItemsFrom(virtualContainerAdapter.ItemDataList)
                     .AddDelegates();
 
-                Pool.Free(ref virtualContainerAdapter);
+                CustomPool.Free(ref virtualContainerAdapter);
 
                 _containerAdapters[pageIndex] = itemContainerAdapter;
                 return itemContainerAdapter;
@@ -6123,7 +6236,7 @@ namespace Oxide.Plugins
                 foreach (var item in _rejectedItems)
                 {
                     item.position = ++lastPosition;
-                    var itemData = Pool.Get<ItemData>().Setup(item);
+                    var itemData = CustomPool.Get<ItemData>().Setup(item);
                     ItemDataCollection.Add(itemData);
                     itemsToReleaseToPool.Add(itemData);
                 }
@@ -6219,7 +6332,7 @@ namespace Oxide.Plugins
                             continue;
 
                         containerAdapter.TakeAllItems(overflowingItems);
-                        KillContainerAdapter(ref containerAdapter);
+                        KillContainerAdapter(containerAdapter);
                     }
 
                     foreach (var item in overflowingItems)
@@ -6388,7 +6501,7 @@ namespace Oxide.Plugins
                 ActualCapacity = AllowedCapacity;
             }
 
-            private void KillContainerAdapter<T>(ref T containerAdapter) where T : class, IContainerAdapter
+            private void KillContainerAdapter(IContainerAdapter containerAdapter)
             {
                 #if DEBUG_BACKPACK_LIFECYCLE
                 LogDebug($"Backpack::KillContainerAdapter({typeof(T).Name}) | OwnerId: {OwnerIdString} | PageIndex: {containerAdapter.PageIndex.ToString()} | Capacity: {containerAdapter.Capacity.ToString()} ");
@@ -6402,7 +6515,7 @@ namespace Oxide.Plugins
 
                 containerAdapter.Kill();
                 _containerAdapters.RemoveAt(containerAdapter.PageIndex);
-                Pool.Free(ref containerAdapter);
+                containerAdapter.FreeToPool();
             }
 
             private void ForceCloseLooter(BasePlayer looter)
@@ -6584,7 +6697,7 @@ namespace Oxide.Plugins
         }
 
         [JsonConverter(typeof(PoolConverter<EntityData>))]
-        private class EntityData : Pool.IPooled
+        private class EntityData : CustomPool.IPooled
         {
             [JsonProperty("Flags", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public BaseEntity.Flags Flags;
@@ -6703,7 +6816,7 @@ namespace Oxide.Plugins
             public void EnterPool()
             {
                 #if DEBUG_POOLING
-                LogDebug($"EntityData::EnterPool | {PoolUtils.GetStats<EntityData>()}");
+                LogDebug($"EntityData::EnterPool | {CustomPool.GetStats<EntityData>()}");
                 #endif
 
                 Flags = 0;
@@ -6715,7 +6828,7 @@ namespace Oxide.Plugins
             public void LeavePool()
             {
                 #if DEBUG_POOLING
-                LogDebug($"EntityData::LeavePool | {PoolUtils.GetStats<EntityData>()}");
+                LogDebug($"EntityData::LeavePool | {CustomPool.GetStats<EntityData>()}");
                 #endif
             }
 
@@ -6810,7 +6923,7 @@ namespace Oxide.Plugins
         }
 
         [JsonConverter(typeof(PoolConverter<ItemData>))]
-        private class ItemData : Pool.IPooled
+        private class ItemData : CustomPool.IPooled
         {
             [JsonProperty("ID")]
             public int ID { get; private set; }
@@ -6900,7 +7013,7 @@ namespace Oxide.Plugins
                     {
                         if (EntityData == null)
                         {
-                            EntityData = Pool.Get<EntityData>();
+                            EntityData = CustomPool.Get<EntityData>();
                         }
                         EntityData.Setup(subEntity);
                     }
@@ -6908,10 +7021,10 @@ namespace Oxide.Plugins
 
                 if (item.contents != null)
                 {
-                    Contents = Pool.GetList<ItemData>();
+                    Contents = CustomPool.GetList<ItemData>();
                     foreach (var childItem in item.contents.itemList)
                     {
-                        Contents.Add(Pool.Get<ItemData>().Setup(childItem));
+                        Contents.Add(CustomPool.Get<ItemData>().Setup(childItem));
                     }
                 }
 
@@ -6921,7 +7034,7 @@ namespace Oxide.Plugins
             public void EnterPool()
             {
                 #if DEBUG_POOLING
-                LogDebug($"ItemData::EnterPool | {Amount.ToString()} {ItemManager.FindItemDefinition(ID)?.shortname ?? ID.ToString()} | {PoolUtils.GetStats<ItemData>()}");
+                LogDebug($"ItemData::EnterPool | {Amount.ToString()} {ItemManager.FindItemDefinition(ID)?.shortname ?? ID.ToString()} | {CustomPool.GetStats<ItemData>()}");
                 #endif
 
                 ID = 0;
@@ -6944,7 +7057,7 @@ namespace Oxide.Plugins
                 if (EntityData != null)
                 {
                     var entityData = EntityData;
-                    Pool.Free(ref entityData);
+                    CustomPool.Free(ref entityData);
                     EntityData = null;
                 }
 
@@ -6952,7 +7065,7 @@ namespace Oxide.Plugins
                 {
                     PoolUtils.ResetItemsAndClear(Contents);
                     var contents = Contents;
-                    Pool.FreeList(ref contents);
+                    CustomPool.FreeList(ref contents);
                     Contents = null;
                 }
             }
@@ -6960,7 +7073,7 @@ namespace Oxide.Plugins
             public void LeavePool()
             {
                 #if DEBUG_POOLING
-                LogDebug($"ItemData::LeavePool | {PoolUtils.GetStats<ItemData>()}");
+                LogDebug($"ItemData::LeavePool | {CustomPool.GetStats<ItemData>()}");
                 #endif
             }
 
