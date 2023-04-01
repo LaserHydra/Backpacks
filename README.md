@@ -74,6 +74,8 @@ The following permissions come with the plugin's **default configuration**.
 - `backpacks.size.36` -- 6 rows
 - `backpacks.size.42` -- 7 rows
 - `backpacks.size.48` -- 8 rows
+- `backpacks.size.96` -- 16 rows (2+ pages)
+- `backpacks.size.144` -- 24 rows (3+ pages)
 
 Additional permissions may be defined by simply adding them to the `Backpack size` -> `Permission sizes` config option and reloading the plugin.
 
@@ -126,7 +128,9 @@ Default configuration:
       30,
       36,
       42,
-      48
+      48,
+      96,
+      144
     ]
   },
   "Drop on Death (true/false)": true,

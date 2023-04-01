@@ -7588,7 +7588,7 @@ namespace Oxide.Plugins
             public bool EnableLegacyRowPermissions;
 
             [JsonProperty("Permission sizes")]
-            public int[] PermissionSizes = { 6, 12, 18, 24, 30, 36, 42, 48 };
+            public int[] PermissionSizes = { 6, 12, 18, 24, 30, 36, 42, 48, 96, 144 };
         }
 
         [JsonObject(MemberSerialization.OptIn)]
