@@ -25,7 +25,7 @@ using Time = UnityEngine.Time;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "WhiteThunder", "3.11.5")]
+    [Info("Backpacks", "WhiteThunder", "3.11.6")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : CovalencePlugin
     {
@@ -2142,7 +2142,7 @@ namespace Oxide.Plugins
                 {
                     var write = Net.sv.StartWrite();
                     write.PacketID(Message.Type.RPCMessage);
-                    write.UInt32(entity.net.ID);
+                    write.EntityID(entity.net.ID);
                     write.UInt32(StringPool.Get(funcName));
                     write.UInt64(0);
                     return write;
@@ -4741,7 +4741,7 @@ namespace Oxide.Plugins
 
             public void Kill()
             {
-                if (ItemContainer == null || ItemContainer.uid == 0)
+                if (ItemContainer == null || ItemContainer.uid.Value == 0)
                     return;
 
                 ItemContainer.Kill();
@@ -6836,8 +6836,8 @@ namespace Oxide.Plugins
             {
                 BaseEntity entity;
 
-                var entityId = item.instanceData?.subEntity ?? 0;
-                if (entityId == 0)
+                var entityId = item.instanceData?.subEntity ?? new NetworkableId(0);
+                if (entityId.Value == 0)
                 {
                     var itemModSign = item.info.GetComponent<ItemModSign>();
                     if (itemModSign == null)
@@ -7005,8 +7005,8 @@ namespace Oxide.Plugins
                 Text = item.text;
                 Flags = item.flags;
 
-                var subEntityId = item.instanceData?.subEntity ?? 0;
-                if (subEntityId != 0)
+                var subEntityId = item.instanceData?.subEntity ?? new NetworkableId(0);
+                if (subEntityId.Value != 0)
                 {
                     var subEntity = BaseNetworkable.serverEntities.Find(subEntityId) as BaseEntity;
                     if (subEntity != null)
