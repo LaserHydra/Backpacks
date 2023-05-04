@@ -2066,9 +2066,6 @@ namespace Oxide.Plugins
 
                 public static string Get(T value, Func<T, string> createString)
                 {
-                    if (createString.Target != null)
-                        throw new InvalidOperationException($"{typeof(StaticStringCacheWithFactory<T>).Name} only accepts open delegates");
-
                     Dictionary<T, string> cache;
                     if (!_cacheByDelegate.TryGetValue(createString, out cache))
                     {
