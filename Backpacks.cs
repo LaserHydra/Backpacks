@@ -25,7 +25,7 @@ using Time = UnityEngine.Time;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "WhiteThunder", "3.11.6")]
+    [Info("Backpacks", "WhiteThunder", "3.11.7")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : CovalencePlugin
     {
@@ -2009,6 +2009,7 @@ namespace Oxide.Plugins
                 CustomPool.Reset<ItemContainerAdapter>(empty ? 0 : 2 * BackpackPoolSize);
                 CustomPool.Reset<DisposableList<Item>>(empty ? 0 : 4);
                 CustomPool.Reset<DisposableList<ItemData>>(empty ? 0 : 4);
+                CustomPool.Reset<ContainerAdapterEnumerator>(empty ? 0 : 4);
             }
         }
 
@@ -4768,6 +4769,66 @@ namespace Oxide.Plugins
             }
         }
 
+        private class ContainerAdapterEnumerator : IEnumerator<IContainerAdapter>, CustomPool.IPooled
+        {
+            private ContainerAdapterCollection _adapterCollection;
+            private int _position = -1;
+
+            public ContainerAdapterEnumerator Setup(ContainerAdapterCollection adapterCollection)
+            {
+                #if DEBUG_POOLING
+                LogDebug("ContainerAdapterEnumerator::Setup");
+                #endif
+
+                _adapterCollection = adapterCollection;
+                _position = -1;
+                return this;
+            }
+
+            public void EnterPool()
+            {
+                #if DEBUG_POOLING
+                LogDebug($"ContainerAdapterEnumerator::EnterPool | {CustomPool.GetStats<ContainerAdapterEnumerator>()}");
+                #endif
+
+                _adapterCollection = null;
+                _position = -1;
+            }
+
+            public void LeavePool()
+            {
+                #if DEBUG_POOLING
+                LogDebug($"ContainerAdapterEnumerator::LeavePool | {CustomPool.GetStats<ContainerAdapterEnumerator>()}");
+                #endif
+            }
+
+            public bool MoveNext()
+            {
+                while (++_position < _adapterCollection.Count)
+                {
+                    if (_adapterCollection[_position] != null)
+                        return true;
+                }
+
+                return false;
+            }
+
+            public void Reset()
+            {
+                throw new NotImplementedException();
+            }
+
+            public IContainerAdapter Current => _adapterCollection[_position];
+
+            object IEnumerator.Current => Current;
+
+            public void Dispose()
+            {
+                var self = this;
+                CustomPool.Free(ref self);
+            }
+        }
+
         /// <summary>
         /// A collection of IContainerAdapters which may contain null entries.
         ///
@@ -4777,51 +4838,12 @@ namespace Oxide.Plugins
         /// </summary>
         private class ContainerAdapterCollection : IEnumerable<IContainerAdapter>
         {
-            private class ContainerAdapterEnumerator : IEnumerator<IContainerAdapter>
-            {
-                public bool InUse => _position >= 0;
-                private int _position = -1;
-                private ContainerAdapterCollection _adapterCollection;
-
-                public ContainerAdapterEnumerator(ContainerAdapterCollection adapterCollection)
-                {
-                    _adapterCollection = adapterCollection;
-                }
-
-                public bool MoveNext()
-                {
-                    while (++_position < _adapterCollection.Count)
-                    {
-                        if (_adapterCollection[_position] != null)
-                            return true;
-                    }
-
-                    return false;
-                }
-
-                public void Reset()
-                {
-                    throw new NotImplementedException();
-                }
-
-                public IContainerAdapter Current => _adapterCollection[_position];
-
-                object IEnumerator.Current => Current;
-
-                public void Dispose()
-                {
-                    _position = -1;
-                }
-            }
-
             public int Count { get; private set; }
             private IContainerAdapter[] _containerAdapters;
-            private ContainerAdapterEnumerator _enumerator;
 
             public ContainerAdapterCollection(int size)
             {
                 Resize(size);
-                _enumerator = new ContainerAdapterEnumerator(this);
             }
 
             public void RemoveAt(int index)
@@ -4849,10 +4871,7 @@ namespace Oxide.Plugins
 
             public IEnumerator<IContainerAdapter> GetEnumerator()
             {
-                if (_enumerator.InUse)
-                    throw new InvalidOperationException($"{nameof(ContainerAdapterEnumerator)} was not disposed after previous use");
-
-                return _enumerator;
+                return CustomPool.Get<ContainerAdapterEnumerator>().Setup(this);
             }
 
             IEnumerator IEnumerable.GetEnumerator()
