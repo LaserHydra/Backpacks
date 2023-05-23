@@ -25,7 +25,7 @@ using Time = UnityEngine.Time;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "WhiteThunder", "3.11.7")]
+    [Info("Backpacks", "WhiteThunder", "3.11.8")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : CovalencePlugin
     {
@@ -1723,13 +1723,14 @@ namespace Oxide.Plugins
                         collect?.Add(itemData.ToItem(amountToTake));
                         itemData.Reduce(amountToTake);
 
+                        totalAmountTaken += amountToTake;
+
                         if (itemData.Amount <= 0)
                         {
                             itemDataList.RemoveAt(i);
                             CustomPool.Free(ref itemData);
+                            continue;
                         }
-
-                        totalAmountTaken += amountToTake;
                     }
 
                     amountToTake = amount - totalAmountTaken;
