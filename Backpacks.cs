@@ -7166,10 +7166,10 @@ namespace Oxide.Plugins
 
                 var heldEntity = item.GetHeldEntity();
                 var magazine = (heldEntity as BaseProjectile)?.primaryMagazine;
-                if (magazine != null)
+                if (magazine != null && AmmoType != 0)
                 {
                     magazine.contents = Ammo;
-                    magazine.ammoType = ItemManager.FindItemDefinition(AmmoType);
+                    magazine.ammoType = ItemManager.FindItemDefinition(AmmoType) ?? magazine.ammoType;
                 }
 
                 var flameThrower = heldEntity as FlameThrower;
