@@ -6635,8 +6635,8 @@ namespace Oxide.Plugins
                             {
                                 for (var i = 0; i < ReclaimEntryMaxSize; i++)
                                 {
-                                    itemsToReclaimForEntry.Add(allItemsToReclaim[i]);
-                                    allItemsToReclaim.RemoveAt(i--);
+                                    itemsToReclaimForEntry.Add(allItemsToReclaim[0]);
+                                    allItemsToReclaim.RemoveAt(0);
                                 }
                                 ReclaimManager.instance.AddPlayerReclaim(OwnerId, itemsToReclaimForEntry);
                             }
