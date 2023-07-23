@@ -3879,6 +3879,11 @@ namespace Oxide.Plugins
                 backpack.Setup(_plugin, userId, dataFile);
                 _cachedBackpacks[userId] = backpack;
 
+                if (backpack.IsRetrieving)
+                {
+                    backpack.Owner?.inventory?.containerMain?.MarkDirty();
+                }
+
                 _plugin._subscriberManager.BroadcastBackpackLoaded(backpack);
 
                 return backpack;
