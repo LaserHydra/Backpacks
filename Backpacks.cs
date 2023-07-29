@@ -6691,6 +6691,8 @@ namespace Oxide.Plugins
                         }
 
                         ReclaimManager.instance.AddPlayerReclaim(OwnerId, allItemsToReclaim);
+
+                        Owner?.ChatMessage(Plugin.GetMessage(OwnerIdString, "Backpack Items Reclaimed"));
                     }
                 }
             }
@@ -7988,6 +7990,7 @@ namespace Oxide.Plugins
                 ["Items Fetched"] = "Fetched {0} \"{1}\" from backpack.",
                 ["Fetch Failed"] = "Couldn't fetch \"{0}\" from backpack. Inventory may be full.",
                 ["Toggled Backpack GUI"] = "Toggled backpack GUI button.",
+                ["Backpack Items Reclaimed"] = "Backpack items were sent to the reclaim terminal for safe keeping.",
                 ["UI - Gather All"] = "Gather: All ↓",
                 ["UI - Gather Existing"] = "Gather: Existing ↓",
                 ["UI - Gather Off"] = "Gather: Off",
