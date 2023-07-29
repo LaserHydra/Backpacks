@@ -39,6 +39,7 @@ Players can click that button to open their backpack. They can also run the `/ba
 - `backpack` / `backpack.open` -- Opens your own backpack. Requires the `backpacks.use` permission. If the backpack is already open, this will advance to the next page, or will close the player inventory if there are no more pages.
 - `backpack.fetch <item short name or id> <amount>` -- Fetches an item from your backpack.
 - `backpackgui` -- Toggles whether you can see the backpack GUI button.
+- `backpack.setgathermode <All|Existing|Off> <optional page number>` -- Sets gather mode for the specified backpack page. If the page number is not specified, this applies to the first page. This command is useful for quickly changing gather mode via a key bind without opening your backpack. Note: If you want to consistently receive feedback for this command via chat instead of via console, you should bind it like `bind <key> chat.say "/backpack.setgathermode All"` instead of `bind <key> backpack.setgathermode All`.
 
 ## Admin commands
 

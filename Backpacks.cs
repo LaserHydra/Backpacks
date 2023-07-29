@@ -25,7 +25,7 @@ using Time = UnityEngine.Time;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "WhiteThunder", "3.11.9")]
+    [Info("Backpacks", "WhiteThunder", "3.12.0")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : CovalencePlugin
     {
@@ -960,8 +960,49 @@ namespace Oxide.Plugins
             player.Reply(GetMessage(player, "Toggled Backpack GUI"));
         }
 
-        [Command("backpack.togglegather")]
-        private void ToggleGatherCommand(IPlayer player, string cmd, string[] args)
+        [Command("backpack.setgathermode")]
+        private void SetGatherCommand(IPlayer player, string cmd, string[] args)
+        {
+            BasePlayer basePlayer;
+            if (!VerifyCanInteract(player, out basePlayer)
+                || !VerifyHasPermission(player, UsagePermission)
+                || !VerifyHasPermission(player, GatherPermission))
+                return;
+
+            var backpack = _backpackManager.GetBackpack(basePlayer.userID);
+            if (!backpack.CanGather)
+                return;
+
+            GatherMode gatherMode;
+            if (args.Length < 1 || !TryParseGatherMode(basePlayer, args[0], out gatherMode))
+            {
+                player.Reply(string.Format(GetMessage(basePlayer, "Set Gather Syntax"), cmd, GetGatherModeDisplayOptions(basePlayer)));
+                return;
+            }
+
+            var oneBasedPageIndex = 1;
+            if (args.Length >= 2 && !IsKeyBindArg(args[1]) && !int.TryParse(args[1], out oneBasedPageIndex))
+            {
+                player.Reply(string.Format(GetMessage(basePlayer, "Set Gather Syntax"), cmd, GetGatherModeDisplayOptions(basePlayer)));
+                return;
+            }
+
+            if (oneBasedPageIndex < 1 || oneBasedPageIndex > backpack.PageCount)
+            {
+                player.Reply(string.Format(GetMessage(basePlayer, "Page Out Of Range"), backpack.PageCount));
+                return;
+            }
+
+            var pageIndex = oneBasedPageIndex - 1;
+            if (backpack.GetGatherModeForPage(pageIndex) == gatherMode)
+                return;
+
+            backpack.SetGatherModeForPage(basePlayer, pageIndex, gatherMode);
+            player.Reply(string.Format(GetMessage(basePlayer, "Set Gather Mode Success"), oneBasedPageIndex, GetGatherModeDisplayString(basePlayer, gatherMode)));
+        }
+
+        [Command("backpack.ui.togglegather")]
+        private void ToggleGatherUICommand(IPlayer player, string cmd, string[] args)
         {
             BasePlayer basePlayer;
             if (!VerifyPlayer(player, out basePlayer))
@@ -981,8 +1022,8 @@ namespace Oxide.Plugins
             backpack.ToggleGatherMode(basePlayer, pageIndex);
         }
 
-        [Command("backpack.toggleretrieve")]
-        private void ToggleRetrieveCommand(IPlayer player, string cmd, string[] args)
+        [Command("backpack.ui.toggleretrieve")]
+        private void ToggleRetrieveUICommand(IPlayer player, string cmd, string[] args)
         {
             BasePlayer basePlayer;
             if (!VerifyPlayer(player, out basePlayer))
@@ -1126,6 +1167,41 @@ namespace Oxide.Plugins
             return container;
         }
 
+        private bool TryParseGatherMode(BasePlayer player, string arg, out GatherMode gatherMode)
+        {
+            foreach (var enumValue in typeof(GatherMode).GetEnumValues())
+            {
+                var name = Enum.GetName(typeof(GatherMode), enumValue);
+                var gatherModeValue = (GatherMode)enumValue;
+
+                if (StringUtils.EqualsCaseInsensitive(arg, name))
+                {
+                    gatherMode = gatherModeValue;
+                    return true;
+                }
+
+                var localizedName = GetMessage(player, GetGatherModeDisplayString(player, gatherModeValue));
+                if (StringUtils.EqualsCaseInsensitive(arg, localizedName, StringComparison.InvariantCultureIgnoreCase))
+                {
+                    gatherMode = gatherModeValue;
+                    return true;
+                }
+            }
+
+            gatherMode = GatherMode.None;
+            return false;
+        }
+
+        private string GetGatherModeDisplayOptions(BasePlayer player)
+        {
+            return string.Join("|", new List<string>
+            {
+                GetGatherModeDisplayString(player, GatherMode.All),
+                GetGatherModeDisplayString(player, GatherMode.Existing),
+                GetGatherModeDisplayString(player, GatherMode.None)
+            });
+        }
+
         private void SendEffect(BasePlayer player, string effectPrefab)
         {
             if (string.IsNullOrWhiteSpace(effectPrefab))
@@ -1225,6 +1301,16 @@ namespace Oxide.Plugins
             }
 
             ServerMgr.Instance?.StartCoroutine(SaveRoutine(async, keepInUseBackpacks));
+        }
+
+        private bool IsLootingBackpack(BasePlayer player, out Backpack backpack, out int pageIndex)
+        {
+            backpack = null;
+            pageIndex = 0;
+
+            var lootingContainer = player.inventory.loot.containers.FirstOrDefault();
+            return lootingContainer != null
+                   && _backpackManager.IsBackpack(lootingContainer, out backpack, out pageIndex);
         }
 
         private void OpenBackpackMaybeDelayed(BasePlayer looter, ItemContainer currentContainer, Backpack backpack, int pageIndex, bool isKeyBind)
@@ -1510,8 +1596,8 @@ namespace Oxide.Plugins
 
         private static class StringUtils
         {
-            public static bool Equals(string a, string b) =>
-                string.Compare(a, b, StringComparison.OrdinalIgnoreCase) == 0;
+            public static bool EqualsCaseInsensitive(string a, string b, StringComparison stringComparison = StringComparison.Ordinal) =>
+                string.Compare(a, b, stringComparison) == 0;
 
             public static bool Contains(string haystack, string needle) =>
                 haystack.Contains(needle, CompareOptions.IgnoreCase);
@@ -3137,7 +3223,7 @@ namespace Oxide.Plugins
                         new UiRectComponent(layoutProvider.Next(105, HeaderHeight)),
                         new UiButtonComponent
                         {
-                            Command = "backpack.togglegather",
+                            Command = "backpack.ui.togglegather",
                             Color = gatherMode == GatherMode.None ? GreenButtonColor : BlueButtonColor
                         }
                     },
@@ -3171,7 +3257,7 @@ namespace Oxide.Plugins
                         new UiRectComponent(layoutProvider.Next(85, HeaderHeight)),
                         new UiButtonComponent
                         {
-                            Command = "backpack.toggleretrieve",
+                            Command = "backpack.ui.toggleretrieve",
                             Color = retrieve ? BlueButtonColor : GreenButtonColor
                         }
                     },
@@ -4177,7 +4263,7 @@ namespace Oxide.Plugins
                 if (MinCondition > 0 && HasCondition() && (item.conditionNormalized < MinCondition || item.maxConditionNormalized < MinCondition))
                     return 0;
 
-                if (!string.IsNullOrEmpty(DisplayName) && !StringUtils.Equals(DisplayName, item.name))
+                if (!string.IsNullOrEmpty(DisplayName) && !StringUtils.EqualsCaseInsensitive(DisplayName, item.name))
                     return 0;
 
                 return RequireEmpty && item.contents?.itemList?.Count > 0
@@ -4209,7 +4295,7 @@ namespace Oxide.Plugins
                 if (MinCondition > 0 && HasCondition() && (ConditionNormalized(itemData) < MinCondition || MaxConditionNormalized(itemData) < MinCondition))
                     return 0;
 
-                if (!string.IsNullOrEmpty(DisplayName) && !StringUtils.Equals(DisplayName, itemData.Name))
+                if (!string.IsNullOrEmpty(DisplayName) && !StringUtils.EqualsCaseInsensitive(DisplayName, itemData.Name))
                     return 0;
 
                 return RequireEmpty && itemData.Contents?.Count > 0
@@ -5263,6 +5349,7 @@ namespace Oxide.Plugins
             }
 
             public int Capacity => AllowedCapacity.Capacity;
+            public int PageCount => AllowedCapacity.PageCount;
 
             private BackpackCapacity AllowedCapacity
             {
@@ -5562,28 +5649,17 @@ namespace Oxide.Plugins
                 switch (GetGatherModeForPage(pageIndex))
                 {
                     case GatherMode.All:
-                        SetGatherModeForPage(pageIndex, GatherMode.Existing);
+                        SetGatherModeForPage(player, pageIndex, GatherMode.Existing);
                         break;
 
                     case GatherMode.Existing:
-                        SetGatherModeForPage(pageIndex, GatherMode.None);
+                        SetGatherModeForPage(player, pageIndex, GatherMode.None);
                         break;
 
                     case GatherMode.None:
-                        SetGatherModeForPage(pageIndex, GatherMode.All);
+                        SetGatherModeForPage(player, pageIndex, GatherMode.All);
                         break;
                 }
-
-                if (GatherModeByPage.Count > 0)
-                {
-                    StartGathering(player);
-                }
-                else
-                {
-                    StopGathering();
-                }
-
-                MaybeCreateContainerUi(player,  AllowedCapacity.PageCount, pageIndex, EnsurePage(pageIndex).Capacity);
             }
 
             public void HandleGatheringStopped()
@@ -6716,7 +6792,7 @@ namespace Oxide.Plugins
                 MarkDirty();
             }
 
-            private void SetGatherModeForPage(int pageIndex, GatherMode gatherMode)
+            public void SetGatherModeForPage(BasePlayer player, int pageIndex, GatherMode gatherMode)
             {
                 if (gatherMode == GatherMode.None)
                 {
@@ -6728,6 +6804,23 @@ namespace Oxide.Plugins
                 }
 
                 SetFlag(Flag.Dirty, true);
+
+                if (GatherModeByPage.Count > 0)
+                {
+                    StartGathering(player);
+                }
+                else
+                {
+                    StopGathering();
+                }
+
+                Backpack lootingBackpack;
+                int lootingPageIndex;
+                if (Plugin.IsLootingBackpack(player, out lootingBackpack, out lootingPageIndex)
+                    && lootingBackpack == this)
+                {
+                    MaybeCreateContainerUi(player,  AllowedCapacity.PageCount, lootingPageIndex, EnsurePage(lootingPageIndex).Capacity);
+                }
             }
 
             private void StartGathering(BasePlayer player)
@@ -7969,13 +8062,28 @@ namespace Oxide.Plugins
         private string GetMessage(BasePlayer basePlayer, string langKey) =>
             GetMessage(basePlayer.UserIDString, langKey);
 
+        private string GetGatherModeDisplayString(BasePlayer player, GatherMode gatherMode)
+        {
+            switch (gatherMode)
+            {
+                case GatherMode.All:
+                    return GetMessage(player, "Gather Mode: All");
+                case GatherMode.Existing:
+                    return GetMessage(player, "Gather Mode: Existing");
+                case GatherMode.None:
+                    return GetMessage(player, "Gather Mode: Off");
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(gatherMode), gatherMode, null);
+            }
+        }
+
         protected override void LoadDefaultMessages()
         {
             lang.RegisterMessages(new Dictionary<string, string>
             {
                 ["No Permission"] = "You don't have permission to use this command.",
                 ["May Not Open Backpack In Event"] = "You may not open a backpack while participating in an event!",
-                ["View Backpack Syntax"] = "Syntax: /viewbackpack <name or id>",
+                ["View Backpack Syntax"] = "Syntax: viewbackpack <name or id>",
                 ["User ID not Found"] = "Could not find player with ID '{0}'",
                 ["User Name not Found"] = "Could not find player with name '{0}'",
                 ["Multiple Players Found"] = "Multiple matching players found:\n{0}",
@@ -7991,6 +8099,12 @@ namespace Oxide.Plugins
                 ["Fetch Failed"] = "Couldn't fetch \"{0}\" from backpack. Inventory may be full.",
                 ["Toggled Backpack GUI"] = "Toggled backpack GUI button.",
                 ["Backpack Items Reclaimed"] = "Backpack items were sent to the reclaim terminal for safe keeping.",
+                ["Set Gather Syntax"] = "Syntax: {0} <{1}> <optional page number>",
+                ["Page Out Of Range"] = "Backpack page number must be between 1 and {0}.",
+                ["Set Gather Mode Success"] = "Updated backpack gather mode for page {0} to {1}",
+                ["Gather Mode: All"] = "All",
+                ["Gather Mode: Existing"] = "Existing",
+                ["Gather Mode: Off"] = "Off",
                 ["UI - Gather All"] = "Gather: All ↓",
                 ["UI - Gather Existing"] = "Gather: Existing ↓",
                 ["UI - Gather Off"] = "Gather: Off",
