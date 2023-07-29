@@ -6503,7 +6503,7 @@ namespace Oxide.Plugins
 
             private DroppedItemContainer SpawnDroppedBackpack(Vector3 position, int capacity, List<Item> itemList)
             {
-                var entity = GameManager.server.CreateEntity(DroppedBackpackPrefab, position);
+                var entity = GameManager.server.CreateEntity(DroppedBackpackPrefab, position, Quaternion.Euler(0, 90, 0));
                 if (entity == null)
                 {
                     LogError($"Failed to create entity: {DroppedBackpackPrefab}");
