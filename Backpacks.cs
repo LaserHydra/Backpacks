@@ -169,14 +169,12 @@ namespace Oxide.Plugins
 
             _backpackManager.ClearCache();
 
-            IEnumerable<string> fileNames;
+            IEnumerable<string> backpackFileNameList;
             try
             {
-                fileNames = Interface.Oxide.DataFileSystem.GetFiles(Name)
-                    .Select(fn => {
-                        return fn.Split(Path.DirectorySeparatorChar).Last()
-                            .Replace(".json", string.Empty);
-                    });
+                backpackFileNameList = Interface.Oxide.DataFileSystem.GetFiles(Name)
+                    .Select(fn => fn.Split(Path.DirectorySeparatorChar).Last()
+                        .Replace(".json", string.Empty));
             }
             catch (DirectoryNotFoundException)
             {
@@ -184,34 +182,62 @@ namespace Oxide.Plugins
                 return;
             }
 
-            var skippedBackpackCount = 0;
+            var retainedDueToContents = 0;
+            var retainedDueToPreferences = 0;
+            var deletedBackpackFiles = 0;
 
-            foreach (var fileName in fileNames)
+            foreach (var backpackFileName in backpackFileNameList)
             {
                 ulong userId;
-                if (!ulong.TryParse(fileName, out userId))
-                    continue;
-
-                var ruleset = _config.ClearOnWipe.GetForPlayer(fileName);
-                if (ruleset == null || ruleset.DisallowsAll)
-                {
-                    _backpackManager.ClearBackpackFile(userId);
-                    continue;
-                }
-
-                if (ruleset.AllowsAll)
+                if (!ulong.TryParse(backpackFileName, out userId))
                     continue;
 
                 var backpack = _backpackManager.GetBackpackIfExists(userId);
                 if (backpack == null)
                     continue;
 
-                backpack.EraseContents(ruleset);
-                backpack.SaveIfChanged();
+                backpack.EraseContents(_config.ClearOnWipe.GetForPlayer(backpackFileName));
+
+                // Only delete the backpack data file if it's empty and has no saved preferences.
+                if (backpack.HasItems || backpack.HasPreferences)
+                {
+                    backpack.SaveIfChanged();
+
+                    if (backpack.HasItems)
+                    {
+                        retainedDueToContents++;
+                    }
+                    else if (backpack.HasPreferences)
+                    {
+                        retainedDueToPreferences++;
+                    }
+                }
+                else
+                {
+                    _backpackManager.DeleteBackpackFile(userId);
+                    deletedBackpackFiles++;
+                }
             }
 
             _backpackManager.ClearCache();
-            LogWarning($"New save created. Backpacks were wiped according to the config and player permissions.");
+
+            var logMessage = "New save created. Backpacks were wiped according to the config and player permissions.";
+            if (deletedBackpackFiles > 0)
+            {
+                logMessage += $"\n- {deletedBackpackFiles} file(s) were deleted because those backpacks are now empty.";
+            }
+
+            if (retainedDueToContents > 0)
+            {
+                logMessage += $"\n- {retainedDueToContents} file(s) were retained because those backpacks were not empty after applying the player's wipe ruleset.";
+            }
+
+            if (retainedDueToPreferences > 0)
+            {
+                logMessage += $"\n- {retainedDueToPreferences} file(s) were retained even though those backpacks are empty because they contain player gather/retrieve preferences.";
+            }
+
+            LogWarning(logMessage);
         }
 
         private void OnServerSave()
@@ -3783,9 +3809,9 @@ namespace Oxide.Plugins
                 return GetBackpack(backpackOwnerId).TryOpen(looter, pageIndex);
             }
 
-            public void ClearBackpackFile(ulong userId)
+            public void DeleteBackpackFile(ulong userId)
             {
-                Interface.Oxide.DataFileSystem.WriteObject<object>(DetermineBackpackPath(userId), null);
+                Interface.Oxide.DataFileSystem.DeleteDataFile(GetBackpackPath(userId));
             }
 
             public bool TryEraseForPlayer(ulong userId)
@@ -3834,6 +3860,7 @@ namespace Oxide.Plugins
             {
                 foreach (var backpack in _cachedBackpacks.Values)
                 {
+                    backpack.Kill();
                     var backpackToFree = backpack;
                     CustomPool.Free(ref backpackToFree);
                 }
@@ -5337,6 +5364,27 @@ namespace Oxide.Plugins
                 }
             }
 
+            private bool WantsGather
+            {
+                get
+                {
+                    if (!CanGather)
+                        return false;
+
+                    var allowedPageCount = AllowedCapacity.PageCount;
+
+                    for (var pageIndex = 0; pageIndex < allowedPageCount; pageIndex++)
+                    {
+                        if (GetGatherModeForPage(pageIndex) != GatherMode.None)
+                            return true;
+                    }
+
+                    return false;
+                }
+            }
+
+            public bool HasPreferences => IsRetrieving || WantsGather;
+
             public bool CanAccess
             {
                 get
@@ -5365,7 +5413,7 @@ namespace Oxide.Plugins
                 }
             }
 
-            private bool HasItems => ItemCount > 0;
+            public bool HasItems => ItemCount > 0;
 
             public Backpack()
             {
@@ -6526,7 +6574,7 @@ namespace Oxide.Plugins
             private void KillContainerAdapter(IContainerAdapter containerAdapter)
             {
                 #if DEBUG_BACKPACK_LIFECYCLE
-                LogDebug($"Backpack::KillContainerAdapter({typeof(T).Name}) | OwnerId: {OwnerIdString} | PageIndex: {containerAdapter.PageIndex.ToString()} | Capacity: {containerAdapter.Capacity.ToString()} ");
+                LogDebug($"Backpack::KillContainerAdapter({containerAdapter.GetType().Name}) | OwnerId: {OwnerIdString} | PageIndex: {containerAdapter.PageIndex.ToString()} | Capacity: {containerAdapter.Capacity.ToString()} ");
                 #endif
 
                 var itemContainerAdapter = containerAdapter as ItemContainerAdapter;
