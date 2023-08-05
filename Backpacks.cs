@@ -1370,8 +1370,8 @@ namespace Oxide.Plugins
                         {
                             var backpack2 = currentBackpack;
                             var looter2 = looter;
-                            var pageIndex2 = desiredPageIndex;
-                            timer.Once(StandardLootDelay, () => backpack2.TryOpen(looter2, pageIndex2));
+                            var nextPageIndex2 = nextPageIndex;
+                            timer.Once(StandardLootDelay, () => backpack2.TryOpen(looter2, nextPageIndex2));
                         }
                         return;
                     }
