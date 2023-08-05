@@ -5067,12 +5067,18 @@ namespace Oxide.Plugins
                 _onItemAddedRemoved = OnItemAddedRemoved;
             }
 
-            private bool IsLootingBackpackOrChildContainer()
+            private bool ShouldIgnoreContainer()
             {
                 var lootingContainer = _player.inventory.loot.containers.FirstOrDefault();
                 if (lootingContainer == null)
                     return false;
 
+                // Disable gather mode when looting network-limited containers, since they are controlled by other
+                // plugins and are typically short term containers not intended to be simply looted.
+                if (lootingContainer.entityOwner?.limitNetworking == true)
+                    return true;
+
+                // Disable gather mode when looting a backpack or child container of a backpack.
                 var rootContainer = lootingContainer.parent != null
                     ? GetRootContainer(lootingContainer.parent)
                     : lootingContainer;
@@ -5090,7 +5096,7 @@ namespace Oxide.Plugins
                     || _player.IsIncapacitated()
                     || _player.IsSleeping()
                     || _player.IsReceivingSnapshot
-                    || IsLootingBackpackOrChildContainer())
+                    || ShouldIgnoreContainer())
                     return;
 
                 if (wasAdded)
