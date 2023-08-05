@@ -3160,6 +3160,20 @@ namespace Oxide.Plugins
             private const string GreenButtonTextColor = "0.659 0.918 0.2 1";
 
             private const string Name = "Backpacks.Container";
+            private static readonly string LeftButtonName = $"{Name}.Left";
+            private static readonly string RightButtonName = $"{Name}.Right";
+
+            private struct PageButton
+            {
+                public string Name;
+                public UiRect Rect;
+                public string Text;
+                public string Command;
+                public bool IsActive;
+
+                public string Color => IsActive ? BlueButtonColor : GreenButtonColor;
+                public string TextColor => IsActive ? BlueButtonTextColor : GreenButtonTextColor;
+            }
 
             public static void CreateContainerUi(BasePlayer player, int numPages, int activePageIndex, int capacity, Backpack backpack)
             {
@@ -3276,9 +3290,37 @@ namespace Oxide.Plugins
                 });
             }
 
+            private static void AddPageButton(UiBuilder builder, PageButton pageButton)
+            {
+                builder.AddSerializable(new UiButtonElement<UiComponents<UiRectComponent, UiButtonComponent>, UiComponents<UiTextComponent>>
+                {
+                    Parent = Name,
+                    Name = pageButton.Name,
+                    Button =
+                    {
+                        new UiRectComponent(pageButton.Rect),
+                        new UiButtonComponent
+                        {
+                            Color = pageButton.Color,
+                            Command = pageButton.Command,
+                        }
+                    },
+                    Text =
+                    {
+                        new UiTextComponent
+                        {
+                            Text = pageButton.Text,
+                            TextAlign = TextAnchor.MiddleCenter,
+                            Color = pageButton.TextColor
+                        }
+                    }
+                });
+            }
+
             private static void AddPaginationUi(UiBuilder builder, Backpack backpack, int numPages, int activePageIndex)
             {
-                var offsetY = backpack.Plugin._config.ContainerUi.ShowPageButtonsOnContainerBar
+                var containerUiOptions = backpack.Plugin._config.ContainerUi;
+                var offsetY = containerUiOptions.ShowPageButtonsOnContainerBar
                     ? 0
                     : HeaderHeight + PageButtonSpacing;
 
@@ -3290,40 +3332,50 @@ namespace Oxide.Plugins
                     Spacing = PageButtonSpacing
                 };
 
-                for (var i = 0; i < numPages; i++)
+                var maxPagesToShow = containerUiOptions.MaxPageButtonsToShow >= 0
+                    ? containerUiOptions.MaxPageButtonsToShow
+                    : int.MaxValue;
+
+                var numPagesToShow = Mathf.Clamp(numPages, 1, maxPagesToShow);
+
+                var pagesToShowOnLeft = (numPagesToShow - 1) / 2;
+                var startPage = Math.Max(activePageIndex - pagesToShowOnLeft, 0);
+                var endPage = Math.Min(startPage + numPagesToShow, numPages) - 1;
+
+                if (endPage == numPages - 1)
                 {
-                    var visiblePageNumber = numPages - i;
-                    var pageIndex = visiblePageNumber - 1;
-                    var isActivePage = activePageIndex == visiblePageNumber - 1;
+                    startPage = numPages - numPagesToShow;
+                }
 
-                    var name = DefaultStringCache.Instance.Get(i, n => $"{Name}.{n.ToString()}");
+                var buttonIndex = 0;
+                var showArrowButtons = numPages > numPagesToShow;
 
-                    var buttonColor = isActivePage ? BlueButtonColor : GreenButtonColor;
-                    var buttonTextColor = isActivePage ? BlueButtonTextColor : GreenButtonTextColor;
-
-                    builder.AddSerializable(new UiButtonElement<UiComponents<UiRectComponent, UiButtonComponent>, UiComponents<UiTextComponent>>
+                if (showArrowButtons)
+                {
+                    AddPageButton(builder, new PageButton
                     {
-                        Parent = Name,
-                        Name = name,
-                        Button =
-                        {
-                            new UiRectComponent(buttonLayoutProvider[i]),
-                            new UiButtonComponent
-                            {
-                                Color = buttonColor,
-                                Command = isActivePage ? "" : DefaultStringCache.Instance.Get(visiblePageNumber, n => $"backpack.open {n.ToString()}"),
-                            }
-                        },
-                        Text =
-                        {
-                            new UiTextComponent
-                            {
-                                Text = DefaultStringCache.Instance.Get(visiblePageNumber),
-                                TextAlign = TextAnchor.MiddleCenter,
-                                Color = buttonTextColor
-                            }
-                        }
+                        Name = RightButtonName,
+                        Rect = buttonLayoutProvider[buttonIndex++],
+                        Text = ">",
+                        Command = "backpack.next",
                     });
+                }
+
+                for (var pageIndex = endPage; pageIndex >= startPage; pageIndex--)
+                {
+                    var visiblePageNumber = pageIndex + 1;
+                    var isActivePage = activePageIndex == pageIndex;
+
+                    var pageButton = new PageButton
+                    {
+                        Name = DefaultStringCache.Instance.Get(pageIndex, n => $"{Name}.{n.ToString()}"),
+                        Rect = buttonLayoutProvider[buttonIndex++],
+                        IsActive = isActivePage,
+                        Text = DefaultStringCache.Instance.Get(visiblePageNumber),
+                        Command = isActivePage ? "" : DefaultStringCache.Instance.Get(visiblePageNumber, n => $"backpack.open {n.ToString()}"),
+                    };
+
+                    AddPageButton(builder, pageButton);
 
                     var arrowSize = new Vector2(PageButtonSize / 2, PageButtonSize / 2);
                     var arrowOffset = new Vector2(0, 1);
@@ -3332,7 +3384,7 @@ namespace Oxide.Plugins
                     {
                         builder.AddSerializable(new UiElement<UiComponents<UiRectComponent, UiTextComponent>>
                         {
-                            Parent = name,
+                            Parent = pageButton.Name,
                             Components =
                             {
                                 new UiRectComponent(StatelessLayoutProvider.GetRect(0, Layout.Option.AnchorBottom | Layout.Option.AnchorRight | Layout.Option.Vertical, arrowSize, offset: arrowOffset)),
@@ -3341,7 +3393,7 @@ namespace Oxide.Plugins
                                     Text = "↓",
                                     FontSize = 10,
                                     TextAlign = TextAnchor.LowerRight,
-                                    Color = buttonTextColor,
+                                    Color = pageButton.TextColor,
                                     VerticalWrapMode = VerticalWrapMode.Overflow
                                 }
                             }
@@ -3352,7 +3404,7 @@ namespace Oxide.Plugins
                     {
                         builder.AddSerializable(new UiElement<UiComponents<UiRectComponent, UiTextComponent>>
                         {
-                            Parent = name,
+                            Parent = pageButton.Name,
                             Components =
                             {
                                 new UiRectComponent(StatelessLayoutProvider.GetRect(0, Layout.Option.AnchorRight | Layout.Option.Vertical, arrowSize, offset: -arrowOffset)),
@@ -3361,12 +3413,23 @@ namespace Oxide.Plugins
                                     Text = "↑",
                                     FontSize = 10,
                                     TextAlign = TextAnchor.UpperRight,
-                                    Color = buttonTextColor,
+                                    Color = pageButton.TextColor,
                                     VerticalWrapMode = VerticalWrapMode.Overflow
                                 }
                             }
                         });
                     }
+                }
+
+                if (showArrowButtons)
+                {
+                    AddPageButton(builder, new PageButton
+                    {
+                        Name = LeftButtonName,
+                        Rect = buttonLayoutProvider[buttonIndex],
+                        Text = "<",
+                        Command = "backpack.prev",
+                    });
                 }
             }
         }
@@ -7767,6 +7830,9 @@ namespace Oxide.Plugins
         {
             [JsonProperty("Show page buttons on container bar")]
             public bool ShowPageButtonsOnContainerBar;
+
+            [JsonProperty("Max page buttons to show")]
+            public int MaxPageButtonsToShow = 8;
         }
 
         [JsonObject(MemberSerialization.OptIn)]

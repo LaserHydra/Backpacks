@@ -151,7 +151,8 @@ Default configuration:
     }
   },
   "Container UI": {
-    "Show page buttons on container bar": false
+    "Show page buttons on container bar": false,
+    "Max page buttons to show": 8
   },
   "Softcore": {
     "Reclaim Fraction": 0.5
@@ -246,6 +247,7 @@ Alternative backpacks images:
 
 - `Container UI` -- Controls the display of the backpack container UI.
   - `Show page buttons on container bar` (`true` or `false`; Default: `false`) -- Determines whether the page buttons (e.g., 1, 2, 3) are shown on the container bar or above the container bar. By default, they are shown above the container bar, to allow for compatibility with the Sort Button plugin. However, if you are using the Quick Sort plugin and want to allow 48 slots of capacity per backpack page, you probably want to enable this option in order to move the page buttons down.
+  - `Max page buttons to show` -- Determines the max number of page buttons (e.g., 1, 2, 3) that can be shown at once. When the player's backpack has more pages than configured here, additional `<` and `>` buttons will shown. 
 
 **Recommended for [Sort Button](https://umod.org/plugins/sort-button) (default):**
 
