@@ -3145,7 +3145,7 @@ namespace Oxide.Plugins
 
         private static class ContainerUi
         {
-            public const float BaseOffsetY = 112;
+            public const float BaseOffsetY = 113.5f;
             public const float BaseOffsetX = 192.5f;
             public const float HeaderWidth = 380;
             public const float HeaderHeight = 23;
