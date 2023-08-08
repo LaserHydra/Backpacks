@@ -4694,6 +4694,7 @@ namespace Oxide.Plugins
                 get { return ItemContainer.capacity; }
                 set { ItemContainer.capacity = value; }
             }
+            public StorageContainer ContainerEntity;
             public ItemContainer ItemContainer { get; private set; }
             public int ItemCount => ItemContainer.itemList.Count;
             public bool HasItems => ItemCount > 0;
@@ -4732,14 +4733,14 @@ namespace Oxide.Plugins
                 };
             }
 
-            public ItemContainerAdapter Setup(Backpack backpack, int pageIndex, ItemContainer container)
+            public ItemContainerAdapter Setup(Backpack backpack, int pageIndex, StorageContainer storageContainer)
             {
                 #if DEBUG_POOLING
                 LogDebug($"ItemContainerAdapter::Setup | PageIndex: {pageIndex.ToString()} | Capacity: {container.capacity.ToString()}");
                 #endif
-
                 PageIndex = pageIndex;
-                ItemContainer = container;
+                ContainerEntity = storageContainer;
+                ItemContainer = ContainerEntity.inventory;
                 _backpack = backpack;
 
                 return this;
@@ -4752,6 +4753,7 @@ namespace Oxide.Plugins
                 #endif
 
                 PageIndex = 0;
+                ContainerEntity = null;
                 ItemContainer = null;
                 _backpack = null;
             }
@@ -4921,10 +4923,10 @@ namespace Oxide.Plugins
 
             public void Kill()
             {
-                if (ItemContainer == null || ItemContainer.uid.Value == 0)
+                if (ContainerEntity == null || ContainerEntity.IsDestroyed)
                     return;
 
-                ItemContainer.Kill();
+                ContainerEntity.Kill();
             }
 
             public void FreeToPool()
@@ -5377,7 +5379,6 @@ namespace Oxide.Plugins
             private bool _canGather;
             private bool _canRetrieve;
             private DynamicConfigFile _dataFile;
-            private StorageContainer _storageContainer;
             private BasePlayer _owner;
             private ContainerAdapterCollection _containerAdapters;
             private readonly List<BasePlayer> _looters = new List<BasePlayer>();
@@ -5621,7 +5622,6 @@ namespace Oxide.Plugins
                 _canGather = false;
                 _canRetrieve = false;
                 _dataFile = null;
-                _storageContainer = null;
                 _owner = null;
                 _containerAdapters?.ResetPooledItemsAndClear();
                 _looters.Clear();
@@ -6089,7 +6089,7 @@ namespace Oxide.Plugins
                     _looters.Add(looter);
                 }
 
-                StartLooting(looter, itemContainerAdapter.ItemContainer, _storageContainer);
+                StartLooting(looter, itemContainerAdapter.ItemContainer, itemContainerAdapter.ContainerEntity);
                 ExposedHooks.OnBackpackOpened(looter, OwnerId, itemContainerAdapter.ItemContainer);
                 MaybeCreateContainerUi(looter,  allowedCapacity.PageCount, pageIndex, itemContainerAdapter.Capacity);
 
@@ -6319,12 +6319,7 @@ namespace Oxide.Plugins
 
                     _rejectedItems.Clear();
                 }
-
-                if (_storageContainer != null && !_storageContainer.IsDestroyed)
-                {
-                    // Note: The ItemContainer will already be Kill()'d by this point, but that's OK.
-                    _storageContainer.Kill();
-                }
+                
             }
 
             public string SerializeContentsAsJson()
@@ -6580,31 +6575,12 @@ namespace Oxide.Plugins
 
                 ActualCapacity = AllowedCapacity;
             }
-
-            private void SetupContainer(ItemContainer container)
+            
+            private StorageContainer CreateContainerForPage(int page, int capacity)
             {
-                _backpackManager.RegisterContainer(container, this);
-            }
-
-            private ItemContainer CreateContainerForPage(int page, int capacity)
-            {
-                if ((object)_storageContainer == null || _storageContainer.IsDestroyed)
-                {
-                    _storageContainer = SpawnStorageContainer(0);
-                    if ((object)_storageContainer == null)
-                        return null;
-                }
-
-                if (page == 0)
-                {
-                    _storageContainer.inventory.capacity = capacity;
-                    SetupContainer(_storageContainer.inventory);
-                    return _storageContainer.inventory;
-                }
-
-                var itemContainer = CreateItemContainer(capacity, _storageContainer);
-                SetupContainer(itemContainer);
-                return itemContainer;
+                var storageContainer = SpawnStorageContainer(capacity);
+                _backpackManager.RegisterContainer(storageContainer.inventory, this);
+                return storageContainer;
             }
 
             private ItemContainerAdapter GetAdapterForContainer(ItemContainer container)
@@ -6726,6 +6702,7 @@ namespace Oxide.Plugins
                 if (itemContainerAdapter != null)
                 {
                     _backpackManager.UnregisterContainer(itemContainerAdapter.ItemContainer);
+
                 }
 
                 containerAdapter.Kill();
