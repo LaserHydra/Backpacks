@@ -1144,15 +1144,6 @@ namespace Oxide.Plugins
             }
         }
 
-        private static ItemContainer CreateItemContainer(int capacity, StorageContainer entityOwner)
-        {
-            var container = new ItemContainer();
-            container.ServerInitialize(null, capacity);
-            container.GiveUID();
-            container.entityOwner = entityOwner;
-            return container;
-        }
-
         private static ItemContainer GetRootContainer(Item item)
         {
             var container = item.parent;
