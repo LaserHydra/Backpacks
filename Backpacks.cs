@@ -13,6 +13,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using Network;
 using Newtonsoft.Json.Converters;
@@ -72,6 +73,8 @@ namespace Oxide.Plugins
         private StoredData _storedData;
         private readonly HashSet<ulong> _uiViewers = new HashSet<ulong>();
         private Coroutine _saveRoutine;
+
+        private static FieldInfo _groundWatchFailsField = typeof(GroundWatch).GetField("fails", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
 
         [PluginReference]
         private readonly Plugin Arena, BackpackButton, EventManager, ItemRetriever;
@@ -6702,11 +6705,19 @@ namespace Oxide.Plugins
 
                 containerEntity.SetFlag(BaseEntity.Flags.Disabled, true);
 
-                UnityEngine.Object.DestroyImmediate(containerEntity.GetComponent<DestroyOnGroundMissing>());
-                UnityEngine.Object.DestroyImmediate(containerEntity.GetComponent<GroundWatch>());
+                var groundWatch = containerEntity.GetComponent<GroundWatch>();
+                if (groundWatch != null)
+                {
+                    UnityEngine.Object.Destroy(groundWatch);
+                    _groundWatchFailsField?.SetValue(groundWatch, ObjectCache.Get(int.MinValue));
+                }
+
+                UnityEngine.Object.Destroy(containerEntity.GetComponent<DestroyOnGroundMissing>());
 
                 foreach (var collider in containerEntity.GetComponentsInChildren<Collider>())
-                    UnityEngine.Object.DestroyImmediate(collider);
+                {
+                    UnityEngine.Object.Destroy(collider);
+                }
 
                 containerEntity.CancelInvoke(containerEntity.DecayTick);
 
