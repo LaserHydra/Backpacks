@@ -36,8 +36,8 @@ namespace Oxide.Plugins
 
         private const int MinRows = 1;
         private const int MaxRows = 8;
-        private const int MinCapacity = 1;
-        private const int MaxCapacity = 48;
+        private const int MinContainerCapacity = 1;
+        private const int MaxContainerCapacity = 48;
         private const int SlotsPerRow = 6;
         private const int ReclaimEntryMaxSize = 40;
         private const float StandardLootDelay = 0.1f;
@@ -50,6 +50,7 @@ namespace Oxide.Plugins
         private const string GatherPermission = "backpacks.gather";
         private const string RetrievePermission = "backpacks.retrieve";
         private const string AdminPermission = "backpacks.admin";
+        private const string CapacityProfilePermission = "backpacks.size.profile";
         private const string KeepOnDeathPermission = "backpacks.keepondeath";
         private const string LegacyKeepOnWipePermission = "backpacks.keeponwipe";
         private const string LegacyNoBlacklistPermission = "backpacks.noblacklist";
@@ -60,7 +61,7 @@ namespace Oxide.Plugins
 
         private const int SaddleBagItemId = 1400460850;
 
-        private readonly BackpackCapacityManager _backpackCapacityManager;
+        private readonly CapacityManager _capacityManager;
         private readonly BackpackManager _backpackManager;
         private readonly SubscriberManager _subscriberManager = new SubscriberManager();
 
@@ -70,7 +71,8 @@ namespace Oxide.Plugins
 
         private readonly ApiInstance _api;
         private Configuration _config;
-        private StoredData _storedData;
+        private PreferencesData _preferencesData;
+        private CapacityData _capacityData;
         private readonly HashSet<ulong> _uiViewers = new HashSet<ulong>();
         private Coroutine _saveRoutine;
 
@@ -81,8 +83,8 @@ namespace Oxide.Plugins
 
         public Backpacks()
         {
-            _backpackCapacityManager = new BackpackCapacityManager(this);
             _backpackManager = new BackpackManager(this);
+            _capacityManager = new CapacityManager(this, _backpackManager);
             _api = new ApiInstance(this);
         }
 
@@ -102,13 +104,13 @@ namespace Oxide.Plugins
 
             _config.Init(this);
 
-            _maxCapacityPerPage = Mathf.Clamp(_config.BackpackSize.MaxCapacityPerPage, MinCapacity, MaxCapacity);
-
-            _backpackCapacityManager.Init(_config);
+            _maxCapacityPerPage = Mathf.Clamp(_config.BackpackSize.MaxCapacityPerPage, MinContainerCapacity, MaxContainerCapacity);
 
             PoolUtils.ResizePools();
 
-            _storedData = StoredData.Load();
+            _preferencesData = PreferencesData.Load();
+            _capacityData = CapacityData.Exists() ? CapacityData.Load() : new CapacityData();
+            _capacityManager.Init(_config, _capacityData);
 
             Unsubscribe(nameof(OnPlayerSleep));
             Unsubscribe(nameof(OnPlayerSleepEnded));
@@ -167,80 +169,90 @@ namespace Oxide.Plugins
 
         private void OnNewSave(string filename)
         {
-            if (!_config.ClearOnWipe.Enabled)
-                return;
-
-            _backpackManager.ClearCache();
-
-            IEnumerable<string> backpackFileNameList;
-            try
+            if (_config.BackpackSize.DynamicSize.Enabled)
             {
-                backpackFileNameList = Interface.Oxide.DataFileSystem.GetFiles(Name)
-                    .Select(fn => fn.Split(Path.DirectorySeparatorChar).Last()
-                        .Replace(".json", string.Empty));
-            }
-            catch (DirectoryNotFoundException)
-            {
-                // No backpacks to clear.
-                return;
+                _capacityData.Clear();
+                _capacityData.SaveIfChanged();
             }
 
-            var retainedDueToContents = 0;
-            var retainedDueToPreferences = 0;
-            var deletedBackpackFiles = 0;
-
-            foreach (var backpackFileName in backpackFileNameList)
+            if (_config.ClearOnWipe.Enabled)
             {
-                ulong userId;
-                if (!ulong.TryParse(backpackFileName, out userId))
-                    continue;
+                _backpackManager.ClearCache();
 
-                var backpack = _backpackManager.GetBackpackIfExists(userId);
-                if (backpack == null)
-                    continue;
-
-                backpack.EraseContents(_config.ClearOnWipe.GetForPlayer(backpackFileName));
-
-                // Only delete the backpack data file if it's empty and has no saved preferences.
-                if (backpack.HasItems || backpack.HasPreferences)
+                IEnumerable<string> backpackFileNameList;
+                try
                 {
-                    backpack.SaveIfChanged();
+                    backpackFileNameList = Interface.Oxide.DataFileSystem.GetFiles(Name)
+                        .Select(fn => fn.Split(Path.DirectorySeparatorChar).Last()
+                            .Replace(".json", string.Empty));
+                }
+                catch (DirectoryNotFoundException)
+                {
+                    // No backpacks to clear.
+                    return;
+                }
 
-                    if (backpack.HasItems)
+                var retainedDueToContents = 0;
+                var retainedDueToPreferences = 0;
+                var deletedBackpackFiles = 0;
+
+                foreach (var backpackFileName in backpackFileNameList)
+                {
+                    ulong userId;
+                    if (!ulong.TryParse(backpackFileName, out userId))
+                        continue;
+
+                    var backpack = _backpackManager.GetBackpackIfExists(userId);
+                    if (backpack == null)
+                        continue;
+
+                    backpack.EraseContents(_config.ClearOnWipe.GetForPlayer(backpackFileName));
+
+                    // Only delete the backpack data file if it's empty and has no saved preferences.
+                    if (backpack.HasItems || backpack.HasPreferences)
                     {
-                        retainedDueToContents++;
+                        backpack.SaveIfChanged();
+
+                        if (backpack.HasItems)
+                        {
+                            retainedDueToContents++;
+                        }
+                        else if (backpack.HasPreferences)
+                        {
+                            retainedDueToPreferences++;
+                        }
                     }
-                    else if (backpack.HasPreferences)
+                    else
                     {
-                        retainedDueToPreferences++;
+                        _backpackManager.DeleteBackpackFile(userId);
+                        deletedBackpackFiles++;
                     }
                 }
-                else
+
+                _backpackManager.ClearCache();
+
+                var logMessage =
+                    "New save created. Backpacks were wiped according to the config and player permissions.";
+                if (deletedBackpackFiles > 0)
                 {
-                    _backpackManager.DeleteBackpackFile(userId);
-                    deletedBackpackFiles++;
+                    logMessage +=
+                        $"\n- {deletedBackpackFiles} file(s) were deleted because those backpacks are now empty.";
                 }
+
+                if (retainedDueToContents > 0)
+                {
+                    logMessage +=
+                        $"\n- {retainedDueToContents} file(s) were retained because those backpacks were not empty after applying the player's wipe ruleset.";
+                }
+
+                if (retainedDueToPreferences > 0)
+                {
+                    logMessage +=
+                        $"\n- {retainedDueToPreferences} file(s) were retained even though those backpacks are empty because they contain player gather/retrieve preferences.";
+                }
+
+                LogWarning(logMessage);
             }
-
-            _backpackManager.ClearCache();
-
-            var logMessage = "New save created. Backpacks were wiped according to the config and player permissions.";
-            if (deletedBackpackFiles > 0)
-            {
-                logMessage += $"\n- {deletedBackpackFiles} file(s) were deleted because those backpacks are now empty.";
-            }
-
-            if (retainedDueToContents > 0)
-            {
-                logMessage += $"\n- {retainedDueToContents} file(s) were retained because those backpacks were not empty after applying the player's wipe ruleset.";
-            }
-
-            if (retainedDueToPreferences > 0)
-            {
-                logMessage += $"\n- {retainedDueToPreferences} file(s) were retained even though those backpacks are empty because they contain player gather/retrieve preferences.";
-            }
-
-            LogWarning(logMessage);
         }
 
         private void OnServerSave()
@@ -268,7 +280,7 @@ namespace Oxide.Plugins
 
         private void OnPlayerDisconnected(BasePlayer player)
         {
-            _backpackCapacityManager.ForgetCachedCapacity(player.userID);
+            _capacityManager.ForgetCachedCapacity(player.userID);
             _backpackManager.GetBackpackIfCached(player.userID)?.NetworkController?.Unsubscribe(player);
         }
 
@@ -303,7 +315,7 @@ namespace Oxide.Plugins
             if (!perm.StartsWith("backpacks"))
                 return;
 
-            if (perm.StartsWith(SizePermission) || perm.StartsWith(UsagePermission))
+            if (perm.StartsWith(SizePermission) || perm.StartsWith(UsagePermission) || perm.StartsWith(CapacityProfilePermission))
             {
                 _backpackManager.HandleCapacityPermissionChangedForGroup(groupName);
             }
@@ -339,7 +351,7 @@ namespace Oxide.Plugins
             if (!perm.StartsWith("backpacks"))
                 return;
 
-            if (perm.StartsWith(SizePermission) || perm.StartsWith(UsagePermission))
+            if (perm.StartsWith(SizePermission) || perm.StartsWith(UsagePermission) || perm.StartsWith(CapacityProfilePermission))
             {
                 _backpackManager.HandleCapacityPermissionChangedForUser(userId);
             }
@@ -453,7 +465,12 @@ namespace Oxide.Plugins
                     [nameof(DropBackpack)] = new Func<BasePlayer, List<DroppedItemContainer>, DroppedItemContainer>(DropBackpack),
                     [nameof(GetBackpackOwnerId)] = new Func<ItemContainer, ulong>(GetBackpackOwnerId),
                     [nameof(IsBackpackLoaded)] = new Func<BasePlayer, bool>(IsBackpackLoaded),
+                    [nameof(IsDynamicCapacityEnabled)] = new Func<bool>(IsDynamicCapacityEnabled),
                     [nameof(GetBackpackCapacity)] = new Func<BasePlayer, int>(GetBackpackCapacity),
+                    [nameof(GetBackpackInitialCapacity)] = new Func<BasePlayer, int>(GetBackpackInitialCapacity),
+                    [nameof(GetBackpackMaxCapacity)] = new Func<BasePlayer, int>(GetBackpackMaxCapacity),
+                    [nameof(AddBackpackCapacity)] = new Func<BasePlayer, int, int>(AddBackpackCapacity),
+                    [nameof(SetBackpackCapacity)] = new Func<BasePlayer, int, int>(SetBackpackCapacity),
                     [nameof(IsBackpackGathering)] = new Func<BasePlayer, bool>(IsBackpackGathering),
                     [nameof(IsBackpackRetrieving)] = new Func<BasePlayer, bool>(IsBackpackRetrieving),
                     [nameof(GetBackpackContainer)] = new Func<ulong, ItemContainer>(GetBackpackContainer),
@@ -518,9 +535,34 @@ namespace Oxide.Plugins
                 return _backpackManager.GetBackpackIfCached(player.userID) != null;
             }
 
+            public bool IsDynamicCapacityEnabled()
+            {
+                return _plugin._config.BackpackSize.DynamicSize.Enabled;
+            }
+
             public int GetBackpackCapacity(BasePlayer player)
             {
-                return _plugin._backpackCapacityManager.GetCapacity(player.userID, player.UserIDString);
+                return _plugin._capacityManager.GetCapacity(player.userID, player.UserIDString);
+            }
+
+            public int GetBackpackInitialCapacity(BasePlayer player)
+            {
+                return _plugin._capacityManager.GetInitialCapacity(player.userID, player.UserIDString);
+            }
+
+            public int GetBackpackMaxCapacity(BasePlayer player)
+            {
+                return _plugin._capacityManager.GetMaxCapacity(player.userID, player.UserIDString);
+            }
+
+            public int AddBackpackCapacity(BasePlayer player, int amount)
+            {
+                return _plugin._capacityManager.AddCapacity(player, amount);
+            }
+
+            public int SetBackpackCapacity(BasePlayer player, int capacity)
+            {
+                return _plugin._capacityManager.SetCapacity(player, capacity);
             }
 
             public bool IsBackpackGathering(BasePlayer player)
@@ -648,10 +690,40 @@ namespace Oxide.Plugins
             return ObjectCache.Get(_api.IsBackpackLoaded(player));
         }
 
+        [HookMethod(nameof(API_IsDynamicCapacityEnabled))]
+        public object API_IsDynamicCapacityEnabled(BasePlayer player)
+        {
+            return ObjectCache.Get(_api.IsDynamicCapacityEnabled());
+        }
+
         [HookMethod(nameof(API_GetBackpackCapacity))]
         public object API_GetBackpackCapacity(BasePlayer player)
         {
             return ObjectCache.Get(_api.GetBackpackCapacity(player));
+        }
+
+        [HookMethod(nameof(API_GetBackpackInitialCapacity))]
+        public object API_GetBackpackInitialCapacity(BasePlayer player)
+        {
+            return ObjectCache.Get(_api.GetBackpackInitialCapacity(player));
+        }
+
+        [HookMethod(nameof(API_GetBackpackMaxCapacity))]
+        public object API_GetBackpackMaxCapacity(BasePlayer player)
+        {
+            return ObjectCache.Get(_api.GetBackpackMaxCapacity(player));
+        }
+
+        [HookMethod(nameof(API_AddBackpackCapacity))]
+        public object API_AddBackpackCapacity(BasePlayer player, int amount)
+        {
+            return ObjectCache.Get(_api.AddBackpackCapacity(player, amount));
+        }
+
+        [HookMethod(nameof(API_SetBackpackCapacity))]
+        public object API_SetBackpackCapacity(BasePlayer player, int capacity)
+        {
+            return ObjectCache.Get(_api.SetBackpackCapacity(player, capacity));
         }
 
         [HookMethod(nameof(API_IsBackpackGathering))]
@@ -908,29 +980,68 @@ namespace Oxide.Plugins
                 return;
             }
 
-            string failureMessage;
-            var targetPlayer = FindPlayer(player, args[0], out failureMessage);
-
-            if (targetPlayer == null)
-            {
-                player.Reply(failureMessage);
+            ulong targetPlayerId;
+            string targetPlayerIdString;
+            if (!VerifyTargetPlayer(player, args[0], out targetPlayerId, out targetPlayerIdString))
                 return;
-            }
-
-            var targetBasePlayer = targetPlayer.Object as BasePlayer;
-            var desiredOwnerId = targetBasePlayer?.userID ?? ulong.Parse(targetPlayer.Id);
 
             OpenBackpack(
                 basePlayer,
                 IsKeyBindArg(args.LastOrDefault()),
                 ParsePageArg(args.ElementAtOrDefault(1)),
-                desiredOwnerId: desiredOwnerId
+                desiredOwnerId: targetPlayerId
             );
         }
 
         // Alias for older versions of Player Administration (which should ideally not be calling this method directly).
         private void ViewBackpack(BasePlayer player, string cmd, string[] args) =>
             ViewBackpackCommand(player.IPlayer, cmd, args);
+
+        [Command("backpack.addcapacity")]
+        private void AddBackpackCapacityCommand(IPlayer player, string cmd, string[] args)
+        {
+            if (!VerifyHasPermission(player, AdminPermission))
+                return;
+
+            int amount;
+            if (args.Length < 2 || !int.TryParse(args[1], out amount))
+            {
+                ReplyToPlayer(player, LangEntry.BackpackCapacitySyntax, cmd);
+                return;
+            }
+
+            ulong targetPlayerId;
+            string targetPlayerIdString;
+            if (!VerifyTargetPlayer(player, args[0], out targetPlayerId, out targetPlayerIdString)
+                || !VerifyDynamicCapacityEnabled(player, targetPlayerIdString))
+                return;
+
+            var newCapacity = _capacityManager.AddCapacity(targetPlayerId, targetPlayerIdString, amount);
+            ReplyToPlayer(player, LangEntry.ChangeCapacitySuccess, targetPlayerId, newCapacity);
+        }
+
+        [Command("backpack.setcapacity")]
+        private void SetBackpackCapacityCommand(IPlayer player, string cmd, string[] args)
+        {
+            if (!VerifyHasPermission(player, AdminPermission))
+                return;
+
+            int amount;
+            if (args.Length < 2 || !int.TryParse(args[1], out amount))
+            {
+                ReplyToPlayer(player, LangEntry.BackpackCapacitySyntax, cmd);
+                return;
+            }
+
+            ulong targetPlayerId;
+            string targetPlayerIdString;
+            if (!VerifyTargetPlayer(player, args[0], out targetPlayerId, out targetPlayerIdString)
+                || !VerifyDynamicCapacityEnabled(player, targetPlayerIdString))
+                return;
+
+            var newCapacity = _capacityManager.SetCapacity(targetPlayerId, targetPlayerIdString, amount);
+            ReplyToPlayer(player, LangEntry.ChangeCapacitySuccess, targetPlayerId, newCapacity);
+        }
 
         private void ToggleBackpackGUICommand(IPlayer player, string cmd, string[] args)
         {
@@ -939,7 +1050,7 @@ namespace Oxide.Plugins
                 || !VerifyHasPermission(player, GUIPermission))
                 return;
 
-            var enabledNow = _storedData.ToggleGuiButtonPreference(basePlayer.userID, _config.GUI.EnabledByDefault);
+            var enabledNow = _preferencesData.ToggleGuiButtonPreference(basePlayer.userID, _config.GUI.EnabledByDefault);
             if (enabledNow)
             {
                 MaybeCreateButtonUi(basePlayer);
@@ -1270,7 +1381,10 @@ namespace Oxide.Plugins
 
         private IEnumerator SaveRoutine(bool async, bool keepInUseBackpacks)
         {
-            if (_storedData.SaveIfChanged() && async)
+            if (_preferencesData.SaveIfChanged() && async)
+                yield return null;
+
+            if (_capacityData.SaveIfChanged() && async)
                 yield return null;
 
             yield return _backpackManager.SaveAllAndKill(async, keepInUseBackpacks);
@@ -1387,7 +1501,7 @@ namespace Oxide.Plugins
 
         private bool ShouldDisplayGuiButton(BasePlayer player)
         {
-            return _storedData.GetGuiButtonPreference(player.userID)
+            return _preferencesData.GetGuiButtonPreference(player.userID)
                 ?? _config.GUI.EnabledByDefault;
         }
 
@@ -1446,6 +1560,24 @@ namespace Oxide.Plugins
             }
 
             basePlayer = player.Object as BasePlayer;
+            return true;
+        }
+
+        private bool VerifyTargetPlayer(IPlayer requester, string playerArg, out ulong userId, out string userIdString)
+        {
+            string failureMessage;
+            var targetPlayer = FindPlayer(requester, playerArg, out failureMessage);
+
+            if (targetPlayer == null)
+            {
+                requester.Reply(failureMessage);
+                userId = 0;
+                userIdString = null;
+                return false;
+            }
+
+            userId = (targetPlayer.Object as BasePlayer)?.userID ?? ulong.Parse(targetPlayer.Id);
+            userIdString = targetPlayer.Id;
             return true;
         }
 
@@ -1526,6 +1658,15 @@ namespace Oxide.Plugins
                     return true;
             }
 
+            return false;
+        }
+
+        private bool VerifyDynamicCapacityEnabled(IPlayer player, string targetPlayerIdString)
+        {
+            if (_config.BackpackSize.DynamicSize.Enabled)
+                return true;
+
+            ReplyToPlayer(player, LangEntry.DynamicCapacityNotEnabled, targetPlayerIdString);
             return false;
         }
 
@@ -3612,7 +3753,7 @@ namespace Oxide.Plugins
 
         #region Backpack Capacity Manager
 
-        private class BackpackCapacityManager
+        private class CapacityManager
         {
             private class BackpackSize
             {
@@ -3626,19 +3767,51 @@ namespace Oxide.Plugins
                 }
             }
 
-            private readonly Backpacks _plugin;
-            private Configuration _config;
-            private BackpackSize[] _sortedBackpackSizes;
-            private readonly Dictionary<ulong, int> _cachedPlayerBackpackSizes = new Dictionary<ulong, int>();
-
-            public BackpackCapacityManager(Backpacks plugin)
+            public struct CapacityInfo
             {
-                _plugin = plugin;
+                public static implicit operator int(CapacityInfo capacityInfo) => capacityInfo.Current;
+
+                public int Initial;
+                public int Current;
+                public int Max;
+
+                public CapacityInfo(int capacity)
+                {
+                    Initial = capacity;
+                    Current = capacity;
+                    Max = capacity;
+                }
+
+                public CapacityInfo SetCapacity(int capacity)
+                {
+                    Current = Mathf.Clamp(capacity, Initial, Max);
+                    return this;
+                }
+
+                public CapacityInfo AddCapacity(int amount)
+                {
+                    SetCapacity(Current + amount);
+                    return this;
+                }
             }
 
-            public void Init(Configuration config)
+            private readonly Backpacks _plugin;
+            private Configuration _config;
+            private BackpackManager _backpackManager;
+            private CapacityData _capacityData;
+            private BackpackSize[] _sortedBackpackSizes;
+            private readonly Dictionary<ulong, CapacityInfo> _cachedPlayerCapacityInfo = new Dictionary<ulong, CapacityInfo>();
+
+            public CapacityManager(Backpacks plugin, BackpackManager backpackManager)
+            {
+                _plugin = plugin;
+                _backpackManager = backpackManager;
+            }
+
+            public void Init(Configuration config, CapacityData capacityData)
             {
                 _config = config;
+                _capacityData = capacityData;
 
                 var backpackSizeList = new List<BackpackSize>();
 
@@ -3672,25 +3845,72 @@ namespace Oxide.Plugins
 
             public void ForgetCachedCapacity(ulong userId)
             {
-                _cachedPlayerBackpackSizes.Remove(userId);
+                _cachedPlayerCapacityInfo.Remove(userId);
             }
 
             public int GetCapacity(ulong userId, string userIdString)
             {
-                int capacity;
-                if (_cachedPlayerBackpackSizes.TryGetValue(userId, out capacity))
-                    return capacity;
+                return GetCapacityInfo(userId, userIdString).Current;
+            }
 
-                capacity = DetermineCapacityFromPermission(userIdString);
-                _cachedPlayerBackpackSizes[userId] = capacity;
-                return capacity;
+            public int GetInitialCapacity(ulong userId, string userIdString)
+            {
+                return GetCapacityInfo(userId, userIdString).Initial;
+            }
+
+            public int GetMaxCapacity(ulong userId, string userIdString)
+            {
+                return GetCapacityInfo(userId, userIdString).Max;
+            }
+
+            public int SetCapacity(ulong userId, string userIdString, int amount)
+            {
+                if (!_config.BackpackSize.DynamicSize.Enabled)
+                    throw new InvalidOperationException("Cannot set capacity because dynamic capacity is not enabled in the config");
+
+                return UpdateCapacity(userId, DetermineCapacityInfo(userId, userIdString).SetCapacity(amount));
+            }
+
+            public int SetCapacity(BasePlayer player, int amount)
+            {
+                return SetCapacity(player.userID, player.UserIDString, amount);
+            }
+
+            public int AddCapacity(ulong userId, string userIdString, int amount)
+            {
+                if (!_config.BackpackSize.DynamicSize.Enabled)
+                    throw new InvalidOperationException("Cannot add capacity because dynamic capacity is not enabled in the config");
+
+                return UpdateCapacity(userId, DetermineCapacityInfo(userId, userIdString).AddCapacity(amount));
+            }
+
+            public int AddCapacity(BasePlayer player, int amount)
+            {
+                return AddCapacity(player.userID, player.UserIDString, amount);
+            }
+
+            private CapacityInfo UpdateCapacity(ulong userId, CapacityInfo capacityInfo)
+            {
+                _cachedPlayerCapacityInfo[userId] = capacityInfo;
+                _capacityData.SetPlayerCapacity(userId, capacityInfo.Current);
+                _backpackManager.GetBackpackIfCached(userId)?.SetCapacity(capacityInfo.Current);
+                return capacityInfo;
+            }
+
+            private CapacityInfo GetCapacityInfo(ulong userId, string userIdString)
+            {
+                CapacityInfo capacityInfo;
+                if (!_cachedPlayerCapacityInfo.TryGetValue(userId, out capacityInfo))
+                {
+                    capacityInfo = DetermineCapacityInfo(userId, userIdString);
+                    _cachedPlayerCapacityInfo[userId] = capacityInfo;
+                }
+
+                return capacityInfo;
             }
 
             private int DetermineCapacityFromPermission(string userIdString)
             {
-                if (!_plugin.permission.UserHasPermission(userIdString, UsagePermission))
-                    return 0;
-
                 for (var i = _sortedBackpackSizes.Length - 1; i >= 0; i--)
                 {
                     var backpackSize = _sortedBackpackSizes[i];
@@ -3699,6 +3919,32 @@ namespace Oxide.Plugins
                 }
 
                 return _config.BackpackSize.DefaultSize;
+            }
+
+            private CapacityInfo DetermineCapacityInfo(ulong userId, string userIdString)
+            {
+                if (!_plugin.permission.UserHasPermission(userIdString, UsagePermission))
+                    return new CapacityInfo(0);
+
+                if (_config.BackpackSize.DynamicSize.Enabled)
+                {
+                    var capacityProfile = _config.BackpackSize.DynamicSize.GetPlayerProfile(userIdString);
+                    if (capacityProfile != null)
+                    {
+                        var max = capacityProfile.MaxCapacity;
+                        var initial = Math.Min(capacityProfile.InitialCapacity, max);
+                        var current = Mathf.Clamp(_capacityData?.GetPlayerCapacity(userId) ?? initial, initial, max);
+
+                        return new CapacityInfo
+                        {
+                            Initial = initial,
+                            Current = current,
+                            Max = max,
+                        };
+                    }
+                }
+
+                return new CapacityInfo(DetermineCapacityFromPermission(userIdString));
             }
         }
 
@@ -3730,7 +3976,7 @@ namespace Oxide.Plugins
                     if (!_plugin.permission.UserHasGroup(backpack.OwnerIdString, groupName))
                         continue;
 
-                    _plugin._backpackCapacityManager.ForgetCachedCapacity(backpack.OwnerId);
+                    _plugin._capacityManager.ForgetCachedCapacity(backpack.OwnerId);
                     backpack.SetFlag(Backpack.Flag.CapacityCached, false);
                 }
             }
@@ -3741,7 +3987,7 @@ namespace Oxide.Plugins
                 if (backpack == null)
                     return;
 
-                _plugin._backpackCapacityManager.ForgetCachedCapacity(backpack.OwnerId);
+                _plugin._capacityManager.ForgetCachedCapacity(backpack.OwnerId);
                 backpack.SetFlag(Backpack.Flag.CapacityCached, false);
             }
 
@@ -3803,7 +4049,7 @@ namespace Oxide.Plugins
                 if (backpack == null)
                     return;
 
-                _plugin._backpackCapacityManager.ForgetCachedCapacity(backpack.OwnerId);
+                _plugin._capacityManager.ForgetCachedCapacity(backpack.OwnerId);
                 backpack.SetFlag(Backpack.Flag.CapacityCached, false);
                 backpack.SetFlag(Backpack.Flag.RestrictionsCached, false);
                 backpack.SetFlag(Backpack.Flag.GatherCached, false);
@@ -5402,7 +5648,7 @@ namespace Oxide.Plugins
                 {
                     if (!HasFlag(Flag.CapacityCached))
                     {
-                        _allowedCapacity.Capacity = Math.Max(MinCapacity, Plugin._backpackCapacityManager.GetCapacity(OwnerId, OwnerIdString));
+                        _allowedCapacity.Capacity = Math.Max(MinContainerCapacity, Plugin._capacityManager.GetCapacity(OwnerId, OwnerIdString));
                         SetFlag(Flag.CapacityCached, true);
                     }
 
@@ -5649,6 +5895,11 @@ namespace Oxide.Plugins
                 }
             }
 
+            public void SetCapacity(int amount)
+            {
+                _allowedCapacity.Capacity = amount;
+            }
+
             public bool IsRetrievingFromPage(int pageIndex)
             {
                 var flag = 1 << pageIndex;
@@ -5659,7 +5910,7 @@ namespace Oxide.Plugins
             {
                 var wasPreviouslyRetrieving = IsRetrieving;
                 SetRetrieveFromPage(pageIndex, !IsRetrievingFromPage(pageIndex));
-                MaybeCreateContainerUi(player,  AllowedCapacity.PageCount, pageIndex, EnsurePage(pageIndex).Capacity);
+                MaybeCreateContainerUi(player, AllowedCapacity.PageCount, pageIndex, EnsurePage(pageIndex).Capacity);
 
                 var isNowRetrieving = IsRetrieving;
                 if (isNowRetrieving != wasPreviouslyRetrieving)
@@ -6282,7 +6533,7 @@ namespace Oxide.Plugins
 
                     _rejectedItems.Clear();
                 }
-                
+
             }
 
             public string SerializeContentsAsJson()
@@ -6538,7 +6789,7 @@ namespace Oxide.Plugins
 
                 ActualCapacity = AllowedCapacity;
             }
-            
+
             private StorageContainer CreateContainerForPage(int page, int capacity)
             {
                 var storageContainer = SpawnStorageContainer(capacity);
@@ -7368,22 +7619,46 @@ namespace Oxide.Plugins
 
         #endregion
 
-        #region Stored Data
+        #region Data
 
         [JsonObject(MemberSerialization.OptIn)]
-        private class StoredData
+        private abstract class BaseData
         {
-            public static StoredData Load()
+            [JsonIgnore]
+            protected abstract string _fileName { get; }
+
+            [JsonIgnore]
+            protected bool _dirty;
+
+            public bool SaveIfChanged()
             {
-                var data = Interface.Oxide.DataFileSystem.ReadObject<StoredData>(nameof(Backpacks));
+                if (!_dirty)
+                    return false;
+
+                Interface.Oxide.DataFileSystem.WriteObject(_fileName, this);
+                _dirty = false;
+                return true;
+            }
+        }
+
+        [JsonObject(MemberSerialization.OptIn)]
+        private class PreferencesData : BaseData
+        {
+            private const string FileName = nameof(Backpacks);
+
+            public static PreferencesData Load()
+            {
+                var data = Interface.Oxide.DataFileSystem.ReadObject<PreferencesData>(FileName);
                 if (data == null)
                 {
-                    LogWarning($"Data file {nameof(Backpacks)}.json is invalid. Creating new data file.");
-                    data = new StoredData { _dirty = true };
+                    data = new PreferencesData { _dirty = true };
                     data.SaveIfChanged();
                 }
+
                 return data;
             }
+
+            protected override string _fileName => FileName;
 
             [JsonProperty("PlayersWithDisabledGUI")]
             private HashSet<ulong> DeprecatedPlayersWithDisabledGUI
@@ -7400,9 +7675,6 @@ namespace Oxide.Plugins
             [JsonProperty("PlayerGuiPreferences")]
             private Dictionary<ulong, bool> EnabledGuiPreference = new Dictionary<ulong, bool>();
 
-            [JsonIgnore]
-            private bool _dirty;
-
             public bool? GetGuiButtonPreference(ulong userId)
             {
                 bool guiEnabled;
@@ -7418,15 +7690,69 @@ namespace Oxide.Plugins
                 _dirty = true;
                 return enabledNow;
             }
+        }
 
-            public bool SaveIfChanged()
+        #endregion
+
+        #region Capacity Data
+
+        [JsonObject(MemberSerialization.OptIn)]
+        private class CapacityData : BaseData
+        {
+            private static string FileName = $"{nameof(Backpacks)}Capacity";
+
+            public static bool Exists() => Interface.Oxide.DataFileSystem.ExistsDatafile(FileName);
+
+            public static CapacityData Load()
             {
-                if (!_dirty)
-                    return false;
+                var data = Interface.Oxide.DataFileSystem.ReadObject<CapacityData>(FileName);
+                if (data == null)
+                {
+                    data = new CapacityData { _dirty = true };
+                    data.SaveIfChanged();
+                }
 
-                Interface.Oxide.DataFileSystem.WriteObject(nameof(Backpacks), this);
-                _dirty = false;
-                return true;
+                return data;
+            }
+
+            protected override string _fileName => FileName;
+
+            [JsonProperty("PlayerCapacity")]
+            private Dictionary<ulong, int> _playerCapacity = new Dictionary<ulong, int>();
+
+            public int? GetPlayerCapacity(ulong userId)
+            {
+                int capacity;
+                return _playerCapacity.TryGetValue(userId, out capacity)
+                    ? capacity
+                    : (int?)null;
+            }
+
+            public void SetPlayerCapacity(ulong userId, int capacity)
+            {
+                int currentCapacity;
+                if (_playerCapacity.TryGetValue(userId, out currentCapacity) && currentCapacity == capacity)
+                    return;
+
+                _playerCapacity[userId] = capacity;
+                _dirty = true;
+            }
+
+            public void RemovePlayerCapacity(ulong userId)
+            {
+                if (_playerCapacity.Remove(userId))
+                {
+                    _dirty = true;
+                }
+            }
+
+            public void Clear()
+            {
+                if (_playerCapacity.Count == 0)
+                    return;
+
+                _playerCapacity.Clear();
+                _dirty = true;
             }
         }
 
@@ -7771,6 +8097,9 @@ namespace Oxide.Plugins
 
             [JsonProperty("Permission sizes")]
             public int[] PermissionSizes = { 6, 12, 18, 24, 30, 36, 42, 48, 96, 144 };
+
+            [JsonProperty("Dynamic Size (EXPERIMENTAL)")]
+            public DynamicCapacity DynamicSize = new DynamicCapacity();
         }
 
         [JsonObject(MemberSerialization.OptIn)]
@@ -7781,6 +8110,92 @@ namespace Oxide.Plugins
 
             [JsonProperty("Max page buttons to show")]
             public int MaxPageButtonsToShow = 8;
+        }
+
+        [JsonObject(MemberSerialization.OptIn)]
+        private class CapacityProfile
+        {
+            [JsonProperty("Permission suffix")]
+            public string PermissionSuffix;
+
+            [JsonProperty("Initial size")]
+            public int InitialCapacity;
+
+            [JsonProperty("Max size")]
+            public int MaxCapacity;
+
+            [JsonIgnore]
+            public string Permission { get; private set; }
+
+            public void Init(Backpacks plugin)
+            {
+                if (!string.IsNullOrWhiteSpace(PermissionSuffix))
+                {
+                    Permission = $"{CapacityProfilePermission}.{PermissionSuffix}";
+                    plugin.permission.RegisterPermission(Permission, plugin);
+                }
+            }
+        }
+
+        [JsonObject(MemberSerialization.OptIn)]
+        private class DynamicCapacity
+        {
+            [JsonProperty("Enabled")]
+            public bool Enabled;
+
+            [JsonProperty("Size profiles")]
+            public CapacityProfile[] CapacityProfiles =
+            {
+                new CapacityProfile
+                {
+                    PermissionSuffix = "6-48",
+                    InitialCapacity = 6,
+                    MaxCapacity = 48,
+                },
+                new CapacityProfile
+                {
+                    PermissionSuffix = "6-96",
+                    InitialCapacity = 6,
+                    MaxCapacity = 96,
+                },
+                new CapacityProfile
+                {
+                    PermissionSuffix = "6-144",
+                    InitialCapacity = 6,
+                    MaxCapacity = 144,
+                },
+            };
+
+            [JsonIgnore]
+            private Permission _permission;
+
+            public void Init(Backpacks plugin)
+            {
+                _permission = plugin.permission;
+
+                if (Enabled && CapacityProfiles != null)
+                {
+                    foreach (var capacityRuleset in CapacityProfiles)
+                    {
+                        capacityRuleset.Init(plugin);
+                    }
+                }
+            }
+
+            public CapacityProfile GetPlayerProfile(string userIdString)
+            {
+                if (!Enabled)
+                    return null;
+
+                for (var i = CapacityProfiles.Length - 1; i >= 0; i--)
+                {
+                    var ruleset = CapacityProfiles[i];
+                    if (ruleset.Permission != null && _permission.UserHasPermission(userIdString, ruleset.Permission))
+                        return ruleset;
+                }
+
+                return null;
+            }
         }
 
         [JsonObject(MemberSerialization.OptIn)]
@@ -7918,6 +8333,7 @@ namespace Oxide.Plugins
 
             public void Init(Backpacks plugin)
             {
+                BackpackSize.DynamicSize.Init(plugin);
                 ItemRestrictions.Init(plugin);
                 ClearOnWipe.Init(plugin);
             }
@@ -8088,6 +8504,9 @@ namespace Oxide.Plugins
             public static readonly LangEntry BackpackOverCapacity = new LangEntry("Backpack Over Capacity", "Your backpack was over capacity. Overflowing items were added to your inventory or dropped.");
             public static readonly LangEntry BlacklistedItemsRemoved = new LangEntry("Blacklisted Items Removed", "Your backpack contained blacklisted items. They have been added to your inventory or dropped.");
             public static readonly LangEntry BackpackFetchSyntax = new LangEntry("Backpack Fetch Syntax", "Syntax: backpack.fetch <item short name or id> <amount>");
+            public static readonly LangEntry BackpackCapacitySyntax = new LangEntry("Backpack Capacity Syntax", "Syntax: {0} <player> <capacity>");
+            public static readonly LangEntry DynamicCapacityNotEnabled = new LangEntry("Dynamic Size Not Enabled", "Cannot change backpack size for player {0} to {1} because dynamic size is not enabled in the config.");
+            public static readonly LangEntry ChangeCapacitySuccess = new LangEntry("Set Backpack Size Success", "Successfully changed backpack size for player {0} to {1}");
             public static readonly LangEntry InvalidItem = new LangEntry("Invalid Item", "Invalid Item Name or ID.");
             public static readonly LangEntry InvalidItemAmount = new LangEntry("Invalid Item Amount", "Item amount must be an integer greater than 0.");
             public static readonly LangEntry ItemNotInBackpack = new LangEntry("Item Not In Backpack", "Item \"{0}\" not found in backpack.");

@@ -32,7 +32,9 @@ To allow **all players** to view the backpack GUI button, run the following comm
 o.grant group default backpacks.gui
 ```
 
-Players can click that button to open their backpack. They can also run the `/backpackgui` chat command to hide or show the button. If you want to disable the button by default, so that players have to enable it explicitly, you may do so in the configuration.
+Players can click that button (next to their belt) to open and close their backpack. They can also run the `/backpackgui` chat command to hide or show the button. If you want to disable the button by default, so that players have to enable it explicitly, you may do so in the configuration.
+
+Alternatively, instead of enabling the GUI button in this plugin, consider using the [Backpack Button](https://umod.org/plugins/backpack-button) plugin for more advanced functionality.
 
 ## Commands
 
@@ -82,11 +84,40 @@ Additional permissions may be defined by simply adding them to the `Backpack siz
 
 **Note:** If a player is granted multiple size permissions, the highest will apply.
 
+### Dynamic size (ADVANCED / EXPERIMENTAL)
+
+If you want to allow players to upgrade the size of their backpack, it is possible to do so via the `backpacks.size.*` permissions above, by simply granting higher permissions as the player makes purchases or performs actions to earn the bigger size (you are responsible for using other plugins to grant and/or revoke permissions at the appropriate time). However, using permissions to determine backpack size is not the best fit for all types of servers, resulting in some example problems below.
+
+- If you want backpack size to be reset at the beginning of each wipe, you would need another plugin to reset permissions at that time.
+- If you want to allow players to increase their backpack size multiple ways, such as via a skill tree, via store purchases, via consumable items found and/or traded amongst players, that combination simply wouldn't be feasible because each upgrade source could override the others or have no effect if the permission granted corresponded to a smaller size than the player currently has.
+
+Dynamic backpack size attempts to solve these problems. Using dynamic size, you can define size profiles, which declare an initial size and max size. You assign size profiles to players via permissions. At the beginning of each wipe, each player's backpack size is reset to the initial size of their profile. Throughout a wipe, players can acquire size upgrades from various sources (i.e., other plugins) up to the max size declared in their profile. For example, if a player's size profile declared an initial size of 6, and a max size of 48, the player could incrementally acquire upgrades until they reach a size of 48, at which point, the backpack could no longer be upgraded.
+
+In order to get started with dynamic backpack size, set the `Dynamic Size (EXPERIMENTAL)` -> `Enabled` config option to `true` and reload the plugin. Then, grant one of the below permissions (or a new one that you define in the config)
+
+The following permissions come with the plugin's **default configuration**. Additional size profiles can be defined in the config, which will generate additional permissions..
+
+- `backpacks.size.profile.6-48` -- 6 to 48 slots
+- `backpacks.size.profile.6-96` -- 6 to 96 slots
+- `backpacks.size.profile.6-144` -- 6 to 144 slots
+
+**Important notes:**
+
+- If a player is granted multiple `backpacks.size.profile.*` permissions, the last will apply, according to the profile order in the config.
+- If a player is granted any `backpacks.size.profile.*` permissions, it will override the default backpack size from the config, as well as any `backpacks.size.<number>` permissions they have been granted because **size profiles take priority over all other configuration/permissions**.
+- This plugin does not currently offer built-in features to upgrade backpack capacity, so other plugins must be used for such use cases. Plugin developers can reference the API documentation below for details on how to query and modify backpack capacity. The notable API method names are below.
+  - `API_IsDynamicCapacityEnabled`
+  - `API_GetBackpackCapacity`
+  - `API_GetBackpackInitialCapacity`
+  - `API_GetBackpackMaxCapacity`
+  - `API_AddBackpackCapacity`
+  - `API_SetBackpackCapacity`
+
 ### Item restriction permissions
 
 If you want to allow backpacks of specific players or groups to accept different items than the default (`Item restrictions` -> `Default ruleset`), then you may do so via permissions. Each ruleset defined in the `Item restrictions` -> `Rulesets by permission` config option will cause the plugin to generate a permission of the format `backpacks.restrictions.<name>`. Granting that permission assigns that ruleset to the corresponding players or groups.
 
-The following permissions come with the plugin's **default configuration**.
+The following permissions come with the plugin's **default configuration**. Additional item restriction rulesets can be defined in the config, which will generate additional permissions.
 
 - `backpacks.restrictions.allowall` -- Allows all items in the player's backpack. Only useful if you have customized the default ruleset to restrict items.
 
@@ -96,7 +127,7 @@ The following permissions come with the plugin's **default configuration**.
 
 If you want to allow backpacks of specific players or groups to retain different items across wipes than the default (`Clear on wipe` > `Default ruleset`), then you may do so via permissions. Each ruleset defined in the `Clear on wipe` > `Rulesets by permission` config option will cause the plugin to generate a permission of the format `backpacks.keeponwipe.<name>`. Granting that permission assigns that ruleset to the corresponding players or groups.
 
-The following permissions come with the plugin's **default configuration**.
+The following permissions come with the plugin's **default configuration**. Additional keep-on-wipe rulesets can be defined in the config, which will generate additional permissions..
 
 - `backpacks.keeponwipe.all` -- Allows all items to be kept across wipes.
 
@@ -104,12 +135,17 @@ The following permissions come with the plugin's **default configuration**.
 
 ### Legacy permissions
 
+The following permissions are still supported by the plugin for backwards compatibility, but you are advised to use newer permissions instead.
+
 - `backpacks.use.1 - 8` -- Like `backpacks.size.*` but assigns the specified number of rows rather than number of slots.
   - These permissions will be generated when the `"Backpack size"` > `"Enable legacy backpacks.use.1-8 row permissions": true` config option is set, which will be automatically added to your config when upgrading from a previous version of the plugin, if you have the `"Backpack Size (1-8 Rows)"` config option set at that time.
+  - Recommended alternative: `backpacks.size.6` through `backpacks.size.48` (present in the default configuration, but might not exist depending on how you have modified the config)
 - `backpacks.noblacklist` -- Exempts players from item restrictions, allowing any item to be placed in their backpack.
   - This permission is present when the `"Item restrictions"` > `"Enable legacy noblacklist permission": true` config option is set, which will be automatically added to your config when upgrading from a previous version of the plugin, if you have the `"Use Whitelist (true/false)": true` or `"Use Blacklist (true/false)": true` config options set at that time.
+  - Recommended alternative: `backpacks.restrictions.allowall` (present in the default configuration, but might not exist depending on how you have modified the config)
 - `backpacks.keeponwipe` -- Exempts players from having their backpack content erased on map wipe.
   - This permission is present when the `"Clear on wipe"` > `"Enable legacy keeponwipe permission": true` config option is set, which will be automatically added to your config when upgrading from a previous version of the plugin, if you have the `"Clear Backpacks on Map-Wipe (true/false)": true` config option set at that time.
+  - Recommended alternative: `backpacks.keeponwipe.all` (present in the default configuration, but might not exist depending on how you have modified the config)
 
 ## Configuration
 
@@ -132,7 +168,27 @@ Default configuration:
       48,
       96,
       144
-    ]
+    ],
+    "Dynamic Size (EXPERIMENTAL)": {
+      "Enabled": false,
+      "Size profiles": [
+        {
+          "Permission suffix": "6-48",
+          "Initial size": 6,
+          "Max size": 48
+        },
+        {
+          "Permission suffix": "6-96",
+          "Initial size": 6,
+          "Max size": 96
+        },
+        {
+          "Permission suffix": "6-144",
+          "Initial size": 6,
+          "Max size": 144
+        }
+      ]
+    },
   },
   "Drop on Death (true/false)": true,
   "Erase on Death (true/false)": false,
@@ -218,17 +274,26 @@ Default configuration:
 ### Backpack size
 
 - `Backpack size`
-  - `Default size` (Default: `6`) -- Determines the capacity (in slots) of backpacks for players who have the `backpacks.use` permission. Players who have the `backpacks.size.<number>` permissions may have greater capacity.
+  - `Default size` (Default: `6`) -- Determines the capacity (in slots) of backpacks for players who have the `backpacks.use` permission.
+    - Note: Players who have `backpacks.size.<number>` permissions may have greater capacity.
+    - Note: Players who have `backpacks.size.profile.*` permissions may have different capacity.
   - `Max size per page` (Default: `48`, Max: `48`) -- Determines the capacity (in slots) per backpack page. For example, if you grant a player `60` backpack capacity, and set the max size per page to `48`, their backpack will have two pages: one page with `48` capacity, and another page with `12` capacity.
   - `Enable legacy backpacks.use.1-8 row permissions` (`true` or `false`; Default: `false`) -- Determines whether the `backpacks.use.1-8` permissions are registered by the plugin. When upgrading the plugin to 3.9+, if you have the `"Backpack Size (1-8 Rows)"` config option set, this option will be automatically enabled for backwards compatibility. Even if you are installing the plugin for the first time, there are valid uses cases to enable this option, such as if you use another plugin that manages those permissions. As of this writing, the XPerience and Backpack Upgrader plugins both use these permissions to allow players to increase capacity through a progression system, but that might have changed by the time you read this.
   - `Permission sizes` -- Each number in this list generates a permission of the format `backpacks.size.<number>`. Granting that permission to a player or group assigns that much capacity to their backpack. This is useful if you want some players to have more capacity than the above default. Note: If a player is granted multiple size permissions, the highest will apply.
+    - Note: These permissions are ignored for players who have `backpacks.size.profile.*` permissions.
+  - `Dynamic Size (EXPERIMENTAL)` -- Advanced feature for integration with other plugins. **Note: This feature is subject to change in future updates.** If you like the idea of this feature, please provide feedback on the uMod forums (click the "Help" button on the sidebar to access the Backpacks forums).
+    - `Enabled` (`true` or `false`; Default: `true`) -- While `true`, dynamic size is enabled, meaning any `backpacks.size.profile.*` permissions will be generated from the config and take effect. While `false`, dynamic size options are disabled, meaning `backpacks.size.profile.*` permissions will not be generated and will have no effect if previously granted to players.
+    - `Size profiles` -- Each entry in this list defines a size profile. When a size profile is assigned to a player via permissions, that player's backpack size is determined by the profile, overriding the default backpack size from the config and any `backpacks.size.<number>` permissions the player has been assigned.
+      - `Permission suffix` -- Determines the generated permission of format `backpacks.restrictions.<suffix>`.
+      - `Initial size` -- The initial size of the backpack. Other plugins can use the API to change the backpack's size, but not below this amount. The size is automatically reset to this value when the server is wiped.
+      - `Max size` -- The max size of the backpack. Other plugins can use the API to increase the backpack's size up to this amount.
 
 ### GUI Button
 
 - `GUI Button` -- Determines the display of the GUI button which players can click on to open and close their backpack.
-  - `Enabled` (`true` or `false`; Default: `true`) -- Determines whether the GUI button is enabled. If you don't intend to show the GUI button to any players, set this to `false` to improve performance. Disabling this will also unregister the `backpackgui` command so that another plugin can register it.
-  - `Enabled by default (for players with permission)` (`true` or `false`; Default: `true`) -- Determines whether the GUI button is shown for new players by default, if they have the `backpacks.gui` permission.
-  - `Skin Id` (Default: `0`) -- Determines the skin ID used to display the GUI button, as an alternative to the `Image` URL.
+  - `Enabled` (`true` or `false`; Default: `true`) -- Determines whether the GUI button is enabled. If you don't intend to show the GUI button to any players, set this to `false` to improve performance. Disabling this will also unregister the `backpackgui` command so that another plugin can use it.
+  - `Enabled by default (for players with permission)` (`true` or `false`; Default: `true`) -- Determines whether the GUI button is shown for new players by default, if they have the `backpacks.gui` permission. Note: Players can use the `backpackgui` command to personally toggle it on/off if they don't agree with the default you chose.
+  - `Skin Id` (Default: `0`) -- Determines the skin ID used to display the GUI button, as an alternative to the `Image` URL. While `0`, this has no effect.
   - `Image` (Default: `"https://i.imgur.com/CyF0QNV.png"`) -- Determines the URL of the image to display on the GUI button, as an alternative to `Skin Id`.
   - `Background Color` -- Default: `"0.969 0.922 0.882 0.035"`.
   - `GUI Button Position` -- Determines the position and size of the button.
@@ -440,7 +505,7 @@ Example rulesets:
   - Note: Even while this option is enabled, players with the `backpacks.keepondeath` permission will keep their backpack contents on death.
 - `Minimum Despawn Time (Seconds)` (Default: `300.0`) -- Determines the minimum time (in seconds) that dropped backpacks will be protected from despawning. If the backpack contents are moderately rare, as determined by vanilla Rust, the backpack may take longer to despawn than this duration.
 - `Softcore` -- Determines options for Softcore mode.
-  - `Reclaim Fraction` (Default: `0.5`, Min: `0.0`, Max: `1.0`) -- Determines the percentage of backpack items that are sent to the reclaim terminal when you die, if drop on death is enabled. Note: Items sent from your backpack to the reclaim terminal are not accessible at your corpse.
+  - `Reclaim Fraction` (Default: `0.5`, Min: `0.0`, Max: `1.0`) -- Determines the percentage of backpack items that are sent to the reclaim terminal when you die, if drop on death is enabled. Note: Items sent from your backpack to the reclaim terminal are **not** accessible at your corpse.
 
 ## Localization
 
@@ -469,17 +534,53 @@ Replace the `"GUI Button Position"` section of the plugin configuration with the
 
 ## Developer API
 
-### API_GetBackpackContainer
+### API_IsDynamicCapacityEnabled()
 
 ```csharp
-ItemContainer API_GetBackpackContainer(ulong backpackOwnerID)
+int API_IsDynamicCapacityEnabled()
 ```
 
-Returns a reference to the underlying `ItemContainer` of a player's backpack. Returns `null` if the player essentially has no backpack (no data file and no backpack in-memory).
+Returns `true` if dynamic capacity is enabled in the config, else returns `false`. This is useful for addon plugins that utilize dynamic capacity, as it allows them to print a warning in the server console informing the administrator that they will need to enable that config option in order to use dynamic capacity features provided by the addon plugin.
 
-Notes:
-- This will create the container entity if it doesn't exist. This can add load to the server, so it's recommended to use this API only if the other API methods do not meet your needs. For example, if you want to know only the quantity of an item in the player's backpack, you can use `API_GetBackpackItemAmount` which can count the items without creating the container.
-- You should avoid caching the container because several events may cause the backpack's underlying container to be replaced or deleted, which would make the cached reference useless.
+### API_GetBackpackCapacity
+
+```csharp
+int API_GetBackpackCapacity(BasePlayer player)
+```
+
+Returns the player's current backpack capacity.
+
+### API_GetBackpackInitialCapacity
+
+```csharp
+int API_GetBackpackInitialCapacity(BasePlayer player)
+```
+
+Returns the player's initial/minimum backpack capacity. If dynamic size is not enabled, or if the player does not have an assigned size profile, the return value will be simply the player's current backpack capacity.
+
+### API_GetBackpackMaxCapacity
+
+```csharp
+int API_GetBackpackMaxCapacity(BasePlayer player)
+```
+
+Returns the player's max backpack capacity. If dynamic size is not enabled, or if the player does not have an assigned size profile, the return value will be simply the player's current backpack capacity.
+
+### API_AddBackpackCapacity
+
+```csharp
+int API_AddBackpackCapacity(BasePlayer player, int amount)
+```
+
+Attempts to increase the player's backpack capacity by the specified amount, without going outside the range defined by the player's size profile (i.e., determined by their `backpacks.size.profile.*` permissions). A negative number can be used to decrease backpack capacity. If the player does not have a size profile assigned, this will have no effect. Returns the player's backpack capacity after the change has been applied.
+
+### API_SetBackpackCapacity
+
+```csharp
+int API_SetBackpackCapacity(BasePlayer player, int amount)
+```
+
+Attempts to set the player's backpack capacity to the specified amount, without going outside the range defined by the player's size profile (i.e., determined by their `backpacks.size.profile.*` permissions). If the player does not have a size profile assigned, this will have no effect. Returns the player's backpack capacity after the change has been applied.
 
 ### API_GetBackpackItemAmount
 
@@ -520,13 +621,29 @@ ulong API_GetBackpackOwnerId(ItemContainer container)
 - Returns the Steam ID of the backpack owner if the `ItemContainer` is a backpack.
 - Returns `0` if the `ItemContainer` is **not** a backpack.
 
-### API_GetExistingBackpacks
+### API_GetExistingBackpacks (DEPRECATED)
+
+**It is strongly advised that plugins do not use `API_GetExistingBackpacks` because a backpack can have multiple containers if it has multiple pages, and can have virtual representations of containers that have not yet been accessed.** If you think your plugin has a valid reason to access backpack containers, please open a support thread to discuss your use case.
 
 ```csharp
 Dictionary<ulong, ItemContainer> API_GetExistingBackpacks()
 ```
 
-Returns all backpack containers that are cached in the plugin's memory, keyed by the Steam IDs of the backpack owners. This was originally contributed so that item cleaner plugins could determine which items were in backpacks in order to ignore them. However, as of Backpacks v3.7.0, all item cleaner plugins should automatically be compatible if they verify that the container has a valid `entityOwner`.
+Returns all backpack containers that are cached in the plugin's memory, keyed by the Steam IDs of the backpack owners. This was originally contributed so that item cleaner plugins could determine which items were in backpacks in order to ignore them. However, as of Backpacks v3.7.0, all item cleaner plugins should automatically be compatible.
+
+### API_GetBackpackContainer (DEPRECATED)
+
+**It is strongly advised that plugins do not use `API_GetBackpackContainer` because a backpack can have multiple containers if it has multiple pages, and can have virtual representations of containers that have not yet been accessed.** If you think your plugin has a valid reason to access backpack containers, please open a support thread to discuss your use case.
+
+```csharp
+ItemContainer API_GetBackpackContainer(ulong backpackOwnerID)
+```
+
+Returns a reference to the underlying `ItemContainer` of a player's backpack. Returns `null` if the player essentially has no backpack (no data file and no backpack in-memory).
+
+Notes:
+- This will create the container entity if it doesn't exist. This can add load to the server, so it's recommended to use this API only if the other API methods do not meet your needs. For example, if you want to know only the quantity of an item in the player's backpack, you can use `API_GetBackpackItemAmount` which can count the items without creating the container.
+- You should avoid caching the container because several events may cause the backpack's underlying container to be replaced or deleted, which would make the cached reference useless.
 
 ## Developer Hooks
 
