@@ -827,7 +827,7 @@ namespace Oxide.Plugins
 
             if (args.Length < 2)
             {
-                player.Reply(GetMessage(player, "Backpack Fetch Syntax"));
+                ReplyToPlayer(player, LangEntry.BackpackFetchSyntax);
                 return;
             }
 
@@ -841,7 +841,7 @@ namespace Oxide.Plugins
             int desiredAmount;
             if (!int.TryParse(args[1], out desiredAmount) || desiredAmount < 1)
             {
-                player.Reply(GetMessage(player, "Invalid Item Amount"));
+                ReplyToPlayer(player, LangEntry.InvalidItemAmount);
                 return;
             }
 
@@ -853,7 +853,7 @@ namespace Oxide.Plugins
             var quantityInBackpack = backpack.SumItems(ref itemQuery);
             if (quantityInBackpack == 0)
             {
-                player.Reply(string.Format(GetMessage(player, "Item Not In Backpack"), itemLocalizedName));
+                ReplyToPlayer(player, LangEntry.ItemNotInBackpack, itemLocalizedName);
                 return;
             }
 
@@ -865,11 +865,11 @@ namespace Oxide.Plugins
             var amountTransferred = backpack.FetchItems(basePlayer, ref itemQuery, desiredAmount);
             if (amountTransferred <= 0)
             {
-                player.Reply(string.Format(GetMessage(player, "Fetch Failed"), itemLocalizedName));
+                ReplyToPlayer(player, LangEntry.FetchFailed, itemLocalizedName);
                 return;
             }
 
-            player.Reply(string.Format(GetMessage(player, "Items Fetched"), amountTransferred.ToString(), itemLocalizedName));
+            ReplyToPlayer(player, LangEntry.ItemsFetched, amountTransferred, itemLocalizedName);
         }
 
         [Command("backpack.erase")]
@@ -904,7 +904,7 @@ namespace Oxide.Plugins
 
             if (args.Length < 1)
             {
-                player.Reply(GetMessage(player, "View Backpack Syntax"));
+                ReplyToPlayer(player, LangEntry.ViewBackpackSyntax);
                 return;
             }
 
@@ -949,7 +949,7 @@ namespace Oxide.Plugins
                 DestroyButtonUi(basePlayer);
             }
 
-            player.Reply(GetMessage(player, "Toggled Backpack GUI"));
+            ReplyToPlayer(player, LangEntry.ToggledBackpackGUI);
         }
 
         [Command("backpack.setgathermode")]
@@ -968,20 +968,20 @@ namespace Oxide.Plugins
             GatherMode gatherMode;
             if (args.Length < 1 || !TryParseGatherMode(basePlayer, args[0], out gatherMode))
             {
-                player.Reply(string.Format(GetMessage(basePlayer, "Set Gather Syntax"), cmd, GetGatherModeDisplayOptions(basePlayer)));
+                ReplyToPlayer(player, LangEntry.SetGatherSyntax, cmd, GetGatherModeDisplayOptions(basePlayer));
                 return;
             }
 
             var oneBasedPageIndex = 1;
             if (args.Length >= 2 && !IsKeyBindArg(args[1]) && !int.TryParse(args[1], out oneBasedPageIndex))
             {
-                player.Reply(string.Format(GetMessage(basePlayer, "Set Gather Syntax"), cmd, GetGatherModeDisplayOptions(basePlayer)));
+                ReplyToPlayer(player, LangEntry.SetGatherSyntax, cmd, GetGatherModeDisplayOptions(basePlayer));
                 return;
             }
 
             if (oneBasedPageIndex < 1 || oneBasedPageIndex > backpack.PageCount)
             {
-                player.Reply(string.Format(GetMessage(basePlayer, "Page Out Of Range"), backpack.PageCount));
+                ReplyToPlayer(player, LangEntry.PageOutOfRange, backpack.PageCount);
                 return;
             }
 
@@ -990,7 +990,7 @@ namespace Oxide.Plugins
                 return;
 
             backpack.SetGatherModeForPage(basePlayer, pageIndex, gatherMode);
-            player.Reply(string.Format(GetMessage(basePlayer, "Set Gather Mode Success"), oneBasedPageIndex, GetGatherModeDisplayString(basePlayer, gatherMode)));
+            ReplyToPlayer(player, LangEntry.SetGatherModeSuccess, oneBasedPageIndex, GetGatherModeDisplayString(basePlayer, gatherMode));
         }
 
         [Command("backpack.ui.togglegather")]
@@ -1163,7 +1163,7 @@ namespace Oxide.Plugins
                     return true;
                 }
 
-                var localizedName = GetMessage(player, GetGatherModeDisplayString(player, gatherModeValue));
+                var localizedName = GetGatherModeDisplayString(player, gatherModeValue);
                 if (StringUtils.EqualsCaseInsensitive(arg, localizedName, StringComparison.InvariantCultureIgnoreCase))
                 {
                     gatherMode = gatherModeValue;
@@ -1402,7 +1402,7 @@ namespace Oxide.Plugins
 
                 if (player == null)
                 {
-                    failureMessage = string.Format(GetMessage(requester, "User ID not Found"), nameOrID);
+                    failureMessage = GetMessage(requester.Id, LangEntry.UserIDNotFound, nameOrID);
                 }
 
                 return player;
@@ -1424,7 +1424,7 @@ namespace Oxide.Plugins
             switch (foundPlayers.Count)
             {
                 case 0:
-                    failureMessage = string.Format(GetMessage(requester, "User Name not Found"), nameOrID);
+                    failureMessage = GetMessage(requester.Id, LangEntry.UserNameNotFound, nameOrID);
                     return null;
 
                 case 1:
@@ -1432,7 +1432,7 @@ namespace Oxide.Plugins
 
                 default:
                     string names = string.Join(", ", foundPlayers.Select(p => p.Name).ToArray());
-                    failureMessage = string.Format(GetMessage(requester, "Multiple Players Found"), names);
+                    failureMessage = GetMessage(requester.Id, LangEntry.MultiplePlayersFound, names);
                     return null;
             }
         }
@@ -1454,7 +1454,7 @@ namespace Oxide.Plugins
             if (player.HasPermission(perm))
                 return true;
 
-            player.Reply(GetMessage(player, "No Permission"));
+            ReplyToPlayer(player, LangEntry.NoPermission);
             return false;
         }
 
@@ -1468,7 +1468,7 @@ namespace Oxide.Plugins
             int itemID;
             if (!int.TryParse(itemArg, out itemID))
             {
-                player.Reply(GetMessage(player, "Invalid Item"));
+                ReplyToPlayer(player, LangEntry.InvalidItem);
                 return false;
             }
 
@@ -1476,7 +1476,7 @@ namespace Oxide.Plugins
             if (itemDefinition != null)
                 return true;
 
-            player.Reply(GetMessage(player, "Invalid Item"));
+            ReplyToPlayer(player, LangEntry.InvalidItem);
             return false;
         }
 
@@ -1490,7 +1490,7 @@ namespace Oxide.Plugins
         {
             if (IsPlayingEvent(looter))
             {
-                looter.ChatMessage(GetMessage(looter, "May Not Open Backpack In Event"));
+                looter.ChatMessage(GetMessage(looter.UserIDString, LangEntry.MayNotOpenBackpackInEvent));
                 return false;
             }
 
@@ -3228,11 +3228,11 @@ namespace Oxide.Plugins
                     {
                         new UiTextComponent
                         {
-                            Text = backpack.Plugin.GetMessage(player, gatherMode == GatherMode.All
-                                ? "UI - Gather All"
+                            Text = backpack.Plugin.GetMessage(player.UserIDString, gatherMode == GatherMode.All
+                                ? LangEntry.UIGatherAll
                                 : gatherMode == GatherMode.Existing
-                                    ? "UI - Gather Existing"
-                                    : "UI - Gather Off"),
+                                    ? LangEntry.UIGatherExisting
+                                    : LangEntry.UIGatherOff),
                             Color = gatherMode == GatherMode.None ? GreenButtonTextColor : BlueButtonTextColor,
                             TextAlign = TextAnchor.MiddleCenter,
                             FontSize = 12
@@ -3262,9 +3262,9 @@ namespace Oxide.Plugins
                     {
                         new UiTextComponent
                         {
-                            Text = backpack.Plugin.GetMessage(player, retrieve
-                                ? "UI - Retrieve On"
-                                : "UI - Retrieve Off"),
+                            Text = backpack.Plugin.GetMessage(player.UserIDString, retrieve
+                                ? LangEntry.UIRetrieveOn
+                                : LangEntry.UIRetrieveOff),
                             Color = retrieve ? BlueButtonTextColor : GreenButtonTextColor,
                             TextAlign = TextAnchor.MiddleCenter,
                             FontSize = 12
@@ -4695,7 +4695,7 @@ namespace Oxide.Plugins
                         var feedbackRecipient = _backpack.DetermineFeedbackRecipientIfEligible();
                         if ((object)feedbackRecipient != null)
                         {
-                            feedbackRecipient.ChatMessage(_plugin.GetMessage(feedbackRecipient, "Backpack Item Rejected"));
+                            feedbackRecipient.ChatMessage(_plugin.GetMessage(feedbackRecipient.UserIDString, LangEntry.BackpackItemRejected));
                             _plugin.SendEffect(feedbackRecipient, _config.ItemRestrictions.FeedbackEffect);
                             _backpack.TimeSinceLastFeedback = 0;
                         }
@@ -6429,7 +6429,7 @@ namespace Oxide.Plugins
                 BroadcastItemCountChanged();
                 SetFlag(Flag.Dirty, true);
 
-                receiver.ChatMessage(Plugin.GetMessage(receiver, "Backpack Items Rejected"));
+                receiver.ChatMessage(Plugin.GetMessage(receiver.UserIDString, LangEntry.BackpackItemsRejected));
             }
 
             private void EjectRestrictedItemsIfNeeded(BasePlayer receiver)
@@ -6458,7 +6458,7 @@ namespace Oxide.Plugins
                             receiver.GiveItem(item);
                         }
 
-                        receiver.ChatMessage(Plugin.GetMessage(receiver, "Blacklisted Items Removed"));
+                        receiver.ChatMessage(Plugin.GetMessage(receiver.UserIDString, LangEntry.BlacklistedItemsRemoved));
                     }
                 }
 
@@ -6533,7 +6533,7 @@ namespace Oxide.Plugins
 
                 if (itemsDroppedOrGivenToPlayer > 0)
                 {
-                    overflowRecipient.ChatMessage(Plugin.GetMessage(overflowRecipient, "Backpack Over Capacity"));
+                    overflowRecipient.ChatMessage(Plugin.GetMessage(overflowRecipient.UserIDString, LangEntry.BackpackOverCapacity));
                 }
 
                 ActualCapacity = AllowedCapacity;
@@ -6785,7 +6785,7 @@ namespace Oxide.Plugins
 
                         ReclaimManager.instance.AddPlayerReclaim(OwnerId, allItemsToReclaim);
 
-                        Owner?.ChatMessage(Plugin.GetMessage(OwnerIdString, "Backpack Items Reclaimed"));
+                        Owner?.ChatMessage(Plugin.GetMessage(OwnerIdString, LangEntry.BackpackItemsReclaimed));
                     }
                 }
             }
@@ -8073,25 +8073,92 @@ namespace Oxide.Plugins
 
         #region Localization
 
-        private string GetMessage(string playerId, string langKey) =>
-            lang.GetMessage(langKey, this, playerId);
+        private class LangEntry
+        {
+            public static readonly List<LangEntry> AllLangEntries = new List<LangEntry>();
 
-        private string GetMessage(IPlayer player, string langKey) =>
-            GetMessage(player.Id, langKey);
+            public static readonly LangEntry NoPermission = new LangEntry("No Permission", "You don't have permission to use this command.");
+            public static readonly LangEntry MayNotOpenBackpackInEvent = new LangEntry("May Not Open Backpack In Event", "You may not open a backpack while participating in an event!");
+            public static readonly LangEntry ViewBackpackSyntax = new LangEntry("View Backpack Syntax", "Syntax: viewbackpack <name or id>");
+            public static readonly LangEntry UserIDNotFound = new LangEntry("User ID not Found", "Could not find player with ID '{0}'");
+            public static readonly LangEntry UserNameNotFound = new LangEntry("User Name not Found", "Could not find player with name '{0}'");
+            public static readonly LangEntry MultiplePlayersFound = new LangEntry("Multiple Players Found", "Multiple matching players found:\n{0}");
+            public static readonly LangEntry BackpackItemRejected = new LangEntry("Backpack Item Rejected", "That item is not allowed in the backpack.");
+            public static readonly LangEntry BackpackItemsRejected = new LangEntry("Backpack Items Rejected", "Your backpack rejected some items. They have been added to your inventory or dropped.");
+            public static readonly LangEntry BackpackOverCapacity = new LangEntry("Backpack Over Capacity", "Your backpack was over capacity. Overflowing items were added to your inventory or dropped.");
+            public static readonly LangEntry BlacklistedItemsRemoved = new LangEntry("Blacklisted Items Removed", "Your backpack contained blacklisted items. They have been added to your inventory or dropped.");
+            public static readonly LangEntry BackpackFetchSyntax = new LangEntry("Backpack Fetch Syntax", "Syntax: backpack.fetch <item short name or id> <amount>");
+            public static readonly LangEntry InvalidItem = new LangEntry("Invalid Item", "Invalid Item Name or ID.");
+            public static readonly LangEntry InvalidItemAmount = new LangEntry("Invalid Item Amount", "Item amount must be an integer greater than 0.");
+            public static readonly LangEntry ItemNotInBackpack = new LangEntry("Item Not In Backpack", "Item \"{0}\" not found in backpack.");
+            public static readonly LangEntry ItemsFetched = new LangEntry("Items Fetched", "Fetched {0} \"{1}\" from backpack.");
+            public static readonly LangEntry FetchFailed = new LangEntry("Fetch Failed", "Couldn't fetch \"{0}\" from backpack. Inventory may be full.");
+            public static readonly LangEntry ToggledBackpackGUI = new LangEntry("Toggled Backpack GUI", "Toggled backpack GUI button.");
+            public static readonly LangEntry BackpackItemsReclaimed = new LangEntry("Backpack Items Reclaimed", "Backpack items were sent to the reclaim terminal for safe keeping.");
+            public static readonly LangEntry SetGatherSyntax = new LangEntry("Set Gather Syntax", "Syntax: {0} <{1}> <optional page number>");
+            public static readonly LangEntry PageOutOfRange = new LangEntry("Page Out Of Range", "Backpack page number must be between 1 and {0}.");
+            public static readonly LangEntry SetGatherModeSuccess = new LangEntry("Set Gather Mode Success", "Updated backpack gather mode for page {0} to {1}");
+            public static readonly LangEntry GatherModeAll = new LangEntry("Gather Mode: All", "All");
+            public static readonly LangEntry GatherModeExisting = new LangEntry("Gather Mode: Existing", "Existing");
+            public static readonly LangEntry GatherModeOff = new LangEntry("Gather Mode: Off", "Off");
+            public static readonly LangEntry UIGatherAll = new LangEntry("UI - Gather All", "Gather: All ↓");
+            public static readonly LangEntry UIGatherExisting = new LangEntry("UI - Gather Existing", "Gather: Existing ↓");
+            public static readonly LangEntry UIGatherOff = new LangEntry("UI - Gather Off", "Gather: Off");
+            public static readonly LangEntry UIRetrieveOn = new LangEntry("UI - Retrieve On", "Retrieve: On ↑");
+            public static readonly LangEntry UIRetrieveOff = new LangEntry("UI - Retrieve Off", "Retrieve: Off");
 
-        private string GetMessage(BasePlayer basePlayer, string langKey) =>
-            GetMessage(basePlayer.UserIDString, langKey);
+            public string Name;
+            public string English;
+
+            public LangEntry(string name, string english)
+            {
+                Name = name;
+                English = english;
+
+                AllLangEntries.Add(this);
+            }
+        }
+
+        private string GetMessage(string playerId, LangEntry langEntry) =>
+            lang.GetMessage(langEntry.Name, this, playerId);
+
+        private string GetMessage(string playerId, LangEntry langEntry, object arg1) =>
+            string.Format(GetMessage(playerId, langEntry), arg1);
+
+        private string GetMessage(string playerId, LangEntry langEntry, object arg1, object arg2) =>
+            string.Format(GetMessage(playerId, langEntry), arg1, arg2);
+
+        private string GetMessage(string playerId, LangEntry langEntry, object arg1, object arg2, string arg3) =>
+            string.Format(GetMessage(playerId, langEntry), arg1, arg2, arg3);
+
+        private string GetMessage(string playerId, LangEntry langEntry, params object[] args) =>
+            string.Format(GetMessage(playerId, langEntry), args);
+
+        private void ReplyToPlayer(IPlayer player, LangEntry langEntry) =>
+            player.Reply(GetMessage(player.Id, langEntry));
+
+        private void ReplyToPlayer(IPlayer player, LangEntry langEntry, object arg1) =>
+            player.Reply(GetMessage(player.Id, langEntry, arg1));
+
+        private void ReplyToPlayer(IPlayer player, LangEntry langEntry, object arg1, object arg2) =>
+            player.Reply(GetMessage(player.Id, langEntry, arg1, arg2));
+
+        private void ReplyToPlayer(IPlayer player, LangEntry langEntry, object arg1, object arg2, object arg3) =>
+            player.Reply(GetMessage(player.Id, langEntry, arg1, arg2, arg3));
+
+        private void ReplyToPlayer(IPlayer player, LangEntry langEntry, params object[] args) =>
+            player.Reply(GetMessage(player.Id, langEntry, args));
 
         private string GetGatherModeDisplayString(BasePlayer player, GatherMode gatherMode)
         {
             switch (gatherMode)
             {
                 case GatherMode.All:
-                    return GetMessage(player, "Gather Mode: All");
+                    return GetMessage(player.UserIDString, LangEntry.GatherModeAll);
                 case GatherMode.Existing:
-                    return GetMessage(player, "Gather Mode: Existing");
+                    return GetMessage(player.UserIDString, LangEntry.GatherModeExisting);
                 case GatherMode.None:
-                    return GetMessage(player, "Gather Mode: Off");
+                    return GetMessage(player.UserIDString, LangEntry.GatherModeOff);
                 default:
                     throw new ArgumentOutOfRangeException(nameof(gatherMode), gatherMode, null);
             }
@@ -8099,38 +8166,14 @@ namespace Oxide.Plugins
 
         protected override void LoadDefaultMessages()
         {
-            lang.RegisterMessages(new Dictionary<string, string>
+            var englishLangKeys = new Dictionary<string, string>();
+
+            foreach (var langEntry in LangEntry.AllLangEntries)
             {
-                ["No Permission"] = "You don't have permission to use this command.",
-                ["May Not Open Backpack In Event"] = "You may not open a backpack while participating in an event!",
-                ["View Backpack Syntax"] = "Syntax: viewbackpack <name or id>",
-                ["User ID not Found"] = "Could not find player with ID '{0}'",
-                ["User Name not Found"] = "Could not find player with name '{0}'",
-                ["Multiple Players Found"] = "Multiple matching players found:\n{0}",
-                ["Backpack Item Rejected"] = "That item is not allowed in the backpack.",
-                ["Backpack Items Rejected"] = "Your backpack rejected some items. They have been added to your inventory or dropped.",
-                ["Backpack Over Capacity"] = "Your backpack was over capacity. Overflowing items were added to your inventory or dropped.",
-                ["Blacklisted Items Removed"] = "Your backpack contained blacklisted items. They have been added to your inventory or dropped.",
-                ["Backpack Fetch Syntax"] = "Syntax: backpack.fetch <item short name or id> <amount>",
-                ["Invalid Item"] = "Invalid Item Name or ID.",
-                ["Invalid Item Amount"] = "Item amount must be an integer greater than 0.",
-                ["Item Not In Backpack"] = "Item \"{0}\" not found in backpack.",
-                ["Items Fetched"] = "Fetched {0} \"{1}\" from backpack.",
-                ["Fetch Failed"] = "Couldn't fetch \"{0}\" from backpack. Inventory may be full.",
-                ["Toggled Backpack GUI"] = "Toggled backpack GUI button.",
-                ["Backpack Items Reclaimed"] = "Backpack items were sent to the reclaim terminal for safe keeping.",
-                ["Set Gather Syntax"] = "Syntax: {0} <{1}> <optional page number>",
-                ["Page Out Of Range"] = "Backpack page number must be between 1 and {0}.",
-                ["Set Gather Mode Success"] = "Updated backpack gather mode for page {0} to {1}",
-                ["Gather Mode: All"] = "All",
-                ["Gather Mode: Existing"] = "Existing",
-                ["Gather Mode: Off"] = "Off",
-                ["UI - Gather All"] = "Gather: All ↓",
-                ["UI - Gather Existing"] = "Gather: Existing ↓",
-                ["UI - Gather Off"] = "Gather: Off",
-                ["UI - Retrieve On"] = "Retrieve: On ↑",
-                ["UI - Retrieve Off"] = "Retrieve: Off"
-            }, this);
+                englishLangKeys[langEntry.Name] = langEntry.English;
+            }
+
+            lang.RegisterMessages(englishLangKeys, this, "en");
         }
 
         #endregion
