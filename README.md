@@ -621,6 +621,30 @@ ulong API_GetBackpackOwnerId(ItemContainer container)
 - Returns the Steam ID of the backpack owner if the `ItemContainer` is a backpack.
 - Returns `0` if the `ItemContainer` is **not** a backpack.
 
+### API_MutateBackpackItems
+
+```csharp
+int API_MutateBackpackItems(ulong ownerId, Dictionary<string, object> itemQuery, Dictionary<string, object> mutationRequest)
+```
+
+Finds and mutates items in the player's backpack. The return value is the number of item stacks that were mutated.
+
+- `ownerId` -- The Steam ID of the player's backpack.
+- `itemQuery` -- Describes the items to find. See the "Item queries" section below for details.
+- `mutationRequest` -- Describes the mutations to apply. Supports `"SkinId"` and `"DisplayName"`. More parameters can be added on request.
+
+Example:
+
+```csharp
+int itemsReskinned = Backpacks.Call<int>("API_MutateBackpackItems", basePlayer.userID,
+    // Find items with where `item.info.itemid == 1234567890`
+    new Dictionary<string, object>{ ["ItemId"] = 1234567890 },
+    // Change `item.skin` to `9876543210`
+    new Dictionary<string, object>{ ["SkinId"] = 9876543210 }
+);
+basePlayer.ChatMessage($"{itemsReskinned} item stacks were reskinned in the backpack.");
+```
+
 ### API_GetExistingBackpacks (DEPRECATED)
 
 **It is strongly advised that plugins do not use `API_GetExistingBackpacks` because a backpack can have multiple containers if it has multiple pages, and can have virtual representations of containers that have not yet been accessed.** If you think your plugin has a valid reason to access backpack containers, please open a support thread to discuss your use case.
@@ -644,6 +668,23 @@ Returns a reference to the underlying `ItemContainer` of a player's backpack. Re
 Notes:
 - This will create the container entity if it doesn't exist. This can add load to the server, so it's recommended to use this API only if the other API methods do not meet your needs. For example, if you want to know only the quantity of an item in the player's backpack, you can use `API_GetBackpackItemAmount` which can count the items without creating the container.
 - You should avoid caching the container because several events may cause the backpack's underlying container to be replaced or deleted, which would make the cached reference useless.
+
+### Item queries
+
+Multiple API methods, including `API_MutateBackpackItems` support item queries. An item query is an abstract description of items that you are interested in. Each item query is a `Dictionary<string, object>` and supports the below keys. When an item query has multiple parameters, an item will only be considered a match if it satisfies them all.
+
+- `"BlueprintId"`: `int` -- Match items where `item.blueprintTarget` equals the specified value. For example, to find Auto Turret blueprints, provide the auto turret item id to this parameter.
+- `"DisplayName"`: `string` -- Match items where `item.name` equals this value (case insensitive).
+- `"DataInt"`: `int` -- Match items where `item.instanceData.DataInt` equals this value.
+- `"FlagsContain"`: `Item.Flag` -- Match items where the `item.flags` bit mask contains all of the bits in the provided bit mask. This can be used to find items that have one or more flags, without caring about whether the items have additional flags.
+- `"FlagsEqual"`: `Item.Flag` -- Match items where `item.flags` equals this value. This can be used to find items that have exactly all the flags you are interested in with no additional flags.
+- `"ItemDefinition"`: `ItemDefinition` -- Match items where `item.info` equals this value. Alternative to `"ItemId"`.
+- `"ItemId"`: `int` -- Matches items where `item.info.itemid` equals this value. Alternative to `"ItemDefinition"`.
+- `"MinCondition"`: `float` -- Matches items where `item.conditionNormalized` is greater than or equal to this value. This parameter is ignored if the item does not support condition (according to `item.info.condition.enabled`).
+- `"RequireEmpty"`: `bool` -- Matches items that do not have child contents (i.e., `item.contents?.itemList?.Count` is `0` or `null`). For example, while `true`, a weapon with an attachment would not match, but a weapon without an attachment could match.
+- `"SkinId"`: `ulong` -- Match items where `item.skin` equals the specified value.
+
+The concept of item queries exists because the Backpacks plugin does not necessarily use actual items or containers for a given player's backpack, or for a given page of a player's backpack, until absolutely needed (e.g., when the player opens that page). Item queries allow other plugins to query, modify, and even take items from a backpack without being concerned with the internal implementation details of the Backpacks plugin.
 
 ## Developer Hooks
 

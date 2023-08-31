@@ -481,6 +481,7 @@ namespace Oxide.Plugins
                     [nameof(SumBackpackItems)] = new Func<ulong, Dictionary<string, object>, int>(SumBackpackItems),
                     [nameof(CountBackpackItems)] = new Func<ulong, Dictionary<string, object>, int>(CountBackpackItems),
                     [nameof(TakeBackpackItems)] = new Func<ulong, Dictionary<string, object>, int, List<Item>, int>(TakeBackpackItems),
+                    [nameof(MutateBackpackItems)] = new Func<ulong, Dictionary<string, object>, Dictionary<string, object>, int>(MutateBackpackItems),
                     [nameof(TryDepositBackpackItem)] = new Func<ulong, Item, bool>(TryDepositBackpackItem),
                     [nameof(WriteBackpackContentsFromJson)] = new Action<ulong, string>(WriteBackpackContentsFromJson),
                     [nameof(ReadBackpackContentsAsJson)] = new Func<ulong, string>(ReadBackpackContentsAsJson),
@@ -626,6 +627,13 @@ namespace Oxide.Plugins
                 return _backpackManager.GetBackpackIfExists(ownerId)?.TakeItems(ref itemQuery, amount, collect) ?? 0;
             }
 
+            public int MutateBackpackItems(ulong ownerId, Dictionary<string, object> itemQueryDict, Dictionary<string, object> mutationRequestDict)
+            {
+                var itemQuery = ItemQuery.Parse(itemQueryDict);
+                var mutationRequest = MutationRequest.Parse(mutationRequestDict);
+                return _backpackManager.GetBackpackIfExists(ownerId)?.MutateItems(ref itemQuery, ref mutationRequest) ?? 0;
+            }
+
             public bool TryDepositBackpackItem(ulong ownerId, Item item)
             {
                 return _backpackManager.GetBackpack(ownerId).TryDepositItem(item);
@@ -660,6 +668,7 @@ namespace Oxide.Plugins
             _api.RemoveSubscriber(plugin);
         }
 
+        // Deprecated, only returns container for first page. Use higher level APIs instead.
         [HookMethod(nameof(API_GetExistingBackpacks))]
         public Dictionary<ulong, ItemContainer> API_GetExistingBackpacks()
         {
@@ -738,6 +747,7 @@ namespace Oxide.Plugins
             return ObjectCache.Get(_api.IsBackpackRetrieving(player));
         }
 
+        // Deprecated, only returns container for first page. Use higher level APIs instead.
         [HookMethod(nameof(API_GetBackpackContainer))]
         public ItemContainer API_GetBackpackContainer(ulong ownerId)
         {
@@ -784,6 +794,12 @@ namespace Oxide.Plugins
         public object API_TakeBackpackItems(ulong ownerId, Dictionary<string, object> dict, int amount, List<Item> collect)
         {
             return ObjectCache.Get(_api.TakeBackpackItems(ownerId, dict, amount, collect));
+        }
+
+        [HookMethod(nameof(API_MutateBackpackItems))]
+        public object API_MutateBackpackItems(ulong ownerId, Dictionary<string, object> itemQueryDict, Dictionary<string, object> mutationRequestDict)
+        {
+            return ObjectCache.Get(_api.MutateBackpackItems(ownerId, itemQueryDict, mutationRequestDict));
         }
 
         [HookMethod(nameof(API_TryDepositBackpackItem))]
@@ -1978,6 +1994,49 @@ namespace Oxide.Plugins
                 }
 
                 return totalAmountTaken;
+            }
+
+            public static int MutateItems(List<Item> itemList, ref ItemQuery itemQuery, ref MutationRequest mutationRequest)
+            {
+                var count = 0;
+
+                foreach (var item in itemList)
+                {
+                    if (itemQuery.GetUsableAmount(item) > 0 && mutationRequest.ApplyTo(item))
+                    {
+                        item.MarkDirty();
+                        count++;
+                    }
+
+                    List<Item> childItemList;
+                    if (HasSearchableContainer(item, out childItemList))
+                    {
+                        count += MutateItems(childItemList, ref itemQuery, ref mutationRequest);
+                    }
+                }
+
+                return count;
+            }
+
+            public static int MutateItems(List<ItemData> itemDataList, ref ItemQuery itemQuery, ref MutationRequest mutationRequest)
+            {
+                var count = 0;
+
+                foreach (var itemData in itemDataList)
+                {
+                    if (itemQuery.GetUsableAmount(itemData) > 0 && mutationRequest.ApplyTo(itemData))
+                    {
+                        count++;
+                    }
+
+                    List<ItemData> childItemList;
+                    if (HasSearchableContainer(itemData, out childItemList))
+                    {
+                        count += MutateItems(childItemList, ref itemQuery, ref mutationRequest);
+                    }
+                }
+
+                return count;
             }
 
             public static void SerializeForNetwork(List<Item> itemList, List<ProtoBuf.Item> collect)
@@ -4434,6 +4493,68 @@ namespace Oxide.Plugins
 
         #region Item Query
 
+        private struct MutationRequest
+        {
+            public static MutationRequest Parse(Dictionary<string, object> raw)
+            {
+                var mutation = new MutationRequest();
+
+                GetOption(raw, "SkinId", out mutation.SkinId);
+                GetOption(raw, "DisplayName", out mutation.DisplayName);
+
+                return mutation;
+            }
+
+            private static void GetOption<T>(Dictionary<string, object> dict, string key, out T result)
+            {
+                object value;
+                result = dict.TryGetValue(key, out value) && value is T
+                    ? (T)value
+                    : default(T);
+            }
+
+            public ulong? SkinId;
+            public string DisplayName;
+
+            public bool ApplyTo(Item item)
+            {
+                var changed = false;
+
+                if (SkinId.HasValue && item.skin != SkinId)
+                {
+                    item.skin = SkinId.Value;
+                    changed = true;
+                }
+
+                if (!string.IsNullOrEmpty(DisplayName) && !StringUtils.EqualsCaseInsensitive(DisplayName, item.name))
+                {
+                    item.name = DisplayName;
+                    changed = true;
+                }
+
+                return changed;
+            }
+
+            public bool ApplyTo(ItemData itemData)
+            {
+                var changed = false;
+
+                if (SkinId.HasValue && itemData.Skin != SkinId)
+                {
+                    itemData.Skin = SkinId.Value;
+                    changed = true;
+                }
+
+                if (!string.IsNullOrEmpty(DisplayName) && !StringUtils.EqualsCaseInsensitive(DisplayName, itemData.Name))
+                {
+                    itemData.Name = DisplayName;
+                    changed = true;
+                }
+
+                return changed;
+            }
+        }
+
         private struct ItemQuery
         {
             public static ItemQuery FromItem(Item item)
@@ -4607,6 +4728,7 @@ namespace Oxide.Plugins
             int CountItems(ref ItemQuery itemQuery);
             int SumItems(ref ItemQuery itemQuery);
             int TakeItems(ref ItemQuery itemQuery, int amount, List<Item> collect);
+            int MutateItems(ref ItemQuery itemQuery, ref MutationRequest mutationRequest);
             bool TryDepositItem(Item item);
             void ReclaimFractionForSoftcore(float fraction, List<Item> collect);
             void TakeRestrictedItems(List<Item> collect);
@@ -4696,6 +4818,17 @@ namespace Oxide.Plugins
                 }
 
                 return amountTaken;
+            }
+
+            public int MutateItems(ref ItemQuery itemQuery, ref MutationRequest mutationRequest)
+            {
+                var mutatedItems = ItemUtils.MutateItems(ItemDataList, ref itemQuery, ref mutationRequest);
+                if (mutatedItems > 0)
+                {
+                    _backpack.SetFlag(Backpack.Flag.Dirty, true);
+                }
+
+                return mutatedItems;
             }
 
             public void ReclaimFractionForSoftcore(float fraction, List<Item> collect)
@@ -5030,6 +5163,11 @@ namespace Oxide.Plugins
             public int TakeItems(ref ItemQuery itemQuery, int amount, List<Item> collect)
             {
                 return ItemUtils.TakeItems(ItemContainer.itemList, ref itemQuery, amount, collect);
+            }
+
+            public int MutateItems(ref ItemQuery itemQuery, ref MutationRequest mutationRequest)
+            {
+                return ItemUtils.MutateItems(ItemContainer.itemList, ref itemQuery, ref mutationRequest);
             }
 
             public bool TryDepositItem(Item item)
@@ -6235,6 +6373,18 @@ namespace Oxide.Plugins
                 return false;
             }
 
+            public int MutateItems(ref ItemQuery itemQuery, ref MutationRequest mutationRequest)
+            {
+                var count = 0;
+
+                foreach (var containerAdapter in _containerAdapters)
+                {
+                    count += containerAdapter.MutateItems(ref itemQuery, ref mutationRequest);
+                }
+
+                return count;
+            }
+
             public void SerializeForNetwork(List<ProtoBuf.Item> saveList, bool forItemRetriever = false)
             {
                 foreach (var containerAdapter in _containerAdapters)
@@ -7374,7 +7524,7 @@ namespace Oxide.Plugins
             public int BlueprintTarget { get; private set; }
 
             [JsonProperty("Skin", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public ulong Skin { get; private set; }
+            public ulong Skin;
 
             [JsonProperty("Fuel", DefaultValueHandling = DefaultValueHandling.Ignore)]
             private float Fuel;
@@ -7383,7 +7533,7 @@ namespace Oxide.Plugins
             private int FlameFuel;
 
             [JsonProperty("Condition", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public float Condition { get; private set; }
+            public float Condition;
 
             [JsonProperty("MaxCondition", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public float MaxCondition { get; private set; } = -1;
@@ -7398,7 +7548,7 @@ namespace Oxide.Plugins
             public int DataInt { get; private set; }
 
             [JsonProperty("Name", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public string Name { get; private set; }
+            public string Name;
 
             [JsonProperty("Text", DefaultValueHandling = DefaultValueHandling.Ignore)]
             private string Text;
