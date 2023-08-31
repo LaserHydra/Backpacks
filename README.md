@@ -46,6 +46,8 @@ Alternatively, instead of enabling the GUI button in this plugin, consider using
 ## Admin commands
 
 - `viewbackpack <name or steam id>` -- Opens another player's backpack (requires `backpacks.admin` permission)
+- `backpack.addsize <name or steam id> <amount>` -- Attempts to change the size of the specified player's backpack by the specified amount, without going outside the bounds of the player's size profile. This can be used to decrease capacity by providing a negative number. Requires the experimental dynamic size feature to be enabled in the config.
+- `backpack.setsize <name or steam id> <amount>` -- Attempts to set the size of the player's backpack to the specified amount, without going outside the bounds of the player's size profile. Requires the experimental dynamic size feature to be enabled in the config.
 
 ## Server commands
 
@@ -54,7 +56,7 @@ Alternatively, instead of enabling the GUI button in this plugin, consider using
 ## Permissions
 
 - `backpacks.use` -- Required to open your own backpack.
-- `backpacks.admin` -- Required to use the `viewbackpack` command.
+- `backpacks.admin` -- Required to use the `viewbackpack`, `backpack.addsize` and `backpack.setsize` commands.
 - `backpacks.gui` -- Required to see the GUI button.
 - `backpacks.fetch` -- Required to use the `backpack.fetch` command.
 - `backpacks.keepondeath` -- Exempts you from having your backpack erased or dropped on death.
@@ -112,6 +114,7 @@ The following permissions come with the plugin's **default configuration**. Addi
   - `API_GetBackpackMaxCapacity`
   - `API_AddBackpackCapacity`
   - `API_SetBackpackCapacity`
+- Other plugins can use the `backpack.addsize` and `backpack.setsize` commands, but depending on your exact setup, that could allow for situations where players can effectively waste resources to purchase upgrades when already at max capacity. More precise integrations using the APIs are recommended because other plugins can query the Backpacks plugin to determine whether an upgrade is possible before charging the player.
 
 ### Item restriction permissions
 

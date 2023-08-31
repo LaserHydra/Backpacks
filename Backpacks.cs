@@ -1013,7 +1013,7 @@ namespace Oxide.Plugins
         private void ViewBackpack(BasePlayer player, string cmd, string[] args) =>
             ViewBackpackCommand(player.IPlayer, cmd, args);
 
-        [Command("backpack.addcapacity")]
+        [Command("backpack.addsize")]
         private void AddBackpackCapacityCommand(IPlayer player, string cmd, string[] args)
         {
             if (!VerifyHasPermission(player, AdminPermission))
@@ -1036,7 +1036,7 @@ namespace Oxide.Plugins
             ReplyToPlayer(player, LangEntry.ChangeCapacitySuccess, targetPlayerId, newCapacity);
         }
 
-        [Command("backpack.setcapacity")]
+        [Command("backpack.setsize")]
         private void SetBackpackCapacityCommand(IPlayer player, string cmd, string[] args)
         {
             if (!VerifyHasPermission(player, AdminPermission))
