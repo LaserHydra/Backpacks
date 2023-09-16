@@ -4499,6 +4499,7 @@ namespace Oxide.Plugins
             {
                 var mutation = new MutationRequest();
 
+                GetOption(raw, "ItemId", out mutation.ItemId);
                 GetOption(raw, "SkinId", out mutation.SkinId);
                 GetOption(raw, "DisplayName", out mutation.DisplayName);
 
@@ -4513,6 +4514,7 @@ namespace Oxide.Plugins
                     : default(T);
             }
 
+            public int? ItemId;
             public ulong? SkinId;
             public string DisplayName;
 
@@ -4520,9 +4522,40 @@ namespace Oxide.Plugins
             {
                 var changed = false;
 
+                if (ItemId.HasValue && item.info.itemid != ItemId)
+                {
+                    var newItemDefinition = ItemManager.FindItemDefinition(ItemId.Value);
+                    if (newItemDefinition != null)
+                    {
+                        // Tear down item mods belonging to old item definition.
+                        foreach (var itemMod in item.info.itemMods)
+                        {
+                            itemMod.OnRemove(item);
+                        }
+
+                        item.info = newItemDefinition;
+
+                        // Initialize item mods using new item definition.
+                        item.OnItemCreated();
+
+                        changed = true;
+                    }
+                    else
+                    {
+                        LogError($"Unable to change {item.info.shortname} item to an instance of Item ID {ItemId.Value} because no matching ItemDefinition was found.");
+                    }
+                }
+
                 if (SkinId.HasValue && item.skin != SkinId)
                 {
                     item.skin = SkinId.Value;
+
+                    var heldEntity = item.GetHeldEntity();
+                    if (heldEntity != null)
+                    {
+                        heldEntity.skinID = SkinId.Value;
+                    }
+
                     changed = true;
                 }
 
@@ -4538,6 +4571,12 @@ namespace Oxide.Plugins
             public bool ApplyTo(ItemData itemData)
             {
                 var changed = false;
+
+                if (ItemId.HasValue && itemData.ID != ItemId)
+                {
+                    itemData.ID = ItemId.Value;
+                    changed = true;
+                }
 
                 if (SkinId.HasValue && itemData.Skin != SkinId)
                 {
@@ -7509,7 +7548,7 @@ namespace Oxide.Plugins
         private class ItemData : CustomPool.IPooled
         {
             [JsonProperty("ID")]
-            public int ID { get; private set; }
+            public int ID;
 
             [JsonProperty("Position")]
             public int Position { get; set; } = -1;

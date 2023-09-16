@@ -634,7 +634,7 @@ Finds and mutates items in the player's backpack. The return value is the number
 
 - `ownerId` -- The Steam ID of the player's backpack.
 - `itemQuery` -- Describes the items to find. See the "Item queries" section below for details.
-- `mutationRequest` -- Describes the mutations to apply. Supports `"SkinId"` and `"DisplayName"`. More parameters can be added on request.
+- `mutationRequest` -- Describes the mutations to apply. Supports `"ItemId"` (int), `"SkinId"` (ulong) and `"DisplayName"` (string). More parameters can be added on request. Note: Changing `ItemId` should be done only for equivalent item types, such as a Nomad hazmat suit to an Arctic hazmat suit, or else various there may be unpredictable consequences.
 
 Example:
 
@@ -676,7 +676,7 @@ Notes:
 
 Multiple API methods, including `API_MutateBackpackItems` support item queries. An item query is an abstract description of items that you are interested in. Each item query is a `Dictionary<string, object>` and supports the below keys. When an item query has multiple parameters, an item will only be considered a match if it satisfies them all.
 
-- `"BlueprintId"`: `int` -- Match items where `item.blueprintTarget` equals the specified value. For example, to find Auto Turret blueprints, provide the auto turret item id to this parameter.
+- `"BlueprintId"`: `int` -- Match items where `item.blueprintTarget` equals the specified value. For example, to find Auto Turret blueprints, provide the Auto Turret item id to this parameter.
 - `"DisplayName"`: `string` -- Match items where `item.name` equals this value (case insensitive).
 - `"DataInt"`: `int` -- Match items where `item.instanceData.DataInt` equals this value.
 - `"FlagsContain"`: `Item.Flag` -- Match items where the `item.flags` bit mask contains all of the bits in the provided bit mask. This can be used to find items that have one or more flags, without caring about whether the items have additional flags.
