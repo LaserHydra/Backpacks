@@ -199,8 +199,8 @@ Default configuration:
   "GUI Button": {
     "Enabled": true,
     "Enabled by default (for players with permission)": true,
-    "Skin Id": 0,
-    "Image": "https://i.imgur.com/T6orn2Q.png",
+    "Skin Id": 3050418770,
+    "Image": "",
     "Background Color": "0.969 0.922 0.882 0.035",
     "GUI Button Position": {
       "Anchors Min": "0.5 0.0",
@@ -296,20 +296,14 @@ Default configuration:
 - `GUI Button` -- Determines the display of the GUI button which players can click on to open and close their backpack.
   - `Enabled` (`true` or `false`; Default: `true`) -- Determines whether the GUI button is enabled. If you don't intend to show the GUI button to any players, set this to `false` to improve performance. Disabling this will also unregister the `backpackgui` command so that another plugin can use it.
   - `Enabled by default (for players with permission)` (`true` or `false`; Default: `true`) -- Determines whether the GUI button is shown for new players by default, if they have the `backpacks.gui` permission. Note: Players can use the `backpackgui` command to personally toggle it on/off if they don't agree with the default you chose.
-  - `Skin Id` (Default: `0`) -- Determines the skin ID used to display the GUI button, as an alternative to the `Image` URL. While `0`, this has no effect.
-  - `Image` (Default: `"https://i.imgur.com/CyF0QNV.png"`) -- Determines the URL of the image to display on the GUI button, as an alternative to `Skin Id`.
+  - `Skin Id` (Default: `3050418770`) -- Determines the skin ID used to display the GUI button, as an alternative to the `Image` URL. While `0`, this has no effect. Note: Users may see the saddle bag item icon briefly while the skin icon is downloaded to their computer.
+  - `Image` (Default: `""`) -- Determines the URL of the image to display on the GUI button, as an alternative to `Skin Id`.
   - `Background Color` -- Default: `"0.969 0.922 0.882 0.035"`.
   - `GUI Button Position` -- Determines the position and size of the button.
     - `Anchors Min` -- Default: `"0.5 0.0"` (bottom center of screen). Don't change this unless you know what you are doing.
     - `Anchors Max` -- Default: `"0.5 0.0"` (bottom center of screen). Don't change this unless you know what you are doing.
     - `Offsets Min` -- Determines the bottom-left position of the button. Default: `"185 18"` (right side of belt).
     - `Offsets Max` -- Determines the top-right position of the button. Default: `"245 78"` (right side of belt).
-
-Alternative backpacks images:
-
-- [Right-side](https://i.imgur.com/wleeQkt.png)
-- [Left-side](https://i.imgur.com/1Tep5Ad.png)
-- [Universal](https://i.imgur.com/5RE9II5.png)
 
 ### Container UI
 
