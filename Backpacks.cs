@@ -7770,11 +7770,17 @@ namespace Oxide.Plugins
                 item.flags |= Flags;
 
                 var heldEntity = item.GetHeldEntity();
-                var magazine = (heldEntity as BaseProjectile)?.primaryMagazine;
-                if (magazine != null && AmmoType != 0)
+                var baseProjectile = heldEntity as BaseProjectile;
+                if (baseProjectile != null)
                 {
-                    magazine.contents = Ammo;
-                    magazine.ammoType = ItemManager.FindItemDefinition(AmmoType) ?? magazine.ammoType;
+                    baseProjectile.DelayedModsChanged();
+
+                    var magazine = baseProjectile.primaryMagazine;
+                    if (magazine != null && AmmoType != 0)
+                    {
+                        magazine.contents = Ammo;
+                        magazine.ammoType = ItemManager.FindItemDefinition(AmmoType) ?? magazine.ammoType;
+                    }
                 }
 
                 var flameThrower = heldEntity as FlameThrower;
