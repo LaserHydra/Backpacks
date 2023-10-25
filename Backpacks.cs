@@ -1682,7 +1682,7 @@ namespace Oxide.Plugins
             if (_config.BackpackSize.DynamicSize.Enabled)
                 return true;
 
-            ReplyToPlayer(player, LangEntry.DynamicCapacityNotEnabled, targetPlayerIdString);
+            ReplyToPlayer(player, LangEntry.DynamicCapacityNotEnabled);
             return false;
         }
 
