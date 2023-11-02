@@ -1634,19 +1634,34 @@ namespace Oxide.Plugins
                    && basePlayer.CanInteract();
         }
 
-        private bool VerifyCanOpenBackpack(BasePlayer looter, ulong ownerId)
+        private bool VerifyCanOpenBackpack(BasePlayer looter, ulong ownerId, bool provideFeedback = true)
         {
             if (IsPlayingEvent(looter))
             {
-                looter.ChatMessage(GetMessage(looter.UserIDString, LangEntry.MayNotOpenBackpackInEvent));
+                if (provideFeedback)
+                {
+                    looter.ChatMessage(GetMessage(looter.UserIDString, LangEntry.MayNotOpenBackpackInEvent));
+                }
+
                 return false;
             }
 
             var hookResult = ExposedHooks.CanOpenBackpack(looter, ownerId);
-            if (hookResult != null && hookResult is string)
+            if (hookResult != null)
             {
-                looter.ChatMessage(hookResult as string);
-                return false;
+                var feedbackMessage = hookResult as string;
+                if (feedbackMessage != null)
+                {
+                    if (provideFeedback)
+                    {
+                        looter.ChatMessage(feedbackMessage);
+                    }
+
+                    return false;
+                }
+
+                if (hookResult is bool && (bool)hookResult == false)
+                    return false;
             }
 
             return true;
@@ -5957,7 +5972,7 @@ namespace Oxide.Plugins
                         return false;
                     }
 
-                    if (Plugin.IsPlayingEvent(Owner) || ExposedHooks.CanOpenBackpack(Owner, OwnerId) is string)
+                    if (!Plugin.VerifyCanOpenBackpack(Owner, OwnerId, provideFeedback: false))
                     {
                         _checkedAccessOnFrame = -frameCount;
                         return false;

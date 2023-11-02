@@ -688,14 +688,14 @@ The concept of item queries exists because the Backpacks plugin does not necessa
 ### CanOpenBackpack
 
 ```csharp
-string CanOpenBackpack(BasePlayer player, ulong backpackOwnerID)
+object CanOpenBackpack(BasePlayer player, ulong backpackOwnerID)
 ```
 
 - Called when a player tries to open a backpack.
 - Called when gather mode tries to automatically deposit items into the backpack. The result is cached per backpack per frame to reduce performance cost.
 - Called when the Item Retriever plugin attempts to automatically take items from the player's backpack. The result is cached per backpack per frame to reduce performance cost.
 
-Returning a `string` will prevent the action. If attempting to open the backpack, the string will be send as a chat message to the player.
+Returning `false` or a `string` will prevent the action. If the player was attempting to open the backpack (as opposed to using gather or retrieve) and a `string` was returned, that `string` will be send as a chat message to the player.
 
 ### OnBackpackOpened
 
