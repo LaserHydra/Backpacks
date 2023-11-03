@@ -15,6 +15,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using Facepunch;
 using Network;
 using Newtonsoft.Json.Converters;
 using Oxide.Core.Configuration;
@@ -26,7 +27,7 @@ using Time = UnityEngine.Time;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "WhiteThunder", "3.13.1")]
+    [Info("Backpacks", "WhiteThunder", "3.13.2")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : CovalencePlugin
     {
@@ -2315,6 +2316,7 @@ namespace Oxide.Plugins
                 CustomPool.Reset<ItemData>(empty ? 0 : 2 * BackpackPoolSize);
                 CustomPool.Reset<List<ItemData>>(empty ? 0 : BackpackPoolSize);
                 CustomPool.Reset<EntityData>(empty ? 0 : BackpackPoolSize / 4);
+                CustomPool.Reset<EntityData.BasicItemData>(empty ? 0 : BackpackPoolSize / 4);
                 CustomPool.Reset<Backpack>(empty ? 0 : BackpackPoolSize);
                 CustomPool.Reset<VirtualContainerAdapter>(empty ? 0 : 2 * BackpackPoolSize);
                 CustomPool.Reset<ItemContainerAdapter>(empty ? 0 : 2 * BackpackPoolSize);
@@ -7336,17 +7338,55 @@ namespace Oxide.Plugins
         [JsonConverter(typeof(PoolConverter<EntityData>))]
         private class EntityData : CustomPool.IPooled
         {
+            [JsonConverter(typeof(PoolConverter<BasicItemData>))]
+            public class BasicItemData : CustomPool.IPooled
+            {
+                public int ItemId;
+
+                public BasicItemData Setup(int itemId)
+                {
+                    ItemId = itemId;
+                    return this;
+                }
+
+                public void EnterPool()
+                {
+                    #if DEBUG_POOLING
+                    LogDebug($"EntityData.BasicItemData::EnterPool | {CustomPool.GetStats<EntityData.BasicItemData>()}");
+                    #endif
+
+                    ItemId = 0;
+                }
+
+                public void LeavePool()
+                {
+                    #if DEBUG_POOLING
+                    LogDebug($"EntityData.BasicItemData::LeavePool | {CustomPool.GetStats<EntityData.BasicItemData>()}");
+                    #endif
+                }
+            }
+
             [JsonProperty("Flags", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public BaseEntity.Flags Flags;
+            public BaseEntity.Flags Flags { get; private set; }
 
             [JsonProperty("DataInt", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public int DataInt;
+            public int DataInt { get; private set; }
 
             [JsonProperty("CreatorSteamId", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public ulong CreatorSteamId;
+            public ulong CreatorSteamId { get; private set; }
 
             [JsonProperty("FileContent", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public string[] FileContent;
+            public string[] FileContent { get; private set; }
+
+            [JsonProperty("PrefabId", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            public uint PrefabId { get; private set; }
+
+            [JsonProperty("PlayerName", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            public string PlayerName { get; private set; }
+
+            [JsonProperty("Items", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            [JsonConverter(typeof(PoolListConverter<BasicItemData>))]
+            public List<BasicItemData> Items { get; private set; }
 
             public void Setup(BaseEntity entity)
             {
@@ -7447,6 +7487,30 @@ namespace Oxide.Plugins
                     return;
                 }
 
+                var headEntity = entity as HeadEntity;
+                if ((object)headEntity != null)
+                {
+                    PrefabId = headEntity.CurrentTrophyData.entitySource;
+                    DataInt = headEntity.CurrentTrophyData.horseBreed;
+                    CreatorSteamId = headEntity.CurrentTrophyData.playerId;
+                    PlayerName = headEntity.CurrentTrophyData.playerName;
+
+                    if (headEntity.CurrentTrophyData.clothing?.Count > 0)
+                    {
+                        if (Items == null)
+                        {
+                            Items = CustomPool.GetList<BasicItemData>();
+                        }
+
+                        foreach (var itemId in headEntity.CurrentTrophyData.clothing)
+                        {
+                            Items.Add(CustomPool.Get<BasicItemData>().Setup(itemId));
+                        }
+                    }
+
+                    return;
+                }
+
                 LogWarning($"Unable to serialize associated entity of type {entity.GetType()}.");
             }
 
@@ -7460,6 +7524,15 @@ namespace Oxide.Plugins
                 DataInt = 0;
                 CreatorSteamId = 0;
                 FileContent = null;
+                PrefabId = 0;
+                PlayerName = null;
+                if (Items != null)
+                {
+                    PoolUtils.ResetItemsAndClear(Items);
+                    var items = Items;
+                    CustomPool.FreeList(ref items);
+                    Items = null;
+                }
             }
 
             public void LeavePool()
@@ -7514,6 +7587,7 @@ namespace Oxide.Plugins
 
                         signContent.GetContentCRCs[i] = FileStorage.server.Store(Convert.FromBase64String(fileContent), FileStorage.Type.png, entity.net.ID, i);
                     }
+
                     return;
                 }
 
@@ -7554,6 +7628,36 @@ namespace Oxide.Plugins
                 if ((object)mobileInventoryEntity != null)
                 {
                     mobileInventoryEntity.flags |= Flags;
+                    return;
+                }
+
+                var headEntity = entity as HeadEntity;
+                if ((object)headEntity != null)
+                {
+                    if (headEntity.CurrentTrophyData == null)
+                    {
+                        headEntity.CurrentTrophyData = Pool.Get<ProtoBuf.HeadData>();
+                    }
+
+                    var headData = headEntity.CurrentTrophyData;
+                    headData.entitySource = PrefabId;
+                    headData.horseBreed = DataInt;
+                    headData.playerId = CreatorSteamId;
+                    headData.playerName = PlayerName;
+
+                    if (Items?.Count > 0)
+                    {
+                        if (headData.clothing == null)
+                        {
+                            headData.clothing = Pool.GetList<int>();
+                        }
+
+                        foreach (var itemData in Items)
+                        {
+                            headData.clothing.Add(itemData.ItemId);
+                        }
+                    }
+
                     return;
                 }
             }
