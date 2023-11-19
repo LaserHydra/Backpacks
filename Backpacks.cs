@@ -7490,19 +7490,23 @@ namespace Oxide.Plugins
                 var headEntity = entity as HeadEntity;
                 if ((object)headEntity != null)
                 {
-                    PrefabId = headEntity.CurrentTrophyData.entitySource;
-                    DataInt = headEntity.CurrentTrophyData.horseBreed;
-                    CreatorSteamId = headEntity.CurrentTrophyData.playerId;
-                    PlayerName = headEntity.CurrentTrophyData.playerName;
+                    var headData = headEntity.CurrentTrophyData;
+                    if (headData == null)
+                        return;
 
-                    if (headEntity.CurrentTrophyData.clothing?.Count > 0)
+                    PrefabId = headData.entitySource;
+                    DataInt = headData.horseBreed;
+                    CreatorSteamId = headData.playerId;
+                    PlayerName = headData.playerName;
+
+                    if (headData.clothing?.Count > 0)
                     {
                         if (Items == null)
                         {
                             Items = CustomPool.GetList<BasicItemData>();
                         }
 
-                        foreach (var itemId in headEntity.CurrentTrophyData.clothing)
+                        foreach (var itemId in headData.clothing)
                         {
                             Items.Add(CustomPool.Get<BasicItemData>().Setup(itemId));
                         }
