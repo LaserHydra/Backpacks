@@ -4283,7 +4283,16 @@ namespace Oxide.Plugins
 
                 foreach (var backpack in _tempBackpackList)
                 {
-                    var didSave = backpack.SaveIfChanged();
+                    var didSave = false;
+
+                    try
+                    {
+                        didSave = backpack.SaveIfChanged();
+                    }
+                    catch (Exception ex)
+                    {
+                        LogError($"Error when saving player backpack {backpack.OwnerIdString}:\n{ex}");
+                    }
 
                     // Kill the backpack to free up space, if no admins are viewing it and its owner is disconnected.
                     if (!keepInUseBackpacks || (!backpack.HasLooters && BasePlayer.FindByID(backpack.OwnerId) == null))
