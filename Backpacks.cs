@@ -1,4 +1,5 @@
-﻿// #define DEBUG_POOLING
+﻿// #define DEBUG_DROP_ON_DEATH
+// #define DEBUG_POOLING
 // #define DEBUG_BACKPACK_LIFECYCLE
 
 using Newtonsoft.Json;
@@ -297,9 +298,16 @@ namespace Oxide.Plugins
 
             DestroyButtonUi(player);
 
-            if (!_backpackManager.HasBackpackFile(player.userID)
-                || permission.UserHasPermission(player.UserIDString, KeepOnDeathPermission))
+            if (!_backpackManager.HasBackpack(player.userID))
                 return;
+
+            if (permission.UserHasPermission(player.UserIDString, KeepOnDeathPermission))
+            {
+                #if DEBUG_DROP_ON_DEATH
+                LogWarning($"[DEBUG_DROP_ON_DEATH] [Player {player.UserIDString}] Backpack not dropped because the player has the {KeepOnDeathPermission} permission.");
+                #endif
+                return;
+            }
 
             if (_config.EraseOnDeath)
             {
@@ -308,6 +316,12 @@ namespace Oxide.Plugins
             else if (_config.DropOnDeath)
             {
                 _backpackManager.Drop(player.userID, player.transform.position);
+            }
+            else
+            {
+                #if DEBUG_DROP_ON_DEATH
+                LogWarning($"[DEBUG_DROP_ON_DEATH] [Player {player.UserIDString}] Backpack not dropped because \"Drop on Death (true/false)\" is set to false in the config.");
+                #endif
             }
         }
 
@@ -4155,9 +4169,9 @@ namespace Oxide.Plugins
                 return true;
             }
 
-            public bool HasBackpackFile(ulong userId)
+            public bool HasBackpack(ulong userId)
             {
-                return Interface.Oxide.DataFileSystem.ExistsDatafile(GetBackpackPath(userId));
+                return _cachedBackpacks.ContainsKey(userId) || HasBackpackFile(userId);
             }
 
             public Backpack GetBackpackIfCached(ulong userId)
@@ -4214,7 +4228,16 @@ namespace Oxide.Plugins
 
             public DroppedItemContainer Drop(ulong userId, Vector3 position, List<DroppedItemContainer> collect = null)
             {
-                return GetBackpackIfExists(userId)?.Drop(position, collect);
+                var backpack = GetBackpackIfExists(userId);
+                if (backpack == null)
+                {
+                    #if DEBUG_DROP_ON_DEATH
+                    LogWarning($"[DEBUG_DROP_ON_DEATH] [Player {userId.ToString()}] Backpack not dropped because the player has no backpack in memory or on disk.");
+                    #endif
+                    return null;
+                }
+
+                return backpack.Drop(position, collect);
             }
 
             public bool TryOpenBackpack(BasePlayer looter, ulong backpackOwnerId)
@@ -4333,6 +4356,11 @@ namespace Oxide.Plugins
                 }
 
                 return filepath;
+            }
+
+            private bool HasBackpackFile(ulong userId)
+            {
+                return Interface.Oxide.DataFileSystem.ExistsDatafile(GetBackpackPath(userId));
             }
 
             private Backpack Load(ulong userId)
@@ -6591,18 +6619,33 @@ namespace Oxide.Plugins
             public DroppedItemContainer Drop(Vector3 position, List<DroppedItemContainer> collect = null)
             {
                 if (!HasItems)
+                {
+                    #if DEBUG_DROP_ON_DEATH
+                    LogWarning($"[DEBUG_DROP_ON_DEATH] [Player {OwnerIdString}] Backpack not dropped because it is empty.");
+                    #endif
                     return null;
+                }
 
                 var hookResult = ExposedHooks.CanDropBackpack(OwnerId, position);
                 if (hookResult is bool && (bool)hookResult == false)
+                {
+                    #if DEBUG_DROP_ON_DEATH
+                    LogWarning($"[DEBUG_DROP_ON_DEATH] [Player {OwnerIdString}] Backpack not dropped because another plugin blocked it via the CanDropBackpack hook.");
+                    #endif
                     return null;
+                }
 
                 ForceCloseAllLooters();
                 ReclaimItemsForSoftcore();
 
                 // Check again since the items may have all been reclaimed for Softcore.
                 if (!HasItems)
+                {
+                    #if DEBUG_DROP_ON_DEATH
+                    LogWarning($"[DEBUG_DROP_ON_DEATH] [Player {OwnerIdString}] Backpack not dropped because it is empty, after reclaiming items for softcore.");
+                    #endif
                     return null;
+                }
 
                 DroppedItemContainer firstContainer = null;
 
@@ -6639,6 +6682,10 @@ namespace Oxide.Plugins
                         }
                     }
                 }
+
+                #if DEBUG_DROP_ON_DEATH
+                LogWarning($"[DEBUG_DROP_ON_DEATH] [Player {OwnerIdString}] Backpack dropped.");
+                #endif
 
                 return firstContainer;
             }
