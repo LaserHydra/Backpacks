@@ -43,7 +43,9 @@ namespace Oxide.Plugins
         private const int SlotsPerRow = 6;
         private const int ReclaimEntryMaxSize = 40;
         private const float StandardLootDelay = 0.1f;
-        private const Item.Flag UnsearchableItemFlag = (Item.Flag)(1 << 24);
+        private const Item.Flag SearchableItemFlag = (Item.Flag)(1 << 24);
+        private const Item.Flag UnsearchableItemFlag = (Item.Flag)(1 << 25);
+        private const ItemDefinition.Flag SearchableItemDefinitionFlag = (ItemDefinition.Flag)(1 << 24);
 
         private const string UsagePermission = "backpacks.use";
         private const string SizePermission = "backpacks.size";
@@ -2112,42 +2114,48 @@ namespace Oxide.Plugins
                 }
             }
 
-            private static bool HasItemMod<T>(ItemDefinition itemDefinition) where T : ItemMod
+            private static bool IsSearchableItemDefinition(ItemDefinition itemDefinition)
             {
-                foreach (var itemMod in itemDefinition.itemMods)
-                {
-                    if (itemMod is T)
-                        return true;
-                }
-
-                return false;
+                return (itemDefinition.flags & (ItemDefinition.Flag.Backpack | SearchableItemDefinitionFlag)) != 0;
             }
 
-            private static bool HasSearchableContainer(ItemDefinition itemDefinition)
-            {
-                // Don't consider vanilla containers searchable (i.e., don't take low grade out of a miner's hat).
-                return !HasItemMod<ItemModContainer>(itemDefinition);
-            }
-
-            private static bool HasSearchableContainer(Item item, out List<Item> itemList)
-            {
-                itemList = item.contents?.itemList;
-                return itemList?.Count > 0 && !item.HasFlag(UnsearchableItemFlag) && HasSearchableContainer(item.info);
-            }
-
-            private static bool HasSearchableContainer(int itemId)
+            private static bool IsSearchableItemDefinition(int itemId)
             {
                 var itemDefinition = ItemManager.FindItemDefinition(itemId);
                 if ((object)itemDefinition == null)
                     return false;
 
-                return HasSearchableContainer(itemDefinition);
+                return IsSearchableItemDefinition(itemDefinition);
+            }
+
+            private static bool HasSearchableContainer(Item item, out List<Item> itemList)
+            {
+                itemList = item.contents?.itemList;
+                if (itemList is not { Count: > 0 })
+                    return false;
+
+                if (item.HasFlag(SearchableItemFlag))
+                    return true;
+
+                if (item.HasFlag(UnsearchableItemFlag))
+                    return false;
+
+                return IsSearchableItemDefinition(item.info);
             }
 
             private static bool HasSearchableContainer(ItemData itemData, out List<ItemData> itemDataList)
             {
                 itemDataList = itemData.Contents;
-                return itemDataList?.Count > 0 && !itemData.Flags.HasFlag(UnsearchableItemFlag) && HasSearchableContainer(itemData.ID);
+                if (itemDataList is not { Count: > 0 })
+                    return false;
+
+                if (itemData.Flags.HasFlag(SearchableItemFlag))
+                    return true;
+
+                if (itemData.Flags.HasFlag(UnsearchableItemFlag))
+                    return false;
+
+                return IsSearchableItemDefinition(itemData.ID);
             }
 
             private static void TakeItemAmount(Item item, int amount, List<Item> collect)
