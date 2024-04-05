@@ -28,7 +28,7 @@ using Time = UnityEngine.Time;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "WhiteThunder", "3.13.3")]
+    [Info("Backpacks", "WhiteThunder", "3.13.4")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : CovalencePlugin
     {
@@ -2477,7 +2477,6 @@ namespace Oxide.Plugins
                     write.PacketID(Message.Type.RPCMessage);
                     write.EntityID(entity.net.ID);
                     write.UInt32(StringPool.Get(funcName));
-                    write.UInt64(0);
                     return write;
                 }
                 return null;
