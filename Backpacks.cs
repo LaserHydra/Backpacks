@@ -28,7 +28,7 @@ using Time = UnityEngine.Time;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "WhiteThunder", "3.13.4")]
+    [Info("Backpacks", "WhiteThunder", "3.13.5")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : CovalencePlugin
     {
@@ -6228,6 +6228,8 @@ namespace Oxide.Plugins
                 var itemQuery = ItemQuery.FromItem(item);
                 var anyPagesWithGatherAll = false;
                 var allowedPageCount = AllowedCapacity.PageCount;
+
+                EnlargeIfNeeded();
 
                 using (_itemCountChangedEvent.Pause())
                 {
