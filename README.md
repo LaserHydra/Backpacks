@@ -57,6 +57,7 @@ Alternatively, instead of enabling the GUI button in this plugin, consider using
 
 - `backpacks.use` -- Required to open your own backpack.
 - `backpacks.admin` -- Required to use the `viewbackpack`, `backpack.addsize` and `backpack.setsize` commands.
+- `backpacks.admin.protected` -- Protects your backpack from being viewed by other administrators via the `viewbackpack` command.
 - `backpacks.gui` -- Required to see the GUI button.
 - `backpacks.fetch` -- Required to use the `backpack.fetch` command.
 - `backpacks.keepondeath` -- Exempts you from having your backpack erased or dropped on death.

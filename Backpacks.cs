@@ -54,6 +54,7 @@ namespace Oxide.Plugins
         private const string GatherPermission = "backpacks.gather";
         private const string RetrievePermission = "backpacks.retrieve";
         private const string AdminPermission = "backpacks.admin";
+        private const string AdminProtectedPermission = "backpacks.admin.protected";
         private const string CapacityProfilePermission = "backpacks.size.profile";
         private const string KeepOnDeathPermission = "backpacks.keepondeath";
         private const string LegacyKeepOnWipePermission = "backpacks.keeponwipe";
@@ -104,6 +105,7 @@ namespace Oxide.Plugins
             permission.RegisterPermission(GatherPermission, this);
             permission.RegisterPermission(RetrievePermission, this);
             permission.RegisterPermission(AdminPermission, this);
+            permission.RegisterPermission(AdminProtectedPermission, this);
             permission.RegisterPermission(KeepOnDeathPermission, this);
 
             _config.Init(this);
@@ -1029,6 +1031,12 @@ namespace Oxide.Plugins
             string targetPlayerIdString;
             if (!VerifyTargetPlayer(player, args[0], out targetPlayerId, out targetPlayerIdString))
                 return;
+
+            if (permission.UserHasPermission(targetPlayerIdString, AdminProtectedPermission))
+            {
+                ReplyToPlayer(player, LangEntry.ViewBackpackProtected);
+                return;
+            }
 
             OpenBackpack(
                 basePlayer,
@@ -8897,6 +8905,7 @@ namespace Oxide.Plugins
             public static readonly LangEntry NoPermission = new LangEntry("No Permission", "You don't have permission to use this command.");
             public static readonly LangEntry MayNotOpenBackpackInEvent = new LangEntry("May Not Open Backpack In Event", "You may not open a backpack while participating in an event!");
             public static readonly LangEntry ViewBackpackSyntax = new LangEntry("View Backpack Syntax", "Syntax: viewbackpack <name or id>");
+            public static readonly LangEntry ViewBackpackProtected = new LangEntry("View Backpack Protected", "That player's backpack is protected and cannot be accessed.");
             public static readonly LangEntry UserIDNotFound = new LangEntry("User ID not Found", "Could not find player with ID '{0}'");
             public static readonly LangEntry UserNameNotFound = new LangEntry("User Name not Found", "Could not find player with name '{0}'");
             public static readonly LangEntry MultiplePlayersFound = new LangEntry("Multiple Players Found", "Multiple matching players found:\n{0}");
