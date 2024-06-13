@@ -2050,13 +2050,13 @@ namespace Oxide.Plugins
             {
                 foreach (var itemData in itemDataList)
                 {
-                    var serializedItemData = CustomPool.Get<ProtoBuf.Item>();
+                    var serializedItemData = Pool.Get<ProtoBuf.Item>();
                     serializedItemData.itemid = itemData.ID;
                     serializedItemData.amount = itemData.Amount;
 
                     if (itemData.DataInt != 0 || itemData.BlueprintTarget != 0)
                     {
-                        serializedItemData.instanceData ??= CustomPool.Get<ProtoBuf.Item.InstanceData>();
+                        serializedItemData.instanceData ??= Pool.Get<ProtoBuf.Item.InstanceData>();
                         serializedItemData.instanceData.dataInt = itemData.DataInt;
                         serializedItemData.instanceData.blueprintTarget = itemData.BlueprintTarget;
                     }
