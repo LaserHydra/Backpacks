@@ -1,3 +1,4 @@
+// #define DEBUG_DROP_ON_DEATH
 // #define DEBUG_POOLING
 // #define DEBUG_BACKPACK_LIFECYCLE
 
@@ -15,6 +16,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using Facepunch;
 using Network;
 using Newtonsoft.Json.Converters;
 using Oxide.Core.Configuration;
@@ -26,7 +28,7 @@ using Time = UnityEngine.Time;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "WhiteThunder", "3.13.1")]
+    [Info("Backpacks", "WhiteThunder", "3.13.5")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : CovalencePlugin
     {
@@ -41,7 +43,9 @@ namespace Oxide.Plugins
         private const int SlotsPerRow = 6;
         private const int ReclaimEntryMaxSize = 40;
         private const float StandardLootDelay = 0.1f;
-        private const Item.Flag UnsearchableItemFlag = (Item.Flag)(1 << 24);
+        private const Item.Flag SearchableItemFlag = (Item.Flag)(1 << 24);
+        private const Item.Flag UnsearchableItemFlag = (Item.Flag)(1 << 25);
+        private const ItemDefinition.Flag SearchableItemDefinitionFlag = (ItemDefinition.Flag)(1 << 24);
 
         private const string UsagePermission = "backpacks.use";
         private const string SizePermission = "backpacks.size";
@@ -296,9 +300,16 @@ namespace Oxide.Plugins
 
             DestroyButtonUi(player);
 
-            if (!_backpackManager.HasBackpackFile(player.userID)
-                || permission.UserHasPermission(player.UserIDString, KeepOnDeathPermission))
+            if (!_backpackManager.HasBackpack(player.userID))
                 return;
+
+            if (permission.UserHasPermission(player.UserIDString, KeepOnDeathPermission))
+            {
+                #if DEBUG_DROP_ON_DEATH
+                LogWarning($"[DEBUG_DROP_ON_DEATH] [Player {player.UserIDString}] Backpack not dropped because the player has the {KeepOnDeathPermission} permission.");
+                #endif
+                return;
+            }
 
             if (_config.EraseOnDeath)
             {
@@ -307,6 +318,12 @@ namespace Oxide.Plugins
             else if (_config.DropOnDeath)
             {
                 _backpackManager.Drop(player.userID, player.transform.position);
+            }
+            else
+            {
+                #if DEBUG_DROP_ON_DEATH
+                LogWarning($"[DEBUG_DROP_ON_DEATH] [Player {player.UserIDString}] Backpack not dropped because \"Drop on Death (true/false)\" is set to false in the config.");
+                #endif
             }
         }
 
@@ -428,7 +445,7 @@ namespace Oxide.Plugins
         {
             if (groupsToRemove == null)
                 return;
-        
+
             for (var i = groupsToRemove.Count - 1; i >= 0; i--)
             {
                 var group = groupsToRemove[i];
@@ -546,7 +563,7 @@ namespace Oxide.Plugins
             {
                 return _plugin._capacityManager.GetCapacity(player.userID, player.UserIDString);
             }
-
+            
             public int GetBackpackCapacityById(ulong playerID, string playerIDString)
             {
                 return _plugin._capacityManager.GetCapacity(playerID, playerIDString);
@@ -716,7 +733,7 @@ namespace Oxide.Plugins
         {
             return ObjectCache.Get(_api.GetBackpackCapacity(player));
         }
-
+        
         [HookMethod(nameof(API_GetBackpackCapacityById))]
         public object API_GetBackpackCapacityById(ulong playerID, string playerIDString)
         {
@@ -1646,19 +1663,34 @@ namespace Oxide.Plugins
                    && basePlayer.CanInteract();
         }
 
-        private bool VerifyCanOpenBackpack(BasePlayer looter, ulong ownerId)
+        private bool VerifyCanOpenBackpack(BasePlayer looter, ulong ownerId, bool provideFeedback = true)
         {
             if (IsPlayingEvent(looter))
             {
-                looter.ChatMessage(GetMessage(looter.UserIDString, LangEntry.MayNotOpenBackpackInEvent));
+                if (provideFeedback)
+                {
+                    looter.ChatMessage(GetMessage(looter.UserIDString, LangEntry.MayNotOpenBackpackInEvent));
+                }
+
                 return false;
             }
 
             var hookResult = ExposedHooks.CanOpenBackpack(looter, ownerId);
-            if (hookResult != null && hookResult is string)
+            if (hookResult != null)
             {
-                looter.ChatMessage(hookResult as string);
-                return false;
+                var feedbackMessage = hookResult as string;
+                if (feedbackMessage != null)
+                {
+                    if (provideFeedback)
+                    {
+                        looter.ChatMessage(feedbackMessage);
+                    }
+
+                    return false;
+                }
+
+                if (hookResult is bool && (bool)hookResult == false)
+                    return false;
             }
 
             return true;
@@ -1694,7 +1726,7 @@ namespace Oxide.Plugins
             if (_config.BackpackSize.DynamicSize.Enabled)
                 return true;
 
-            ReplyToPlayer(player, LangEntry.DynamicCapacityNotEnabled, targetPlayerIdString);
+            ReplyToPlayer(player, LangEntry.DynamicCapacityNotEnabled);
             return false;
         }
 
@@ -2094,42 +2126,48 @@ namespace Oxide.Plugins
                 }
             }
 
-            private static bool HasItemMod<T>(ItemDefinition itemDefinition) where T : ItemMod
+            private static bool IsSearchableItemDefinition(ItemDefinition itemDefinition)
             {
-                foreach (var itemMod in itemDefinition.itemMods)
-                {
-                    if (itemMod is T)
-                        return true;
-                }
-
-                return false;
+                return (itemDefinition.flags & (ItemDefinition.Flag.Backpack | SearchableItemDefinitionFlag)) != 0;
             }
 
-            private static bool HasSearchableContainer(ItemDefinition itemDefinition)
-            {
-                // Don't consider vanilla containers searchable (i.e., don't take low grade out of a miner's hat).
-                return !HasItemMod<ItemModContainer>(itemDefinition);
-            }
-
-            private static bool HasSearchableContainer(Item item, out List<Item> itemList)
-            {
-                itemList = item.contents?.itemList;
-                return itemList?.Count > 0 && !item.HasFlag(UnsearchableItemFlag) && HasSearchableContainer(item.info);
-            }
-
-            private static bool HasSearchableContainer(int itemId)
+            private static bool IsSearchableItemDefinition(int itemId)
             {
                 var itemDefinition = ItemManager.FindItemDefinition(itemId);
                 if ((object)itemDefinition == null)
                     return false;
 
-                return HasSearchableContainer(itemDefinition);
+                return IsSearchableItemDefinition(itemDefinition);
+            }
+
+            private static bool HasSearchableContainer(Item item, out List<Item> itemList)
+            {
+                itemList = item.contents?.itemList;
+                if (itemList is not { Count: > 0 })
+                    return false;
+
+                if (item.HasFlag(SearchableItemFlag))
+                    return true;
+
+                if (item.HasFlag(UnsearchableItemFlag))
+                    return false;
+
+                return IsSearchableItemDefinition(item.info);
             }
 
             private static bool HasSearchableContainer(ItemData itemData, out List<ItemData> itemDataList)
             {
                 itemDataList = itemData.Contents;
-                return itemDataList?.Count > 0 && !itemData.Flags.HasFlag(UnsearchableItemFlag) && HasSearchableContainer(itemData.ID);
+                if (itemDataList is not { Count: > 0 })
+                    return false;
+
+                if (itemData.Flags.HasFlag(SearchableItemFlag))
+                    return true;
+
+                if (itemData.Flags.HasFlag(UnsearchableItemFlag))
+                    return false;
+
+                return IsSearchableItemDefinition(itemData.ID);
             }
 
             private static void TakeItemAmount(Item item, int amount, List<Item> collect)
@@ -2312,6 +2350,7 @@ namespace Oxide.Plugins
                 CustomPool.Reset<ItemData>(empty ? 0 : 2 * BackpackPoolSize);
                 CustomPool.Reset<List<ItemData>>(empty ? 0 : BackpackPoolSize);
                 CustomPool.Reset<EntityData>(empty ? 0 : BackpackPoolSize / 4);
+                CustomPool.Reset<EntityData.BasicItemData>(empty ? 0 : BackpackPoolSize / 4);
                 CustomPool.Reset<Backpack>(empty ? 0 : BackpackPoolSize);
                 CustomPool.Reset<VirtualContainerAdapter>(empty ? 0 : 2 * BackpackPoolSize);
                 CustomPool.Reset<ItemContainerAdapter>(empty ? 0 : 2 * BackpackPoolSize);
@@ -2450,7 +2489,6 @@ namespace Oxide.Plugins
                     write.PacketID(Message.Type.RPCMessage);
                     write.EntityID(entity.net.ID);
                     write.UInt32(StringPool.Get(funcName));
-                    write.UInt64(0);
                     return write;
                 }
                 return null;
@@ -4150,9 +4188,9 @@ namespace Oxide.Plugins
                 return true;
             }
 
-            public bool HasBackpackFile(ulong userId)
+            public bool HasBackpack(ulong userId)
             {
-                return Interface.Oxide.DataFileSystem.ExistsDatafile(GetBackpackPath(userId));
+                return _cachedBackpacks.ContainsKey(userId) || HasBackpackFile(userId);
             }
 
             public Backpack GetBackpackIfCached(ulong userId)
@@ -4209,7 +4247,16 @@ namespace Oxide.Plugins
 
             public DroppedItemContainer Drop(ulong userId, Vector3 position, List<DroppedItemContainer> collect = null)
             {
-                return GetBackpackIfExists(userId)?.Drop(position, collect);
+                var backpack = GetBackpackIfExists(userId);
+                if (backpack == null)
+                {
+                    #if DEBUG_DROP_ON_DEATH
+                    LogWarning($"[DEBUG_DROP_ON_DEATH] [Player {userId.ToString()}] Backpack not dropped because the player has no backpack in memory or on disk.");
+                    #endif
+                    return null;
+                }
+
+                return backpack.Drop(position, collect);
             }
 
             public bool TryOpenBackpack(BasePlayer looter, ulong backpackOwnerId)
@@ -4278,7 +4325,16 @@ namespace Oxide.Plugins
 
                 foreach (var backpack in _tempBackpackList)
                 {
-                    var didSave = backpack.SaveIfChanged();
+                    var didSave = false;
+
+                    try
+                    {
+                        didSave = backpack.SaveIfChanged();
+                    }
+                    catch (Exception ex)
+                    {
+                        LogError($"Error when saving player backpack {backpack.OwnerIdString}:\n{ex}");
+                    }
 
                     // Kill the backpack to free up space, if no admins are viewing it and its owner is disconnected.
                     if (!keepInUseBackpacks || (!backpack.HasLooters && BasePlayer.FindByID(backpack.OwnerId) == null))
@@ -4319,6 +4375,11 @@ namespace Oxide.Plugins
                 }
 
                 return filepath;
+            }
+
+            private bool HasBackpackFile(ulong userId)
+            {
+                return Interface.Oxide.DataFileSystem.ExistsDatafile(GetBackpackPath(userId));
             }
 
             private Backpack Load(ulong userId)
@@ -5969,7 +6030,7 @@ namespace Oxide.Plugins
                         return false;
                     }
 
-                    if (Plugin.IsPlayingEvent(Owner) || ExposedHooks.CanOpenBackpack(Owner, OwnerId) is string)
+                    if (!Plugin.VerifyCanOpenBackpack(Owner, OwnerId, provideFeedback: false))
                     {
                         _checkedAccessOnFrame = -frameCount;
                         return false;
@@ -6179,6 +6240,8 @@ namespace Oxide.Plugins
                 var itemQuery = ItemQuery.FromItem(item);
                 var anyPagesWithGatherAll = false;
                 var allowedPageCount = AllowedCapacity.PageCount;
+
+                EnlargeIfNeeded();
 
                 using (_itemCountChangedEvent.Pause())
                 {
@@ -6577,18 +6640,33 @@ namespace Oxide.Plugins
             public DroppedItemContainer Drop(Vector3 position, List<DroppedItemContainer> collect = null)
             {
                 if (!HasItems)
+                {
+                    #if DEBUG_DROP_ON_DEATH
+                    LogWarning($"[DEBUG_DROP_ON_DEATH] [Player {OwnerIdString}] Backpack not dropped because it is empty.");
+                    #endif
                     return null;
+                }
 
                 var hookResult = ExposedHooks.CanDropBackpack(OwnerId, position);
                 if (hookResult is bool && (bool)hookResult == false)
+                {
+                    #if DEBUG_DROP_ON_DEATH
+                    LogWarning($"[DEBUG_DROP_ON_DEATH] [Player {OwnerIdString}] Backpack not dropped because another plugin blocked it via the CanDropBackpack hook.");
+                    #endif
                     return null;
+                }
 
                 ForceCloseAllLooters();
                 ReclaimItemsForSoftcore();
 
                 // Check again since the items may have all been reclaimed for Softcore.
                 if (!HasItems)
+                {
+                    #if DEBUG_DROP_ON_DEATH
+                    LogWarning($"[DEBUG_DROP_ON_DEATH] [Player {OwnerIdString}] Backpack not dropped because it is empty, after reclaiming items for softcore.");
+                    #endif
                     return null;
+                }
 
                 DroppedItemContainer firstContainer = null;
 
@@ -6625,6 +6703,10 @@ namespace Oxide.Plugins
                         }
                     }
                 }
+
+                #if DEBUG_DROP_ON_DEATH
+                LogWarning($"[DEBUG_DROP_ON_DEATH] [Player {OwnerIdString}] Backpack dropped.");
+                #endif
 
                 return firstContainer;
             }
@@ -7333,17 +7415,55 @@ namespace Oxide.Plugins
         [JsonConverter(typeof(PoolConverter<EntityData>))]
         private class EntityData : CustomPool.IPooled
         {
+            [JsonConverter(typeof(PoolConverter<BasicItemData>))]
+            public class BasicItemData : CustomPool.IPooled
+            {
+                public int ItemId;
+
+                public BasicItemData Setup(int itemId)
+                {
+                    ItemId = itemId;
+                    return this;
+                }
+
+                public void EnterPool()
+                {
+                    #if DEBUG_POOLING
+                    LogDebug($"EntityData.BasicItemData::EnterPool | {CustomPool.GetStats<EntityData.BasicItemData>()}");
+                    #endif
+
+                    ItemId = 0;
+                }
+
+                public void LeavePool()
+                {
+                    #if DEBUG_POOLING
+                    LogDebug($"EntityData.BasicItemData::LeavePool | {CustomPool.GetStats<EntityData.BasicItemData>()}");
+                    #endif
+                }
+            }
+
             [JsonProperty("Flags", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public BaseEntity.Flags Flags;
+            public BaseEntity.Flags Flags { get; private set; }
 
             [JsonProperty("DataInt", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public int DataInt;
+            public int DataInt { get; private set; }
 
             [JsonProperty("CreatorSteamId", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public ulong CreatorSteamId;
+            public ulong CreatorSteamId { get; private set; }
 
             [JsonProperty("FileContent", DefaultValueHandling = DefaultValueHandling.Ignore)]
-            public string[] FileContent;
+            public string[] FileContent { get; private set; }
+
+            [JsonProperty("PrefabId", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            public uint PrefabId { get; private set; }
+
+            [JsonProperty("PlayerName", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            public string PlayerName { get; private set; }
+
+            [JsonProperty("Items", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            [JsonConverter(typeof(PoolListConverter<BasicItemData>))]
+            public List<BasicItemData> Items { get; private set; }
 
             public void Setup(BaseEntity entity)
             {
@@ -7363,7 +7483,7 @@ namespace Oxide.Plugins
                 }
 
                 var signContent = entity as SignContent;
-                if (entity is SignContent)
+                if ((object)signContent != null)
                 {
                     var imageIdList = signContent.GetContentCRCs;
 
@@ -7444,6 +7564,34 @@ namespace Oxide.Plugins
                     return;
                 }
 
+                var headEntity = entity as HeadEntity;
+                if ((object)headEntity != null)
+                {
+                    var headData = headEntity.CurrentTrophyData;
+                    if (headData == null)
+                        return;
+
+                    PrefabId = headData.entitySource;
+                    DataInt = headData.horseBreed;
+                    CreatorSteamId = headData.playerId;
+                    PlayerName = headData.playerName;
+
+                    if (headData.clothing?.Count > 0)
+                    {
+                        if (Items == null)
+                        {
+                            Items = CustomPool.GetList<BasicItemData>();
+                        }
+
+                        foreach (var itemId in headData.clothing)
+                        {
+                            Items.Add(CustomPool.Get<BasicItemData>().Setup(itemId));
+                        }
+                    }
+
+                    return;
+                }
+
                 LogWarning($"Unable to serialize associated entity of type {entity.GetType()}.");
             }
 
@@ -7457,6 +7605,15 @@ namespace Oxide.Plugins
                 DataInt = 0;
                 CreatorSteamId = 0;
                 FileContent = null;
+                PrefabId = 0;
+                PlayerName = null;
+                if (Items != null)
+                {
+                    PoolUtils.ResetItemsAndClear(Items);
+                    var items = Items;
+                    CustomPool.FreeList(ref items);
+                    Items = null;
+                }
             }
 
             public void LeavePool()
@@ -7511,6 +7668,7 @@ namespace Oxide.Plugins
 
                         signContent.GetContentCRCs[i] = FileStorage.server.Store(Convert.FromBase64String(fileContent), FileStorage.Type.png, entity.net.ID, i);
                     }
+
                     return;
                 }
 
@@ -7551,6 +7709,36 @@ namespace Oxide.Plugins
                 if ((object)mobileInventoryEntity != null)
                 {
                     mobileInventoryEntity.flags |= Flags;
+                    return;
+                }
+
+                var headEntity = entity as HeadEntity;
+                if ((object)headEntity != null)
+                {
+                    if (headEntity.CurrentTrophyData == null)
+                    {
+                        headEntity.CurrentTrophyData = Pool.Get<ProtoBuf.HeadData>();
+                    }
+
+                    var headData = headEntity.CurrentTrophyData;
+                    headData.entitySource = PrefabId;
+                    headData.horseBreed = DataInt;
+                    headData.playerId = CreatorSteamId;
+                    headData.playerName = PlayerName;
+
+                    if (Items?.Count > 0)
+                    {
+                        if (headData.clothing == null)
+                        {
+                            headData.clothing = Pool.GetList<int>();
+                        }
+
+                        foreach (var itemData in Items)
+                        {
+                            headData.clothing.Add(itemData.ItemId);
+                        }
+                    }
+
                     return;
                 }
             }
@@ -7782,11 +7970,17 @@ namespace Oxide.Plugins
                 item.flags |= Flags;
 
                 var heldEntity = item.GetHeldEntity();
-                var magazine = (heldEntity as BaseProjectile)?.primaryMagazine;
-                if (magazine != null && AmmoType != 0)
+                var baseProjectile = heldEntity as BaseProjectile;
+                if (baseProjectile != null)
                 {
-                    magazine.contents = Ammo;
-                    magazine.ammoType = ItemManager.FindItemDefinition(AmmoType) ?? magazine.ammoType;
+                    baseProjectile.DelayedModsChanged();
+
+                    var magazine = baseProjectile.primaryMagazine;
+                    if (magazine != null && AmmoType != 0)
+                    {
+                        magazine.contents = Ammo;
+                        magazine.ammoType = ItemManager.FindItemDefinition(AmmoType) ?? magazine.ammoType;
+                    }
                 }
 
                 var flameThrower = heldEntity as FlameThrower;
