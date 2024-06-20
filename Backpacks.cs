@@ -484,7 +484,7 @@ namespace Oxide.Plugins
                     [nameof(IsBackpackLoaded)] = new Func<BasePlayer, bool>(IsBackpackLoaded),
                     [nameof(IsDynamicCapacityEnabled)] = new Func<bool>(IsDynamicCapacityEnabled),
                     [nameof(GetBackpackCapacity)] = new Func<BasePlayer, int>(GetBackpackCapacity),
-                    [nameof(GetBackpackCapacityByIPlayer)] = new Func<IPlayer, int>(GetBackpackCapacityByIPlayer),
+                    [nameof(GetBackpackCapacityById)] = new Func<ulong, string, int>(GetBackpackCapacityById),
                     [nameof(GetBackpackInitialCapacity)] = new Func<BasePlayer, int>(GetBackpackInitialCapacity),
                     [nameof(GetBackpackMaxCapacity)] = new Func<BasePlayer, int>(GetBackpackMaxCapacity),
                     [nameof(AddBackpackCapacity)] = new Func<BasePlayer, int, int>(AddBackpackCapacity),
@@ -564,9 +564,9 @@ namespace Oxide.Plugins
                 return _plugin._capacityManager.GetCapacity(player.userID, player.UserIDString);
             }
             
-            public int GetBackpackCapacityByIPlayer(IPlayer player)
+            public int GetBackpackCapacityById(ulong playerID, string playerIDString)
             {
-                return _plugin._capacityManager.GetCapacity(Convert.ToUInt64(player.Id), player.Id);
+                return _plugin._capacityManager.GetCapacity(playerID, playerIDString);
             }
 
             public int GetBackpackInitialCapacity(BasePlayer player)
@@ -734,10 +734,10 @@ namespace Oxide.Plugins
             return ObjectCache.Get(_api.GetBackpackCapacity(player));
         }
         
-        [HookMethod(nameof(API_GetBackpackCapacityByIPlayer))]
-        public object API_GetBackpackCapacityByIPlayer(IPlayer player)
+        [HookMethod(nameof(API_GetBackpackCapacityById))]
+        public object API_GetBackpackCapacityById(ulong playerID, string playerIDString)
         {
-            return ObjectCache.Get(_api.GetBackpackCapacityByIPlayer(player));
+            return ObjectCache.Get(_api.GetBackpackCapacityById(playerID, playerIDString));
         }
 
         [HookMethod(nameof(API_GetBackpackInitialCapacity))]
