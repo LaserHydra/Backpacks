@@ -1,4 +1,4 @@
-// #define DEBUG_DROP_ON_DEATH
+﻿// #define DEBUG_DROP_ON_DEATH
 // #define DEBUG_POOLING
 // #define DEBUG_BACKPACK_LIFECYCLE
 
@@ -484,7 +484,6 @@ namespace Oxide.Plugins
                     [nameof(IsBackpackLoaded)] = new Func<BasePlayer, bool>(IsBackpackLoaded),
                     [nameof(IsDynamicCapacityEnabled)] = new Func<bool>(IsDynamicCapacityEnabled),
                     [nameof(GetBackpackCapacity)] = new Func<BasePlayer, int>(GetBackpackCapacity),
-                    [nameof(GetBackpackCapacityById)] = new Func<ulong, string, int>(GetBackpackCapacityById),
                     [nameof(GetBackpackInitialCapacity)] = new Func<BasePlayer, int>(GetBackpackInitialCapacity),
                     [nameof(GetBackpackMaxCapacity)] = new Func<BasePlayer, int>(GetBackpackMaxCapacity),
                     [nameof(AddBackpackCapacity)] = new Func<BasePlayer, int, int>(AddBackpackCapacity),
@@ -562,11 +561,6 @@ namespace Oxide.Plugins
             public int GetBackpackCapacity(BasePlayer player)
             {
                 return _plugin._capacityManager.GetCapacity(player.userID, player.UserIDString);
-            }
-            
-            public int GetBackpackCapacityById(ulong playerID, string playerIDString)
-            {
-                return _plugin._capacityManager.GetCapacity(playerID, playerIDString);
             }
 
             public int GetBackpackInitialCapacity(BasePlayer player)
@@ -732,12 +726,6 @@ namespace Oxide.Plugins
         public object API_GetBackpackCapacity(BasePlayer player)
         {
             return ObjectCache.Get(_api.GetBackpackCapacity(player));
-        }
-        
-        [HookMethod(nameof(API_GetBackpackCapacityById))]
-        public object API_GetBackpackCapacityById(ulong playerID, string playerIDString)
-        {
-            return ObjectCache.Get(_api.GetBackpackCapacityById(playerID, playerIDString));
         }
 
         [HookMethod(nameof(API_GetBackpackInitialCapacity))]
