@@ -412,6 +412,10 @@ namespace Oxide.Plugins
 
         private void OnPlayerRespawned(BasePlayer player)
         {
+            // People reported NRE on Carbon framework, meaning the player is somehow null, unknown root cause.
+            if (player == null)
+                return;
+
             MaybeCreateButtonUi(player);
             _backpackManager.GetBackpackIfCached(player.userID)?.PauseGatherMode(1f);
         }
