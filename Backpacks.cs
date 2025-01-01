@@ -175,8 +175,10 @@ namespace Oxide.Plugins
             if (_config.BackpackSize.DynamicSize is { Enabled: true, CapacityResetOptions.Enabled: true })
             {
                 _capacityData.Clear();
-                _capacityData.SaveIfChanged();
-                LogWarning("Dynamic size data has been reset.");
+                if (_capacityData.SaveIfChanged())
+                {
+                    LogWarning("Dynamic size data has been reset.");
+                }
             }
 
             if (_config.ClearOnWipe.Enabled)
