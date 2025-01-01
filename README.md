@@ -551,6 +551,10 @@ Returns `true` if dynamic capacity is enabled in the config, else returns `false
 int API_GetBackpackCapacity(BasePlayer player)
 ```
 
+```csharp
+int API_GetBackpackCapacityById(ulong playerID, string playerIDString)
+```
+
 Returns the player's current backpack capacity.
 
 ### API_GetBackpackInitialCapacity
