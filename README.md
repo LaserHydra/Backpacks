@@ -175,6 +175,9 @@ Default configuration:
     ],
     "Dynamic Size (EXPERIMENTAL)": {
       "Enabled": false,
+      "Reset dynamic size on wipe": {
+        "Enabled": true
+      },
       "Size profiles": [
         {
           "Permission suffix": "6-48",
@@ -192,7 +195,7 @@ Default configuration:
           "Max size": 144
         }
       ]
-    },
+    }
   },
   "Drop on Death (true/false)": true,
   "Erase on Death (true/false)": false,
@@ -286,7 +289,9 @@ Default configuration:
   - `Permission sizes` -- Each number in this list generates a permission of the format `backpacks.size.<number>`. Granting that permission to a player or group assigns that much capacity to their backpack. This is useful if you want some players to have more capacity than the above default. Note: If a player is granted multiple size permissions, the highest will apply.
     - Note: These permissions are ignored for players who have `backpacks.size.profile.*` permissions.
   - `Dynamic Size (EXPERIMENTAL)` -- Advanced feature for integration with other plugins. **Note: This feature is subject to change in future updates.** If you like the idea of this feature, please provide feedback on the uMod forums (click the "Help" button on the sidebar to access the Backpacks forums).
-    - `Enabled` (`true` or `false`; Default: `true`) -- While `true`, dynamic size is enabled, meaning any `backpacks.size.profile.*` permissions will be generated from the config and take effect. While `false`, dynamic size options are disabled, meaning `backpacks.size.profile.*` permissions will not be generated and will have no effect if previously granted to players.
+    - `Enabled` (`true` or `false`; Default: `false`) -- While `true`, dynamic size is enabled, meaning any `backpacks.size.profile.*` permissions will be generated from the config and will take effect. While `false`, dynamic size options are disabled, meaning `backpacks.size.profile.*` permissions will not be generated and will have no effect if previously granted to players.
+    - `Reset dynamic size on wipe`
+      - `Enabled` (`true` or `false`; Default: `true`) -- While `true`, dynamic size will be reset on wipe. This means all backpacks using dynamic size will revert to initial size.
     - `Size profiles` -- Each entry in this list defines a size profile. When a size profile is assigned to a player via permissions, that player's backpack size is determined by the profile, overriding the default backpack size from the config and any `backpacks.size.<number>` permissions the player has been assigned.
       - `Permission suffix` -- Determines the generated permission of format `backpacks.restrictions.<suffix>`.
       - `Initial size` -- The initial size of the backpack. Other plugins can use the API to change the backpack's size, but not below this amount. The size is automatically reset to this value when the server is wiped.
@@ -532,7 +537,7 @@ Replace the `"GUI Button Position"` section of the plugin configuration with the
 
 ## Developer API
 
-### API_IsDynamicCapacityEnabled()
+### API_IsDynamicCapacityEnabled
 
 ```csharp
 int API_IsDynamicCapacityEnabled()

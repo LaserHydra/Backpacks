@@ -172,10 +172,11 @@ namespace Oxide.Plugins
 
         private void OnNewSave(string filename)
         {
-            if (_config.BackpackSize.DynamicSize.Enabled)
+            if (_config.BackpackSize.DynamicSize is { Enabled: true, CapacityResetOptions.Enabled: true })
             {
                 _capacityData.Clear();
                 _capacityData.SaveIfChanged();
+                LogWarning("Dynamic size data has been reset.");
             }
 
             if (_config.ClearOnWipe.Enabled)
@@ -3918,9 +3919,15 @@ namespace Oxide.Plugins
             private CapacityInfo UpdateCapacity(ulong userId, CapacityInfo capacityInfo)
             {
                 _cachedPlayerCapacityInfo[userId] = capacityInfo;
-                _capacityData.SetPlayerCapacity(userId, capacityInfo.Current);
+                SetBonusCapacity(userId, capacityInfo);
                 _backpackManager.GetBackpackIfCached(userId)?.SetCapacity(capacityInfo.Current);
                 return capacityInfo;
+            }
+
+            private void SetBonusCapacity(ulong userId, CapacityInfo capacityInfo)
+            {
+                _capacityData.SetPlayerBonusCapacity(userId, capacityInfo.Current - capacityInfo.Initial);
+                _capacityData.RemovePlayerExactCapacity(userId);
             }
 
             private CapacityInfo GetCapacityInfo(ulong userId, string userIdString)
@@ -3929,6 +3936,8 @@ namespace Oxide.Plugins
                 {
                     capacityInfo = DetermineCapacityInfo(userId, userIdString);
                     _cachedPlayerCapacityInfo[userId] = capacityInfo;
+                    // Set bonus capacity to migrate from exact capacity.
+                    SetBonusCapacity(userId, capacityInfo);
                 }
 
                 return capacityInfo;
@@ -3951,25 +3960,34 @@ namespace Oxide.Plugins
                 if (!_plugin.permission.UserHasPermission(userIdString, UsagePermission))
                     return new CapacityInfo(0);
 
-                if (_config.BackpackSize.DynamicSize.Enabled)
+                if (_config.BackpackSize.DynamicSize.Enabled
+                    && _config.BackpackSize.DynamicSize.GetPlayerProfile(userIdString) is var (initial, max))
                 {
-                    var capacityProfile = _config.BackpackSize.DynamicSize.GetPlayerProfile(userIdString);
-                    if (capacityProfile != null)
-                    {
-                        var max = capacityProfile.MaxCapacity;
-                        var initial = Math.Min(capacityProfile.InitialCapacity, max);
-                        var current = Mathf.Clamp(_capacityData?.GetPlayerCapacity(userId) ?? initial, initial, max);
+                    initial = Math.Min(initial, max);
 
-                        return new CapacityInfo
-                        {
-                            Initial = initial,
-                            Current = current,
-                            Max = max,
-                        };
-                    }
+                    return new CapacityInfo
+                    {
+                        Initial = initial,
+                        Current = Mathf.Clamp(DetermineCurrentCapacity(userId, initial), initial, max),
+                        Max = max,
+                    };
                 }
 
                 return new CapacityInfo(DetermineCapacityFromPermission(userIdString));
+            }
+
+            private int DetermineCurrentCapacity(ulong userId, int initialCapacity)
+            {
+                if (_capacityData == null)
+                    return initialCapacity;
+
+                if (_capacityData.GetPlayerExactCapacity(userId) is {} exactCapacity)
+                    return exactCapacity;
+
+                if (_capacityData.GetPlayerBonusCapacity(userId) is {} bonusCapacity)
+                    return initialCapacity + bonusCapacity;
+
+                return initialCapacity;
             }
         }
 
@@ -7986,14 +8004,24 @@ namespace Oxide.Plugins
             [JsonProperty("PlayerCapacity")]
             private Dictionary<ulong, int> _playerCapacity = new();
 
-            public int? GetPlayerCapacity(ulong userId)
+            [JsonProperty("BonusCapacity")]
+            private Dictionary<ulong, int> _bonusCapacity = new();
+
+            public int? GetPlayerExactCapacity(ulong userId)
             {
                 return _playerCapacity.TryGetValue(userId, out var capacity)
                     ? capacity
                     : null;
             }
 
-            public void SetPlayerCapacity(ulong userId, int capacity)
+            public int? GetPlayerBonusCapacity(ulong userId)
+            {
+                return _bonusCapacity.TryGetValue(userId, out var bonusCapacity)
+                    ? bonusCapacity
+                    : null;
+            }
+
+            public void SetPlayerExactCapacity(ulong userId, int capacity)
             {
                 if (_playerCapacity.TryGetValue(userId, out var currentCapacity) && currentCapacity == capacity)
                     return;
@@ -8002,7 +8030,16 @@ namespace Oxide.Plugins
                 _dirty = true;
             }
 
-            public void RemovePlayerCapacity(ulong userId)
+            public void SetPlayerBonusCapacity(ulong userId, int bonusCapacity)
+            {
+                if (_bonusCapacity.TryGetValue(userId, out var currentBonusCapacity) && currentBonusCapacity == bonusCapacity)
+                    return;
+
+                _bonusCapacity[userId] = bonusCapacity;
+                _dirty = true;
+            }
+
+            public void RemovePlayerExactCapacity(ulong userId)
             {
                 if (_playerCapacity.Remove(userId))
                 {
@@ -8012,11 +8049,17 @@ namespace Oxide.Plugins
 
             public void Clear()
             {
-                if (_playerCapacity.Count == 0)
-                    return;
+                if (_playerCapacity.Count != 0)
+                {
+                    _playerCapacity.Clear();
+                    _dirty = true;
+                }
 
-                _playerCapacity.Clear();
-                _dirty = true;
+                if (_bonusCapacity.Count != 0)
+                {
+                    _bonusCapacity.Clear();
+                    _dirty = true;
+                }
             }
         }
 
@@ -8402,10 +8445,20 @@ namespace Oxide.Plugins
         }
 
         [JsonObject(MemberSerialization.OptIn)]
+        private class CapacityResetOptions
+        {
+            [JsonProperty("Enabled")]
+            public bool Enabled = true;
+        }
+
+        [JsonObject(MemberSerialization.OptIn)]
         private class DynamicCapacity
         {
             [JsonProperty("Enabled")]
             public bool Enabled;
+
+            [JsonProperty("Reset dynamic size on wipe")]
+            public CapacityResetOptions CapacityResetOptions = new();
 
             [JsonProperty("Size profiles")]
             public CapacityProfile[] CapacityProfiles =
@@ -8446,19 +8499,25 @@ namespace Oxide.Plugins
                 }
             }
 
-            public CapacityProfile GetPlayerProfile(string userIdString)
+            public (int, int)? GetPlayerProfile(string userIdString)
             {
-                if (!Enabled)
+                if (!Enabled || CapacityProfiles is not { Length: > 0 })
                     return null;
 
-                for (var i = CapacityProfiles.Length - 1; i >= 0; i--)
+                var initialCapacity = CapacityProfiles[0].InitialCapacity;
+                var maxCapacity = CapacityProfiles[0].MaxCapacity;
+
+                for (var i = 1; i < CapacityProfiles.Length; i++)
                 {
-                    var ruleset = CapacityProfiles[i];
-                    if (ruleset.Permission != null && _permission.UserHasPermission(userIdString, ruleset.Permission))
-                        return ruleset;
+                    var profile = CapacityProfiles[i];
+                    if (profile.Permission == null || !_permission.UserHasPermission(userIdString, profile.Permission))
+                        continue;
+
+                    initialCapacity = Math.Max(initialCapacity, profile.InitialCapacity);
+                    maxCapacity = Math.Max(maxCapacity, profile.MaxCapacity);
                 }
 
-                return null;
+                return (initialCapacity, maxCapacity);
             }
         }
 
