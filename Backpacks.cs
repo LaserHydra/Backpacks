@@ -7175,6 +7175,9 @@ namespace Oxide.Plugins
                 containerEntity.EnableSaving(false);
                 containerEntity.Spawn();
 
+                // Remove storage entities from the query grid to prevent any grid queries from finding them.
+                BaseEntity.Query.Server.Remove(containerEntity);
+
                 // Must change the network group after spawning,
                 // or else vanilla UpdateNetworkGroup will switch it to a positional network group.
                 containerEntity.net.SwitchGroup(NetworkController.NetworkGroup);
