@@ -687,6 +687,7 @@ Multiple API methods, including `API_MutateBackpackItems` support item queries. 
 - `"FlagsEqual"`: `Item.Flag` -- Match items where `item.flags` equals this value. This can be used to find items that have exactly all the flags you are interested in with no additional flags.
 - `"ItemDefinition"`: `ItemDefinition` -- Match items where `item.info` equals this value. Alternative to `"ItemId"`.
 - `"ItemId"`: `int` -- Matches items where `item.info.itemid` equals this value. Alternative to `"ItemDefinition"`.
+- `"IgnoreItem"`: `Item` -- Prevents matching on this specific item.
 - `"MinCondition"`: `float` -- Matches items where `item.conditionNormalized` is greater than or equal to this value. This parameter is ignored if the item does not support condition (according to `item.info.condition.enabled`).
 - `"RequireEmpty"`: `bool` -- Matches items that do not have child contents (i.e., `item.contents?.itemList?.Count` is `0` or `null`). For example, while `true`, a weapon with an attachment would not match, but a weapon without an attachment could match.
 - `"SkinId"`: `ulong` -- Match items where `item.skin` equals the specified value.

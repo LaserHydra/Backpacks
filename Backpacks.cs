@@ -4629,6 +4629,7 @@ namespace Oxide.Plugins
                 GetOption(raw, "DataInt", out itemQuery.DataInt);
                 GetOption(raw, "FlagsContain", out itemQuery.FlagsContain);
                 GetOption(raw, "FlagsEqual", out itemQuery.FlagsEqual);
+                GetOption(raw, "IgnoreItem", out itemQuery.IgnoreItem);
                 GetOption(raw, "ItemDefinition", out itemQuery.ItemDefinition);
                 GetOption(raw, "ItemId", out itemQuery.ItemId);
                 GetOption(raw, "MinCondition", out itemQuery.MinCondition);
@@ -4650,6 +4651,7 @@ namespace Oxide.Plugins
             public string DisplayName;
             public Item.Flag? FlagsContain;
             public Item.Flag? FlagsEqual;
+            public Item IgnoreItem;
             public ItemDefinition ItemDefinition;
             public int? ItemId;
             public float MinCondition;
@@ -4695,6 +4697,9 @@ namespace Oxide.Plugins
 
             public int GetUsableAmount(Item item)
             {
+                if (IgnoreItem != null && item == IgnoreItem)
+                    return 0;
+
                 var itemId = GetItemId();
                 if (itemId.HasValue && itemId != item.info.itemid)
                     return 0;
