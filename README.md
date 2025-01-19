@@ -94,11 +94,11 @@ If you want to allow players to upgrade the size of their backpack, it is possib
 - If you want backpack size to be reset at the beginning of each wipe, you would need another plugin to reset permissions at that time.
 - If you want to allow players to increase their backpack size multiple ways, such as via a skill tree, via store purchases, via consumable items found and/or traded amongst players, that combination simply wouldn't be feasible because each upgrade source could override the others or have no effect if the permission granted corresponded to a smaller size than the player currently has.
 
-Dynamic backpack size attempts to solve these problems. Using dynamic size, you can define size profiles, which declare an initial size and max size. You assign size profiles to players via permissions. At the beginning of each wipe, each player's backpack size is reset to the initial size of their profile. Throughout a wipe, players can acquire size upgrades from various sources (i.e., other plugins) up to the max size declared in their profile. For example, if a player's size profile declared an initial size of 6, and a max size of 48, the player could incrementally acquire upgrades until they reach a size of 48, at which point, the backpack could no longer be upgraded.
+Dynamic backpack size attempts to solve these problems. Using dynamic size, you can define size profiles, which declare an initial size and max size. You assign size profiles to players via permissions. At the beginning of each wipe, each player's backpack size is optionally reset to the initial size of their profile. Throughout a wipe, players can acquire size upgrades from various sources (i.e., other plugins) up to the max size declared in their profile. For example, if a player's size profile declared an initial size of 6, and a max size of 48, the player could incrementally acquire upgrades until they reach a size of 48, at which point, the backpack could no longer be upgraded.
 
 In order to get started with dynamic backpack size, set the `Dynamic Size (EXPERIMENTAL)` -> `Enabled` config option to `true` and reload the plugin. Then, grant one of the below permissions (or a new one that you define in the config)
 
-The following permissions come with the plugin's **default configuration**. Additional size profiles can be defined in the config, which will generate additional permissions..
+The following permissions come with the plugin's **default configuration**. Additional size profiles can be defined in the config, which will generate additional permissions.
 
 - `backpacks.size.profile.6-48` -- 6 to 48 slots
 - `backpacks.size.profile.6-96` -- 6 to 96 slots
@@ -106,8 +106,9 @@ The following permissions come with the plugin's **default configuration**. Addi
 
 **Important notes:**
 
-- If a player is granted multiple `backpacks.size.profile.*` permissions, the last will apply, according to the profile order in the config.
+- If a player is granted multiple `backpacks.size.profile.*` permissions, ~~the last will apply, according to the profile order in the config.~~ the initial size and max size will be the highest of all profiles they have access to (Changed in v3.14.0).
 - If a player is granted any `backpacks.size.profile.*` permissions, it will override the default backpack size from the config, as well as any `backpacks.size.<number>` permissions they have been granted because **size profiles take priority over all other configuration/permissions**.
+- The plugin keeps track of the bonus size the player has received, not the exact size. This means that you can generally switch a player from one profile to another without losing earned capacity. For example, if the player starts with a profile of 6-48 and upgrades the capacity to 24 (6+18) and then receives permission to a profile of 48-96, they will have a capacity of 66 (48+18).
 - This plugin does not currently offer built-in features to upgrade backpack capacity, so other plugins must be used for such use cases. Plugin developers can reference the API documentation below for details on how to query and modify backpack capacity. The notable API method names are below.
   - `API_IsDynamicCapacityEnabled`
   - `API_GetBackpackCapacity`
