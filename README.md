@@ -743,6 +743,15 @@ bool CanDropBackpack(ulong backpackOwnerID, Vector3 position)
 - Called when a player dies while the `"Drop on Death (true/false)"` option is set to `true`.
 - Returning `false` prevents the backpack from dropping.
 
+### OnBackpackDropped
+
+```csharp
+void OnBackpackDropped(ulong ownerId, List<DroppedItemContainer> droppedBackpackList)
+```
+
+- Called after a player's backpack has been dropped.
+- The `List<DroppedItemContainer>` list contains all dropped backpack containers. Multiple containers may be dropped depending on how many items are in the player's backpack. Note that this list is pooled and will be immediately cleared after the hook call has finished, so if you need to process the containers after the hook call, you should copy the contents of the list to a list that you control.  
+
 ### CanEraseBackpack
 
 ```csharp

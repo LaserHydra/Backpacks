@@ -880,6 +880,11 @@ namespace Oxide.Plugins
                 return Interface.CallHook("CanDropBackpack", ObjectCache.Get(ownerId), position);
             }
 
+            public static void OnBackpackDropped(ulong ownerId, List<DroppedItemContainer> droppedBackpackList)
+            {
+                Interface.CallHook("OnBackpackDropped", ownerId, droppedBackpackList);
+            }
+
             public static object CanEraseBackpack(ulong ownerId)
             {
                 return Interface.CallHook("CanEraseBackpack", ObjectCache.Get(ownerId));
@@ -4006,6 +4011,7 @@ namespace Oxide.Plugins
             private readonly Dictionary<ulong, Backpack> _cachedBackpacks = new();
             private readonly Dictionary<ulong, string> _backpackPathCache = new();
             private readonly Dictionary<ItemContainer, Backpack> _backpackContainers = new();
+            private readonly List<DroppedItemContainer> _reusableDroppedItemContainerList = new();
 
             private readonly List<Backpack> _tempBackpackList = new(PoolUtils.BackpackPoolSize);
 
@@ -4186,7 +4192,18 @@ namespace Oxide.Plugins
                     return null;
                 }
 
-                return backpack.Drop(position, collect);
+                var firstDroppedItemContainer = (DroppedItemContainer)null;
+                _reusableDroppedItemContainerList.Clear();
+
+                if (backpack.Drop(position, _reusableDroppedItemContainerList))
+                {
+                    firstDroppedItemContainer = _reusableDroppedItemContainerList.FirstOrDefault();
+                    collect?.AddRange(_reusableDroppedItemContainerList);
+                    ExposedHooks.OnBackpackDropped(userId, _reusableDroppedItemContainerList);
+                    _reusableDroppedItemContainerList.Clear();
+                }
+
+                return firstDroppedItemContainer;
             }
 
             public bool TryOpenBackpack(BasePlayer looter, ulong backpackOwnerId)
@@ -6550,14 +6567,14 @@ namespace Oxide.Plugins
                 }
             }
 
-            public DroppedItemContainer Drop(Vector3 position, List<DroppedItemContainer> collect = null)
+            public bool Drop(Vector3 position, List<DroppedItemContainer> collect)
             {
                 if (!HasItems)
                 {
                     #if DEBUG_DROP_ON_DEATH
                     LogWarning($"[DEBUG_DROP_ON_DEATH] [Player {OwnerIdString}] Backpack not dropped because it is empty.");
                     #endif
-                    return null;
+                    return false;
                 }
 
                 var hookResult = ExposedHooks.CanDropBackpack(OwnerId, position);
@@ -6566,7 +6583,7 @@ namespace Oxide.Plugins
                     #if DEBUG_DROP_ON_DEATH
                     LogWarning($"[DEBUG_DROP_ON_DEATH] [Player {OwnerIdString}] Backpack not dropped because another plugin blocked it via the CanDropBackpack hook.");
                     #endif
-                    return null;
+                    return false;
                 }
 
                 ForceCloseAllLooters();
@@ -6578,10 +6595,8 @@ namespace Oxide.Plugins
                     #if DEBUG_DROP_ON_DEATH
                     LogWarning($"[DEBUG_DROP_ON_DEATH] [Player {OwnerIdString}] Backpack not dropped because it is empty, after reclaiming items for softcore.");
                     #endif
-                    return null;
+                    return false;
                 }
-
-                DroppedItemContainer firstContainer = null;
 
                 using (_itemCountChangedEvent.Pause())
                 {
@@ -6598,13 +6613,7 @@ namespace Oxide.Plugins
                                 break;
 
                             itemList.Clear();
-
-                            if ((object)firstContainer == null)
-                            {
-                                firstContainer = droppedItemContainer;
-                            }
-
-                            collect?.Add(droppedItemContainer);
+                            collect.Add(droppedItemContainer);
                         }
 
                         if (itemList.Count > 0)
@@ -6621,7 +6630,7 @@ namespace Oxide.Plugins
                 LogWarning($"[DEBUG_DROP_ON_DEATH] [Player {OwnerIdString}] Backpack dropped.");
                 #endif
 
-                return firstContainer;
+                return true;
             }
 
             public void EraseContents(WipeRuleset wipeRuleset = null, bool force = false)
