@@ -1230,6 +1230,19 @@ namespace Oxide.Plugins
                 : -1;
         }
 
+        private static bool HasItemMod<T>(ItemDefinition itemDefinition, out T itemModOfType) where T : ItemMod
+        {
+            foreach (var itemMod in itemDefinition.itemMods)
+            {
+                itemModOfType = itemMod as T;
+                if (itemModOfType is not null)
+                    return true;
+            }
+
+            itemModOfType = null;
+            return false;
+        }
+
         private static string DetermineLootPanelName(ItemContainer container)
         {
             return (container.entityOwner as StorageContainer)?.panelName
@@ -7710,6 +7723,9 @@ namespace Oxide.Plugins
             [JsonProperty("EntityData", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public EntityData EntityData { get; private set; }
 
+            [JsonProperty("Capacity", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            public int Capacity { get; private set; }
+
             [JsonProperty("Contents", DefaultValueHandling = DefaultValueHandling.Ignore)]
             [JsonConverter(typeof(PoolListConverter<ItemData>))]
             public List<ItemData> Contents { get; private set; }
@@ -7752,6 +7768,7 @@ namespace Oxide.Plugins
 
                 if (item.contents != null)
                 {
+                    Capacity = item.contents.capacity;
                     Contents = CustomPool.GetList<ItemData>();
                     foreach (var childItem in item.contents.itemList)
                     {
@@ -7784,6 +7801,7 @@ namespace Oxide.Plugins
                 Name = null;
                 Text = null;
                 Flags = 0;
+                Capacity = 0;
 
                 if (EntityData != null)
                 {
@@ -7848,30 +7866,40 @@ namespace Oxide.Plugins
                     item.name = Name;
                 }
 
-                if (amount == Amount && Contents?.Count > 0)
+                if (amount == Amount && (Capacity > 0 || Contents?.Count > 0))
                 {
                     if (item.contents == null)
                     {
-                        item.contents = new ItemContainer();
-                        item.contents.ServerInitialize(null, Contents.Count);
-                        item.contents.GiveUID();
-                        item.contents.parent = item;
+                        var capacity = Math.Max(Capacity, Contents.Count);
+                        if (HasItemMod(item.info, out ItemModContainerArmorSlot itemMod) && capacity > 0)
+                        {
+                            itemMod.CreateAtCapacity(capacity, item);
+                        }
+                        else
+                        {
+                            item.contents = new ItemContainer();
+                            item.contents.ServerInitialize(item, capacity);
+                            item.contents.GiveUID();
+                        }
                     }
                     else
                     {
                         item.contents.capacity = Math.Max(item.contents.capacity, Contents.Count);
                     }
 
-                    foreach (var contentItem in Contents)
+                    if (Contents != null)
                     {
-                        var childItem = contentItem.ToItem();
-                        if (childItem == null)
-                            continue;
-
-                        if (!childItem.MoveToContainer(item.contents, childItem.position)
-                            && !childItem.MoveToContainer(item.contents))
+                        foreach (var contentItem in Contents)
                         {
-                            childItem.Remove();
+                            var childItem = contentItem.ToItem();
+                            if (childItem == null)
+                                continue;
+
+                            if (!childItem.MoveToContainer(item.contents, childItem.position)
+                                && !childItem.MoveToContainer(item.contents))
+                            {
+                                childItem.Remove();
+                            }
                         }
                     }
                 }
