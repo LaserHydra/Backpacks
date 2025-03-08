@@ -27,7 +27,7 @@ using Time = UnityEngine.Time;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "WhiteThunder", "3.14.0")]
+    [Info("Backpacks", "WhiteThunder", "3.15.0")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : CovalencePlugin
     {
@@ -2385,6 +2385,8 @@ namespace Oxide.Plugins
             {
                 CustomPool.Reset<ItemData>(empty ? 0 : 2 * BackpackPoolSize);
                 CustomPool.Reset<List<ItemData>>(empty ? 0 : BackpackPoolSize);
+                CustomPool.Reset<OwnershipData>(empty ? 0 : 2 * BackpackPoolSize);
+                CustomPool.Reset<List<OwnershipData>>(empty ? 0 : BackpackPoolSize);
                 CustomPool.Reset<EntityData>(empty ? 0 : BackpackPoolSize / 4);
                 CustomPool.Reset<EntityData.BasicItemData>(empty ? 0 : BackpackPoolSize / 4);
                 CustomPool.Reset<Backpack>(empty ? 0 : BackpackPoolSize);
@@ -7739,6 +7741,45 @@ namespace Oxide.Plugins
             }
         }
 
+        [JsonConverter(typeof(PoolConverter<OwnershipData>))]
+        private class OwnershipData : CustomPool.IPooled
+        {
+            [JsonProperty("Username")]
+            public string Username;
+
+            [JsonProperty("Reason")]
+            public string Reason;
+
+            [JsonProperty("Amount")]
+            public int Amount;
+
+            public OwnershipData Setup(string username, string reason, int amount)
+            {
+                Username = username;
+                Reason = reason;
+                Amount = amount;
+                return this;
+            }
+
+            public void EnterPool()
+            {
+                #if DEBUG_POOLING
+                LogDebug($"OwnershipData::EnterPool | {CustomPool.GetStats<OwnershipData>()}");
+                #endif
+
+                Username = null;
+                Reason = null;
+                Amount = 0;
+            }
+
+            public void LeavePool()
+            {
+                #if DEBUG_POOLING
+                LogDebug($"OwnershipData::LeavePool | {CustomPool.GetStats<OwnershipData>()}");
+                #endif
+            }
+        }
+
         [JsonConverter(typeof(PoolConverter<ItemData>))]
         private class ItemData : CustomPool.IPooled
         {
@@ -7796,6 +7837,10 @@ namespace Oxide.Plugins
             [JsonProperty("Capacity", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public int Capacity { get; private set; }
 
+            [JsonProperty("Ownership", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            [JsonConverter(typeof(PoolListConverter<OwnershipData>))]
+            public List<OwnershipData> Ownership { get; private set; }
+
             [JsonProperty("Contents", DefaultValueHandling = DefaultValueHandling.Ignore)]
             [JsonConverter(typeof(PoolListConverter<ItemData>))]
             public List<ItemData> Contents { get; private set; }
@@ -7846,6 +7891,15 @@ namespace Oxide.Plugins
                     }
                 }
 
+                if (item.ownershipShares?.Count > 0)
+                {
+                    Ownership = CustomPool.GetList<OwnershipData>();
+                    foreach (var ownership in item.ownershipShares)
+                    {
+                        Ownership.Add(CustomPool.Get<OwnershipData>().Setup(ownership.username, ownership.reason, ownership.amount));
+                    }
+                }
+
                 return this;
             }
 
@@ -7886,6 +7940,14 @@ namespace Oxide.Plugins
                     var contents = Contents;
                     CustomPool.FreeList(ref contents);
                     Contents = null;
+                }
+
+                if (Ownership != null)
+                {
+                    PoolUtils.ResetItemsAndClear(Ownership);
+                    var ownership = Ownership;
+                    CustomPool.FreeList(ref ownership);
+                    Ownership = null;
                 }
             }
 
@@ -7971,6 +8033,19 @@ namespace Oxide.Plugins
                                 childItem.Remove();
                             }
                         }
+                    }
+                }
+
+                if (Ownership?.Count > 0 && item.ownershipShares != null)
+                {
+                    foreach (var ownership in Ownership)
+                    {
+                        item.ownershipShares.Add(new ItemOwnershipShare
+                        {
+                            username = ownership.Username,
+                            reason = ownership.Reason,
+                            amount = ownership.Amount,
+                        });
                     }
                 }
 
