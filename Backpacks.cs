@@ -7791,6 +7791,9 @@ namespace Oxide.Plugins
             [JsonProperty("DataInt", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public int DataInt { get; private set; }
 
+            [JsonProperty("DataFloat", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            public float DataFloat { get; private set; }
+
             [JsonProperty("Name", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public string Name;
 
@@ -7835,6 +7838,7 @@ namespace Oxide.Plugins
                 Ammo = heldEntity?.GetComponent<BaseProjectile>()?.primaryMagazine?.contents ?? 0;
                 AmmoType = heldEntity?.GetComponent<BaseProjectile>()?.primaryMagazine?.ammoType?.itemid ?? 0;
                 DataInt = item.instanceData?.dataInt ?? 0;
+                DataFloat = item.instanceData?.dataFloat ?? 0;
                 Name = item.name;
                 Text = item.text;
                 Flags = item.flags;
@@ -7891,6 +7895,7 @@ namespace Oxide.Plugins
                 Ammo = 0;
                 AmmoType = 0;
                 DataInt = 0;
+                DataFloat = 0;
                 Name = null;
                 Text = null;
                 Flags = 0;
@@ -8042,11 +8047,7 @@ namespace Oxide.Plugins
 
                 if (DataInt > 0)
                 {
-                    item.instanceData = new ProtoBuf.Item.InstanceData
-                    {
-                        ShouldPool = false,
-                        dataInt = DataInt,
-                    };
+                    EnsureInstanceData(item).dataInt = DataInt;
 
                     var detonator = heldEntity as Detonator;
                     if ((object)detonator != null)
@@ -8055,11 +8056,26 @@ namespace Oxide.Plugins
                     }
                 }
 
+                if (DataFloat > 0)
+                {
+                    EnsureInstanceData(item).dataFloat = DataFloat;
+                }
+
                 item.text = Text;
 
                 EntityData?.UpdateAssociatedEntity(item);
 
                 return item;
+            }
+
+            private ProtoBuf.Item.InstanceData EnsureInstanceData(Item item)
+            {
+                item.instanceData ??= new ProtoBuf.Item.InstanceData
+                {
+                    ShouldPool = false,
+                };
+
+                return item.instanceData;
             }
         }
 
