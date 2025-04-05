@@ -4869,7 +4869,7 @@ namespace Oxide.Plugins
             int TakeItems(ref ItemQuery itemQuery, int amount, List<Item> collect);
             int MutateItems(ref ItemQuery itemQuery, ref MutationRequest mutationRequest);
             bool TryDepositItem(Item item);
-            void ReclaimFractionForSoftcore(float fraction, List<Item> collect);
+            void TakeFraction(float fraction, List<Item> collect);
             void TakeRestrictedItems(List<Item> collect);
             void TakeAllItems(List<Item> collect, int startPosition = 0);
             void SerializeForNetwork(List<ProtoBuf.Item> saveList);
@@ -4970,12 +4970,8 @@ namespace Oxide.Plugins
                 return mutatedItems;
             }
 
-            public void ReclaimFractionForSoftcore(float fraction, List<Item> collect)
+            public void TakeFraction(float fraction, List<Item> collect)
             {
-                // For some reason, the vanilla reclaim logic doesn't take the last item.
-                if (ItemDataList.Count <= 1)
-                    return;
-
                 var numToTake = Mathf.Ceil(ItemDataList.Count * fraction);
 
                 for (var i = 0; i < numToTake; i++)
@@ -5329,14 +5325,9 @@ namespace Oxide.Plugins
                 return item.MoveToContainer(ItemContainer);
             }
 
-            public void ReclaimFractionForSoftcore(float fraction, List<Item> collect)
+            public void TakeFraction(float fraction, List<Item> collect)
             {
                 var itemList = ItemContainer.itemList;
-
-                // For some reason, the vanilla reclaim logic doesn't take the last item.
-                if (itemList.Count <= 1)
-                    return;
-
                 var numToTake = Mathf.Ceil(itemList.Count * fraction);
 
                 for (var i = 0; i < numToTake; i++)
@@ -6677,10 +6668,9 @@ namespace Oxide.Plugins
                 }
 
                 ForceCloseAllLooters();
-                ReclaimItemsForSoftcore();
 
-                // Check again since the items may have all been reclaimed for Softcore.
-                if (!HasItems)
+                var dropFraction = GetDropFraction();
+                if (dropFraction <= 0)
                 {
                     #if DEBUG_DROP_ON_DEATH
                     LogWarning($"[DEBUG_DROP_ON_DEATH] [Player {OwnerIdString}] Backpack not dropped because it is empty, after reclaiming items for softcore.");
@@ -6688,31 +6678,44 @@ namespace Oxide.Plugins
                     return false;
                 }
 
-                using (_itemCountChangedEvent.Pause())
+                using var pause = _itemCountChangedEvent.Pause();
+                using var itemList = DisposableList<Item>.Get();
+
+                var rotationOffset = 0;
+
+                foreach (var containerAdapter in _containerAdapters)
                 {
-                    using (var itemList = DisposableList<Item>.Get())
+                    if (!containerAdapter.HasItems)
+                        continue;
+
+                    if (Mathf.Approximately(dropFraction, 1))
                     {
-                        foreach (var containerAdapter in _containerAdapters)
-                        {
-                            if (!containerAdapter.HasItems)
-                                continue;
+                        containerAdapter.TakeAllItems(itemList);
+                    }
+                    else
+                    {
+                        containerAdapter.TakeFraction(dropFraction, itemList);
+                    }
 
-                            containerAdapter.TakeAllItems(itemList);
-                            var droppedItemContainer = SpawnDroppedBackpack(position, containerAdapter.Capacity, itemList);
-                            if (droppedItemContainer == null)
-                                break;
+                    // Could have taken no items in SoftCore mode.
+                    if (itemList.Count == 0)
+                        continue;
 
-                            itemList.Clear();
-                            collect.Add(droppedItemContainer);
-                        }
+                    var droppedItemContainer = SpawnDroppedBackpack(position, containerAdapter.Capacity, itemList, rotationOffset);
+                    if (droppedItemContainer == null)
+                        break;
 
-                        if (itemList.Count > 0)
-                        {
-                            foreach (var item in itemList)
-                            {
-                                item.Drop(position, UnityEngine.Random.insideUnitSphere, Quaternion.identity);
-                            }
-                        }
+                    // If multiple backpacks are dropped, rotate them each a bit differently.
+                    rotationOffset += 45;
+                    itemList.Clear();
+                    collect.Add(droppedItemContainer);
+                }
+
+                if (itemList.Count > 0)
+                {
+                    foreach (var item in itemList)
+                    {
+                        item.Drop(position, UnityEngine.Random.insideUnitSphere, Quaternion.identity);
                     }
                 }
 
@@ -7128,9 +7131,9 @@ namespace Oxide.Plugins
                 return looterId == OwnerId ? AllowedCapacity : ActualCapacity;
             }
 
-            private DroppedItemContainer SpawnDroppedBackpack(Vector3 position, int capacity, List<Item> itemList)
+            private DroppedItemContainer SpawnDroppedBackpack(Vector3 position, int capacity, List<Item> itemList, float rotationOffset = 0)
             {
-                var entity = GameManager.server.CreateEntity(DroppedBackpackPrefab, position, Quaternion.Euler(0, 90, 0));
+                var entity = GameManager.server.CreateEntity(DroppedBackpackPrefab, position, Quaternion.Euler(0, 90 + rotationOffset, 0));
                 if (entity == null)
                 {
                     LogError($"Failed to create entity: {DroppedBackpackPrefab}");
@@ -7290,46 +7293,12 @@ namespace Oxide.Plugins
                 return containerEntity;
             }
 
-            private void ReclaimItemsForSoftcore()
+            private float GetDropFraction()
             {
-                var softcoreGameMode = BaseGameMode.svActiveGameMode as GameModeSoftcore;
-                if ((object)softcoreGameMode == null || (object)ReclaimManager.instance == null)
-                    return;
+                if (BaseGameMode.svActiveGameMode is not GameModeSoftcore)
+                    return 1;
 
-                var reclaimFraction = Plugin._config.Softcore.ReclaimFraction;
-                if (reclaimFraction <= 0)
-                    return;
-
-                using var allItemsToReclaim = DisposableList<Item>.Get();
-
-                using (_itemCountChangedEvent.Pause())
-                {
-                    foreach (var containerAdapter in _containerAdapters)
-                    {
-                        containerAdapter.ReclaimFractionForSoftcore(reclaimFraction, allItemsToReclaim);
-                    }
-                }
-
-                if (allItemsToReclaim.Count > 0)
-                {
-                    // There's a vanilla issue where accessing the reclaim backpack will erase items in the reclaim entry above 32.
-                    // So we just add new reclaim entries which can only be accessed at the terminal to avoid this issue.
-                    // Additionally, reclaim entries have a max size, so we may need to create multiple.
-                    while (allItemsToReclaim.Count > ReclaimEntryMaxSize)
-                    {
-                        using var itemsToReclaimForEntry = DisposableList<Item>.Get();
-                        for (var i = 0; i < ReclaimEntryMaxSize; i++)
-                        {
-                            itemsToReclaimForEntry.Add(allItemsToReclaim[0]);
-                            allItemsToReclaim.RemoveAt(0);
-                        }
-                        ReclaimManager.instance.AddPlayerReclaim(OwnerId, null, null, itemsToReclaimForEntry, null);
-                    }
-
-                    ReclaimManager.instance.AddPlayerReclaim(OwnerId, null, null, allItemsToReclaim, null);
-
-                    Owner?.ChatMessage(Plugin.GetMessage(OwnerIdString, LangEntry.BackpackItemsReclaimed));
-                }
+                return 1 - Mathf.Clamp(Plugin._config.Softcore.ReclaimFraction, 0, 1);
             }
 
             private void SetRetrieveFromPage(int pageIndex, bool retrieve)
@@ -9031,7 +9000,6 @@ namespace Oxide.Plugins
             public static readonly LangEntry ItemsFetched = new("Items Fetched", "Fetched {0} \"{1}\" from backpack.");
             public static readonly LangEntry FetchFailed = new("Fetch Failed", "Couldn't fetch \"{0}\" from backpack. Inventory may be full.");
             public static readonly LangEntry ToggledBackpackGUI = new("Toggled Backpack GUI", "Toggled backpack GUI button.");
-            public static readonly LangEntry BackpackItemsReclaimed = new("Backpack Items Reclaimed", "Backpack items were sent to the reclaim terminal for safe keeping.");
             public static readonly LangEntry SetGatherSyntax = new("Set Gather Syntax", "Syntax: {0} <{1}> <optional page number>");
             public static readonly LangEntry PageOutOfRange = new("Page Out Of Range", "Backpack page number must be between 1 and {0}.");
             public static readonly LangEntry SetGatherModeSuccess = new("Set Gather Mode Success", "Updated backpack gather mode for page {0} to {1}");

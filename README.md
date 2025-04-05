@@ -509,7 +509,7 @@ Example rulesets:
   - Note: Even while this option is enabled, players with the `backpacks.keepondeath` permission will keep their backpack contents on death.
 - `Minimum Despawn Time (Seconds)` (Default: `300.0`) -- Determines the minimum time (in seconds) that dropped backpacks will be protected from despawning. If the backpack contents are moderately rare, as determined by vanilla Rust, the backpack may take longer to despawn than this duration.
 - `Softcore` -- Determines options for Softcore mode.
-  - `Reclaim Fraction` (Default: `0.5`, Min: `0.0`, Max: `1.0`) -- Determines the percentage of backpack items that are sent to the reclaim terminal when you die, if drop on death is enabled. Note: Items sent from your backpack to the reclaim terminal are **not** accessible at your corpse.
+  - `Reclaim Fraction` (Default: `0.5`, Min: `0.0`, Max: `1.0`) -- Determines the percentage of backpack items protected when your backpack drops, if drop on death is enabled. For example, if this is set to `0.9`, and the player dies with a backpack containing `100` items, `90` items will be kept in the backpack and `10` items will be dropped. If this is set to `0.0`, all items will be dropped. If this is set to `1.0`, no items will be dropped.
 
 ## Localization
 
