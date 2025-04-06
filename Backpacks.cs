@@ -40,7 +40,6 @@ namespace Oxide.Plugins
         private const int MinContainerCapacity = 1;
         private const int MaxContainerCapacity = 48;
         private const int SlotsPerRow = 6;
-        private const int ReclaimEntryMaxSize = 40;
         private const float StandardLootDelay = 0.1f;
         private const Item.Flag SearchableItemFlag = (Item.Flag)(1 << 24);
         private const Item.Flag UnsearchableItemFlag = (Item.Flag)(1 << 25);
