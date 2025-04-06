@@ -27,7 +27,7 @@ using Time = UnityEngine.Time;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "WhiteThunder", "3.15.1")]
+    [Info("Backpacks", "WhiteThunder", "3.15.2")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : CovalencePlugin
     {
@@ -7794,6 +7794,9 @@ namespace Oxide.Plugins
             [JsonProperty("DataFloat", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public float DataFloat { get; private set; }
 
+            [JsonProperty("Time", DefaultValueHandling = DefaultValueHandling.Ignore)]
+            public long Time { get; private set; }
+
             [JsonProperty("Name", DefaultValueHandling = DefaultValueHandling.Ignore)]
             public string Name;
 
@@ -7839,6 +7842,7 @@ namespace Oxide.Plugins
                 AmmoType = heldEntity?.GetComponent<BaseProjectile>()?.primaryMagazine?.ammoType?.itemid ?? 0;
                 DataInt = item.instanceData?.dataInt ?? 0;
                 DataFloat = item.instanceData?.dataFloat ?? 0;
+                SaveTime(item);
                 Name = item.name;
                 Text = item.text;
                 Flags = item.flags;
@@ -7896,6 +7900,7 @@ namespace Oxide.Plugins
                 AmmoType = 0;
                 DataInt = 0;
                 DataFloat = 0;
+                Time = 0;
                 Name = null;
                 Text = null;
                 Flags = 0;
@@ -8061,6 +8066,8 @@ namespace Oxide.Plugins
                     EnsureInstanceData(item).dataFloat = DataFloat;
                 }
 
+                RestoreTime(item);
+
                 item.text = Text;
 
                 EntityData?.UpdateAssociatedEntity(item);
@@ -8076,6 +8083,26 @@ namespace Oxide.Plugins
                 };
 
                 return item.instanceData;
+            }
+
+            private void SaveTime(Item item)
+            {
+                if (ItemModFoodSpoiling.foodSpoilItems.Contains(item))
+                {
+                    Time = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                }
+            }
+
+            private void RestoreTime(Item item)
+            {
+                if (Time == 0)
+                    return;
+
+                if (ItemModFoodSpoiling.foodSpoilItems.Contains(item))
+                {
+                    var deltaTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - Time;
+                    ItemModFoodSpoiling.foodSpoilItems.lastUpdated[item] = deltaTime;
+                }
             }
         }
 
