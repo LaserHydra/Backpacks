@@ -7979,11 +7979,12 @@ namespace Oxide.Plugins
                     item.name = Name;
                 }
 
-                if (amount == Amount && (Capacity > 0 || Contents?.Count > 0))
+                var contentsCount = Contents?.Count ?? 0;
+                if (amount == Amount && (Capacity > 0 || contentsCount > 0))
                 {
                     if (item.contents == null)
                     {
-                        var capacity = Math.Max(Capacity, Contents.Count);
+                        var capacity = Math.Max(Capacity, contentsCount);
                         if (HasItemMod(item.info, out ItemModContainerArmorSlot itemMod) && capacity > 0)
                         {
                             itemMod.CreateAtCapacity(capacity, item);
