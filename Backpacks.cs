@@ -5656,7 +5656,9 @@ namespace Oxide.Plugins
                 {
                     // Don't gather items from the wearable container.
                     // We still listen to events from it in order to determine when an item is removed.
-                    if (item.parent == _player.inventory.containerWear)
+                    // Verify it's either the main or belt container, in case another plugin already moved the item.
+                    if (item.parent != _player.inventory.containerMain
+                        && item.parent != _player.inventory.containerBelt)
                         return;
 
                     if (_pauseGatherModeUntilFrame != 0)
