@@ -5667,6 +5667,9 @@ namespace Oxide.Plugins
                         _pauseGatherModeUntilFrame = 0;
                     }
 
+                    if (!_player.inventory.CanMoveItemsFrom(_player, item))
+                        return;
+
                     var itemQuery = ItemQuery.FromItem(item);
                     if (HasMatchingItem(_player.inventory.containerMain.itemList, item, ref itemQuery, 24)
                         || HasMatchingItem(_player.inventory.containerBelt.itemList, item, ref itemQuery, 6))
