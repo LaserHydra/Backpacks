@@ -1253,6 +1253,56 @@ namespace Oxide.Plugins
             backpack.ToggleRetrieve(basePlayer, pageIndex);
         }
 
+        [Command("backpack.debug.gather")]
+        private void DebugGatherCommand(IPlayer player, string cmd, string[] args)
+        {
+            if (!VerifyHasPermission(player, AdminPermission))
+                return;
+
+            if (args.Length < 1)
+            {
+                player.Reply($"Syntax: {cmd} [player]");
+                return;
+            }
+
+            if (!VerifyTargetPlayer(player, args[0], out var targetPlayerId, out var targetPlayerIdString))
+                return;
+
+            var targetBackpack = _backpackManager.GetBackpackIfCached(targetPlayerId);
+            if (targetBackpack == null)
+            {
+                player.Reply($"Player {targetPlayerIdString} backpack is not initialized.");
+                return;
+            }
+
+            var sb = new StringBuilder();
+            sb.Append("Player: ").AppendLine(targetPlayerIdString);
+            sb.Append("NumPagesGatherEnabled: ").Append(targetBackpack.NumPagesGathering).AppendLine();
+            sb.Append("IsGathering: ").Append(targetBackpack.IsGathering).AppendLine();
+            sb.Append("CanGather: ").Append(targetBackpack.CanGather).AppendLine();
+
+            var targetPlayer = BasePlayer.FindByID(targetPlayerId);
+            if (targetPlayer != null)
+            {
+                var watcher = targetPlayer.GetComponent<InventoryWatcher>();
+                if (watcher != null)
+                {
+                    sb.Append("DetailedStats: ").AppendLine();
+                    sb.Append("- ").Append(nameof(GatherModeStats.GatherSucceeded)).Append(": ").Append(watcher.Stats.GatherSucceeded).AppendLine();
+                    sb.Append("- ").Append(nameof(GatherModeStats.GatherFailed_PlayerIneligible)).Append(": ").Append(watcher.Stats.GatherFailed_PlayerIneligible).AppendLine();
+                    sb.Append("- ").Append(nameof(GatherModeStats.GatherFailed_PlayerReceivingSnapshot)).Append(": ").Append(watcher.Stats.GatherFailed_PlayerReceivingSnapshot).AppendLine();
+                    sb.Append("- ").Append(nameof(GatherModeStats.GatherFailed_LootingIneligibleContainer)).Append(": ").Append(watcher.Stats.GatherFailed_LootingIneligibleContainer).AppendLine();
+                    sb.Append("- ").Append(nameof(GatherModeStats.GatherFailed_ParentContainerIneligible)).Append(": ").Append(watcher.Stats.GatherFailed_ParentContainerIneligible).AppendLine();
+                    sb.Append("- ").Append(nameof(GatherModeStats.GatherFailed_GatherPaused)).Append(": ").Append(watcher.Stats.GatherFailed_GatherPaused).AppendLine();
+                    sb.Append("- ").Append(nameof(GatherModeStats.GatherFailed_NotAllowedToMoveItems)).Append(": ").Append(watcher.Stats.GatherFailed_NotAllowedToMoveItems).AppendLine();
+                    sb.Append("- ").Append(nameof(GatherModeStats.GatherFailed_FoundMatchingStackInInventory)).Append(": ").Append(watcher.Stats.GatherFailed_FoundMatchingStackInInventory).AppendLine();
+                    sb.Append("- ").Append(nameof(GatherModeStats.GatherFailed_BackpackRejectedOrDidNotCareAboutItem)).Append(": ").Append(watcher.Stats.GatherFailed_BackpackRejectedOrDidNotCareAboutItem).AppendLine();
+                }
+            }
+
+            player.Reply(sb.ToString());
+        }
+
         #endregion
 
         #region Helper Methods
@@ -5587,6 +5637,19 @@ namespace Oxide.Plugins
 
         #region Player Inventory Watcher
 
+        private struct GatherModeStats
+        {
+            public int GatherSucceeded;
+            public int GatherFailed_PlayerIneligible;
+            public int GatherFailed_PlayerReceivingSnapshot;
+            public int GatherFailed_LootingIneligibleContainer;
+            public int GatherFailed_ParentContainerIneligible;
+            public int GatherFailed_GatherPaused;
+            public int GatherFailed_NotAllowedToMoveItems;
+            public int GatherFailed_FoundMatchingStackInInventory;
+            public int GatherFailed_BackpackRejectedOrDidNotCareAboutItem;
+        }
+
         private class InventoryWatcher : FacepunchBehaviour
         {
             public static InventoryWatcher AddToPlayer(BasePlayer player, Backpack backpack)
@@ -5610,6 +5673,7 @@ namespace Oxide.Plugins
             private BasePlayer _player;
             private Backpack _backpack;
 
+            public GatherModeStats Stats;
             private Action<Item, bool> _onItemAddedRemoved;
             private int _pauseGatherModeUntilFrame;
 
@@ -5644,41 +5708,74 @@ namespace Oxide.Plugins
 
             private void OnItemAddedRemoved(Item item, bool wasAdded)
             {
+                if (!wasAdded)
+                {
+                    _pauseGatherModeUntilFrame = Time.frameCount + 1;
+                    return;
+                }
+
                 if (_player.IsDestroyed
                     || _player.IsDead()
                     || _player.IsIncapacitated()
-                    || _player.IsSleeping()
-                    || _player.IsReceivingSnapshot
-                    || ShouldIgnoreContainer())
-                    return;
-
-                if (wasAdded)
+                    || _player.IsSleeping())
                 {
-                    // Don't gather items from the wearable container.
-                    // We still listen to events from it in order to determine when an item is removed.
-                    // Verify it's either the main or belt container, in case another plugin already moved the item.
-                    if (item.parent != _player.inventory.containerMain
-                        && item.parent != _player.inventory.containerBelt)
-                        return;
+                    Stats.GatherFailed_PlayerIneligible++;
+                    return;
+                }
 
-                    if (_pauseGatherModeUntilFrame != 0)
+                if (_player.IsReceivingSnapshot)
+                {
+                    Stats.GatherFailed_PlayerReceivingSnapshot++;
+                    return;
+                }
+
+                if (ShouldIgnoreContainer())
+                {
+                    Stats.GatherFailed_LootingIneligibleContainer++;
+                    return;
+                }
+
+                // Don't gather items from the wearable container.
+                // We still listen to events from it in order to determine when an item is removed.
+                // Verify it's either the main or belt container, in case another plugin already moved the item.
+                if (item.parent != _player.inventory.containerMain
+                    && item.parent != _player.inventory.containerBelt)
+                {
+                    Stats.GatherFailed_ParentContainerIneligible++;
+                    return;
+                }
+
+                if (_pauseGatherModeUntilFrame != 0)
+                {
+                    if (_pauseGatherModeUntilFrame > Time.frameCount)
                     {
-                        if (_pauseGatherModeUntilFrame > Time.frameCount)
-                            return;
-
-                        _pauseGatherModeUntilFrame = 0;
+                        Stats.GatherFailed_GatherPaused++;
+                        return;
                     }
 
-                    if (!_player.inventory.CanMoveItemsFrom(_player, item))
-                        return;
+                    _pauseGatherModeUntilFrame = 0;
+                }
 
-                    var itemQuery = ItemQuery.FromItem(item);
-                    if (HasMatchingItem(_player.inventory.containerMain.itemList, item, ref itemQuery, 24)
-                        || HasMatchingItem(_player.inventory.containerBelt.itemList, item, ref itemQuery, 6))
-                        return;
+                if (!_player.inventory.CanMoveItemsFrom(_player, item))
+                {
+                    Stats.GatherFailed_NotAllowedToMoveItems++;
+                    return;
+                }
 
-                    var originalPauseGatherModeUntilFrame = _pauseGatherModeUntilFrame;
-                    if (_backpack.TryGatherItem(item) && originalPauseGatherModeUntilFrame != _pauseGatherModeUntilFrame)
+                var itemQuery = ItemQuery.FromItem(item);
+                if (HasMatchingItem(_player.inventory.containerMain.itemList, item, ref itemQuery, 24)
+                    || HasMatchingItem(_player.inventory.containerBelt.itemList, item, ref itemQuery, 6))
+                {
+                    Stats.GatherFailed_FoundMatchingStackInInventory++;
+                    return;
+                }
+
+                var originalPauseGatherModeUntilFrame = _pauseGatherModeUntilFrame;
+                if (_backpack.TryGatherItem(item))
+                {
+                    Stats.GatherSucceeded++;
+
+                    if (originalPauseGatherModeUntilFrame != _pauseGatherModeUntilFrame)
                     {
                         // Don't pause gather mode due to gathering an item.
                         _pauseGatherModeUntilFrame = 0;
@@ -5686,7 +5783,7 @@ namespace Oxide.Plugins
                 }
                 else
                 {
-                    _pauseGatherModeUntilFrame = Time.frameCount + 1;
+                    Stats.GatherFailed_BackpackRejectedOrDidNotCareAboutItem++;
                 }
             }
 
@@ -5883,6 +5980,7 @@ namespace Oxide.Plugins
             private float _pauseGatherModeUntilTime;
             private int _checkedAccessOnFrame;
 
+            public int NumPagesGathering => GatherModeByPage.Count;
             public bool HasLooters => _looters.Count > 0;
             public bool IsGathering => (object)_inventoryWatcher != null;
             private Configuration _config => Plugin._config;
