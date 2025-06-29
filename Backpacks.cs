@@ -1636,6 +1636,9 @@ namespace Oxide.Plugins
                         return;
                     }
 
+                    // Call the OnLootEntityEnd hook on current container before switching pages.
+                    Interface.CallHook("OnLootEntityEnd", looter, lootingContainer.entityOwner);
+
                     currentBackpack.SwitchToPage(looter, nextPageIndex);
                     return;
                 }
@@ -6709,7 +6712,6 @@ namespace Oxide.Plugins
                 }
 
                 playerLoot.containers.Clear();
-                Interface.CallHook("OnLootEntityEnd", looter, itemContainer.entityOwner);
                 Interface.CallHook("OnLootEntity", looter, itemContainer.entityOwner);
                 playerLoot.AddContainer(itemContainer);
                 playerLoot.SendImmediate();
