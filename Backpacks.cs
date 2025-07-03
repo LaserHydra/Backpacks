@@ -27,7 +27,7 @@ using Time = UnityEngine.Time;
 
 namespace Oxide.Plugins
 {
-    [Info("Backpacks", "WhiteThunder", "3.15.4")]
+    [Info("Backpacks", "WhiteThunder", "3.15.5")]
     [Description("Allows players to have a Backpack which provides them extra inventory space.")]
     internal class Backpacks : CovalencePlugin
     {
@@ -8207,7 +8207,7 @@ namespace Oxide.Plugins
                 if (ItemModFoodSpoiling.foodSpoilItems.Contains(item))
                 {
                     var deltaTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - Time;
-                    ItemModFoodSpoiling.foodSpoilItems.lastUpdated[item] = deltaTime;
+                    ItemModFoodSpoiling.foodSpoilItems.lastUpdated[item.uid] = deltaTime;
                 }
             }
         }
