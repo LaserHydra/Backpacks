@@ -8151,15 +8151,7 @@ namespace Oxide.Plugins
                     {
                         foreach (var contentItem in Contents)
                         {
-                            var childItem = contentItem.ToItem(foodSpoilingMultiplier);
-                            if (childItem == null)
-                                continue;
-
-                            if (!childItem.MoveToContainer(item.contents, childItem.position)
-                                && !childItem.MoveToContainer(item.contents))
-                            {
-                                childItem.Remove();
-                            }
+                            contentItem.ToItem(foodSpoilingMultiplier)?.SetParent(item.contents);
                         }
                     }
                 }
