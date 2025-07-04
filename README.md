@@ -61,6 +61,7 @@ Alternatively, instead of enabling the GUI button in this plugin, consider using
 - `backpacks.gui` -- Required to see the GUI button.
 - `backpacks.fetch` -- Required to use the `backpack.fetch` command.
 - `backpacks.keepondeath` -- Exempts you from having your backpack erased or dropped on death.
+- `backpacks.nofoodspoiling` -- Prevents food items in your backpack from spoiling, as though your backpack is a powered fridge.
 - `backpacks.gather` -- Allows you to enable gather mode per backpack page, which automatically transfers newly acquired inventory items to your backpack.
   - **Note**: When you disconnect from the server and reconnect some time later, gather mode will not be activated until you open your backpack at least once.
 - `backpacks.retrieve` -- Allows you to enable retrieve mode per backpack page. When retrieve mode is enabled, you can build, craft and more using items from your designated backpack pages. Requires the [Item Retriever](https://umod.org/plugins/item-retriever) plugin.

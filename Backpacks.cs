@@ -55,6 +55,7 @@ namespace Oxide.Plugins
         private const string AdminProtectedPermission = "backpacks.admin.protected";
         private const string CapacityProfilePermission = "backpacks.size.profile";
         private const string KeepOnDeathPermission = "backpacks.keepondeath";
+        private const string NoFoodSpoilingPermission = "backpacks.nofoodspoiling";
         private const string LegacyKeepOnWipePermission = "backpacks.keeponwipe";
         private const string LegacyNoBlacklistPermission = "backpacks.noblacklist";
 
@@ -103,6 +104,7 @@ namespace Oxide.Plugins
             permission.RegisterPermission(AdminPermission, this);
             permission.RegisterPermission(AdminProtectedPermission, this);
             permission.RegisterPermission(KeepOnDeathPermission, this);
+            permission.RegisterPermission(NoFoodSpoilingPermission, this);
 
             _config.Init(this);
 
@@ -348,6 +350,10 @@ namespace Oxide.Plugins
             {
                 _backpackManager.HandleRetrievePermissionChangedForGroup(groupName);
             }
+            else if (perm.Equals(NoFoodSpoilingPermission))
+            {
+                _backpackManager.HandleFoodSpoilingPermissionChangedForGroup(groupName);
+            }
             else if (_config.GUI.Enabled && perm.Equals(GUIPermission))
             {
                 var groupName2 = groupName;
@@ -383,6 +389,10 @@ namespace Oxide.Plugins
             else if (perm.Equals(RetrievePermission))
             {
                 _backpackManager.HandleRetrievePermissionChangedForUser(userId);
+            }
+            else if (perm.Equals(NoFoodSpoilingPermission))
+            {
+                _backpackManager.HandleFoodSpoilingPermissionChangedForUser(userId);
             }
             else if (_config.GUI.Enabled && perm.Equals(GUIPermission))
             {
@@ -2070,7 +2080,7 @@ namespace Oxide.Plugins
                 return sum;
             }
 
-            public static int TakeItems(List<Item> itemList, ref ItemQuery itemQuery, int amount, List<Item> collect)
+            public static int TakeItems(List<Item> itemList, ref ItemQuery itemQuery, int amount, List<Item> collect, float foodSpoilingMultiplier)
             {
                 var totalAmountTaken = 0;
 
@@ -2093,14 +2103,14 @@ namespace Oxide.Plugins
                     amountToTake = amount - totalAmountTaken;
                     if (amountToTake > 0 && HasSearchableContainer(item, out var childItemList))
                     {
-                        totalAmountTaken += TakeItems(childItemList, ref itemQuery, amountToTake, collect);
+                        totalAmountTaken += TakeItems(childItemList, ref itemQuery, amountToTake, collect, foodSpoilingMultiplier);
                     }
                 }
 
                 return totalAmountTaken;
             }
 
-            public static int TakeItems(List<ItemData> itemDataList, ref ItemQuery itemQuery, int amount, List<Item> collect)
+            public static int TakeItems(List<ItemData> itemDataList, ref ItemQuery itemQuery, int amount, List<Item> collect, float foodSpoilingMultiplier)
             {
                 var totalAmountTaken = 0;
 
@@ -2116,7 +2126,7 @@ namespace Oxide.Plugins
                     {
                         amountToTake = Math.Min(usableAmount, amountToTake);
 
-                        collect?.Add(itemData.ToItem(amountToTake));
+                        collect?.Add(itemData.ToItem(foodSpoilingMultiplier, amountToTake));
                         itemData.Reduce(amountToTake);
 
                         totalAmountTaken += amountToTake;
@@ -2132,7 +2142,7 @@ namespace Oxide.Plugins
                     amountToTake = amount - totalAmountTaken;
                     if (amountToTake > 0 && HasSearchableContainer(itemData, out var childItemList))
                     {
-                        totalAmountTaken += TakeItems(childItemList, ref itemQuery, amountToTake, collect);
+                        totalAmountTaken += TakeItems(childItemList, ref itemQuery, amountToTake, collect, foodSpoilingMultiplier);
                     }
                 }
 
@@ -4210,6 +4220,16 @@ namespace Oxide.Plugins
                 GetBackpackIfCached(userIdString)?.SetFlag(Backpack.Flag.RetrieveCached, false);
             }
 
+            public void HandleFoodSpoilingPermissionChangedForGroup(string groupName)
+            {
+                SetFlagForGroup(groupName, Backpack.Flag.FoodSpoilingCached, false);
+            }
+
+            public void HandleFoodSpoilingPermissionChangedForUser(string userIdString)
+            {
+                GetBackpackIfCached(userIdString)?.SetFlag(Backpack.Flag.FoodSpoilingCached, false);
+            }
+
             public void HandleGroupChangeForUser(string userIdString)
             {
                 var backpack = GetBackpackIfCached(userIdString);
@@ -4221,6 +4241,7 @@ namespace Oxide.Plugins
                 backpack.SetFlag(Backpack.Flag.RestrictionsCached, false);
                 backpack.SetFlag(Backpack.Flag.GatherCached, false);
                 backpack.SetFlag(Backpack.Flag.RetrieveCached, false);
+                backpack.SetFlag(Backpack.Flag.FoodSpoilingCached, false);
             }
 
             public bool IsBackpack(ItemContainer container)
@@ -4606,17 +4627,23 @@ namespace Oxide.Plugins
             }
         }
 
-        private class BackpackCloseListener : EntityComponent<StorageContainer>
+        private class BackpackComponent : EntityComponent<StorageContainer>, IFoodSpoilModifier
         {
             public static void AddToBackpackStorage(Backpacks plugin, StorageContainer containerEntity, Backpack backpack)
             {
-                var component = containerEntity.gameObject.AddComponent<BackpackCloseListener>();
+                var component = containerEntity.gameObject.AddComponent<BackpackComponent>();
                 component._plugin = plugin;
                 component._backpack = backpack;
             }
 
             private Backpacks _plugin;
             private Backpack _backpack;
+
+            // Implements IFoodSpoilModifier, called by ItemModFoodSpoiling.FoodSpoilingWorkQueue.
+            public float GetSpoilMultiplier(Item item)
+            {
+                return _backpack.FoodSpoilingMultiplier;
+            }
 
             // Called via `entity.SendMessage("PlayerStoppedLooting", player)` in PlayerLoot.Clear().
             private void PlayerStoppedLooting(BasePlayer looter)
@@ -4987,7 +5014,7 @@ namespace Oxide.Plugins
             {
                 var originalItemCount = ItemCount;
 
-                var amountTaken = ItemUtils.TakeItems(ItemDataList, ref itemQuery, amount, collect);
+                var amountTaken = ItemUtils.TakeItems(ItemDataList, ref itemQuery, amount, collect, _backpack.FoodSpoilingMultiplier);
                 if (amountTaken > 0)
                 {
                     _backpack.SetFlag(Backpack.Flag.Dirty, true);
@@ -5015,6 +5042,7 @@ namespace Oxide.Plugins
             public void TakeFraction(float fraction, List<Item> collect)
             {
                 var numToTake = Mathf.Ceil(ItemDataList.Count * fraction);
+                var foodSpoilingMultiplier = _backpack.FoodSpoilingMultiplier;
 
                 for (var i = 0; i < numToTake; i++)
                 {
@@ -5037,7 +5065,7 @@ namespace Oxide.Plugins
                         }
                     }
 
-                    var item = itemDataToTake.ToItem();
+                    var item = itemDataToTake.ToItem(foodSpoilingMultiplier);
                     if (item != null)
                     {
                         collect.Add(item);
@@ -5052,13 +5080,15 @@ namespace Oxide.Plugins
                 if (ItemDataList.Count == 0)
                     return;
 
+                var foodSpoilingMultiplier = _backpack.FoodSpoilingMultiplier;
+
                 for (var i = ItemDataList.Count - 1; i >= 0; i--)
                 {
                     var itemData = ItemDataList[i];
                     if (_backpack.RestrictionRuleset.AllowsItem(itemData))
                         continue;
 
-                    var item = itemData.ToItem();
+                    var item = itemData.ToItem(foodSpoilingMultiplier);
                     if (item != null)
                     {
                         collect.Add(item);
@@ -5075,13 +5105,15 @@ namespace Oxide.Plugins
                 if (ItemDataList.Count == 0)
                     return;
 
+                var foodSpoilingMultiplier = _backpack.FoodSpoilingMultiplier;
+
                 for (var i = 0; i < ItemDataList.Count; i++)
                 {
                     var itemData = ItemDataList[i];
                     if (itemData.Position < startPosition)
                         continue;
 
-                    var item = itemData.ToItem();
+                    var item = itemData.ToItem(foodSpoilingMultiplier);
                     if (item != null)
                     {
                         collect.Add(item);
@@ -5180,7 +5212,7 @@ namespace Oxide.Plugins
                 if (!_backpack.ShouldAcceptItem(item, null))
                     return false;
 
-                var itemData = CustomPool.Get<ItemData>().Setup(item, firstEmptyPosition);
+                var itemData = CustomPool.Get<ItemData>().Setup(item, _backpack.FoodSpoilingMultiplier, firstEmptyPosition);
                 ItemDataList.Add(itemData);
 
                 item.RemoveFromContainer();
@@ -5339,7 +5371,7 @@ namespace Oxide.Plugins
 
             public int TakeItems(ref ItemQuery itemQuery, int amount, List<Item> collect)
             {
-                return ItemUtils.TakeItems(ItemContainer.itemList, ref itemQuery, amount, collect);
+                return ItemUtils.TakeItems(ItemContainer.itemList, ref itemQuery, amount, collect, _backpack.FoodSpoilingMultiplier);
             }
 
             public int MutateItems(ref ItemQuery itemQuery, ref MutationRequest mutationRequest)
@@ -5433,10 +5465,11 @@ namespace Oxide.Plugins
             public void SerializeTo(List<ItemData> saveList, List<ItemData> itemsToReleaseToPool)
             {
                 var positionOffset = PageIndex * _maxCapacityPerPage;
+                var foodSpoilingMultiplier = _backpack.FoodSpoilingMultiplier;
 
                 foreach (var item in ItemContainer.itemList)
                 {
-                    var itemData = CustomPool.Get<ItemData>().Setup(item, positionOffset);
+                    var itemData = CustomPool.Get<ItemData>().Setup(item, foodSpoilingMultiplier, positionOffset);
                     saveList.Add(itemData);
                     itemsToReleaseToPool.Add(itemData);
                 }
@@ -5468,9 +5501,11 @@ namespace Oxide.Plugins
 
             public ItemContainerAdapter CopyItemsFrom(List<ItemData> itemDataList)
             {
+                var foodSpoilingMultiplier = _backpack.FoodSpoilingMultiplier;
+
                 foreach (var itemData in itemDataList)
                 {
-                    var item = itemData.ToItem();
+                    var item = itemData.ToItem(foodSpoilingMultiplier);
                     if (item == null)
                         continue;
 
@@ -5839,8 +5874,9 @@ namespace Oxide.Plugins
                 RestrictionsCached = 1 << 1,
                 GatherCached = 1 << 2,
                 RetrieveCached = 1 << 3,
-                ProcessedRestrictedItems = 1 << 4,
-                Dirty = 1 << 5,
+                FoodSpoilingCached = 1 << 4,
+                ProcessedRestrictedItems = 1 << 5,
+                Dirty = 1 << 6,
             }
 
             private class PausableCallback : IDisposable
@@ -5964,6 +6000,7 @@ namespace Oxide.Plugins
             private RestrictionRuleset _restrictionRuleset;
             private bool _canGather;
             private bool _canRetrieve;
+            private float _foodSpoilingMultiplier;
             private DynamicConfigFile _dataFile;
             private BasePlayer _owner;
             private ContainerAdapterCollection _containerAdapters;
@@ -6071,6 +6108,20 @@ namespace Oxide.Plugins
                     }
 
                     return _canRetrieve;
+                }
+            }
+
+            public float FoodSpoilingMultiplier
+            {
+                get
+                {
+                    if (!HasFlag(Flag.FoodSpoilingCached))
+                    {
+                        _foodSpoilingMultiplier = Plugin.permission.UserHasPermission(OwnerIdString, NoFoodSpoilingPermission) ? 0 : 1f;
+                        SetFlag(Flag.FoodSpoilingCached, true);
+                    }
+
+                    return _foodSpoilingMultiplier;
                 }
             }
 
@@ -6857,6 +6908,8 @@ namespace Oxide.Plugins
                 LogDebug($"Backpack::Save | {OwnerIdString} | Frame: {Time.frameCount.ToString()}");
                 #endif
 
+                var foodSpoilingMultiplier = FoodSpoilingMultiplier;
+
                 using (var itemsToReleaseToPool = DisposableList<ItemData>.Get())
                 {
                     foreach (var containerAdapter in _containerAdapters)
@@ -6864,7 +6917,7 @@ namespace Oxide.Plugins
                         containerAdapter.SerializeTo(ItemDataCollection, itemsToReleaseToPool);
                     }
 
-                    SerializeRejectedItems(itemsToReleaseToPool);
+                    SerializeRejectedItems(itemsToReleaseToPool, foodSpoilingMultiplier);
 
                     _dataFile.WriteObject(this);
                     SetFlag(Flag.Dirty, false);
@@ -6933,7 +6986,7 @@ namespace Oxide.Plugins
                     containerAdapter.SerializeTo(ItemDataCollection, itemsToReleaseToPool);
                 }
 
-                SerializeRejectedItems(itemsToReleaseToPool);
+                SerializeRejectedItems(itemsToReleaseToPool, FoodSpoilingMultiplier);
 
                 var json = JsonConvert.SerializeObject(ItemDataCollection);
 
@@ -7037,7 +7090,7 @@ namespace Oxide.Plugins
                 return itemContainerAdapter;
             }
 
-            private void SerializeRejectedItems(List<ItemData> itemsToReleaseToPool)
+            private void SerializeRejectedItems(List<ItemData> itemsToReleaseToPool, float foodSpoilingMultiplier)
             {
                 if (_rejectedItems == null || _rejectedItems.Count == 0)
                     return;
@@ -7047,7 +7100,7 @@ namespace Oxide.Plugins
                 foreach (var item in _rejectedItems)
                 {
                     item.position = ++lastPosition;
-                    var itemData = CustomPool.Get<ItemData>().Setup(item);
+                    var itemData = CustomPool.Get<ItemData>().Setup(item, foodSpoilingMultiplier);
                     ItemDataCollection.Add(itemData);
                     itemsToReleaseToPool.Add(itemData);
                 }
@@ -7361,7 +7414,7 @@ namespace Oxide.Plugins
 
                 containerEntity.CancelInvoke(containerEntity.DecayTick);
 
-                BackpackCloseListener.AddToBackpackStorage(Plugin, containerEntity, this);
+                BackpackComponent.AddToBackpackStorage(Plugin, containerEntity, this);
 
                 containerEntity.baseProtection = Plugin._immortalProtection;
                 containerEntity.panelName = ResizableLootPanelName;
@@ -7915,7 +7968,7 @@ namespace Oxide.Plugins
             [JsonConverter(typeof(PoolListConverter<ItemData>))]
             public List<ItemData> Contents { get; private set; }
 
-            public ItemData Setup(Item item, int positionOffset = 0)
+            public ItemData Setup(Item item, float foodSpoilingMultiplier, int positionOffset = 0)
             {
                 #if DEBUG_POOLING
                 LogDebug($"ItemData::Setup | {item.amount.ToString()} {item.info.shortname}");
@@ -7937,7 +7990,7 @@ namespace Oxide.Plugins
                 AmmoType = heldEntity?.GetComponent<BaseProjectile>()?.primaryMagazine?.ammoType?.itemid ?? 0;
                 DataInt = item.instanceData?.dataInt ?? 0;
                 DataFloat = item.instanceData?.dataFloat ?? 0;
-                SaveTime(item);
+                SaveTime(item, foodSpoilingMultiplier);
                 Name = item.name;
                 Text = item.text;
                 Flags = item.flags;
@@ -7959,7 +8012,7 @@ namespace Oxide.Plugins
                     Contents = CustomPool.GetList<ItemData>();
                     foreach (var childItem in item.contents.itemList)
                     {
-                        Contents.Add(CustomPool.Get<ItemData>().Setup(childItem));
+                        Contents.Add(CustomPool.Get<ItemData>().Setup(childItem, foodSpoilingMultiplier));
                     }
                 }
 
@@ -8037,7 +8090,7 @@ namespace Oxide.Plugins
                 Amount -= amount;
             }
 
-            public Item ToItem(int amount = -1)
+            public Item ToItem(float foodSpoilingMultiplier, int amount = -1)
             {
                 if (amount == -1)
                 {
@@ -8098,7 +8151,7 @@ namespace Oxide.Plugins
                     {
                         foreach (var contentItem in Contents)
                         {
-                            var childItem = contentItem.ToItem();
+                            var childItem = contentItem.ToItem(foodSpoilingMultiplier);
                             if (childItem == null)
                                 continue;
 
@@ -8162,7 +8215,7 @@ namespace Oxide.Plugins
                     EnsureInstanceData(item).dataFloat = DataFloat;
                 }
 
-                RestoreTime(item);
+                RestoreTime(item, foodSpoilingMultiplier);
 
                 item.text = Text;
 
@@ -8181,22 +8234,35 @@ namespace Oxide.Plugins
                 return item.instanceData;
             }
 
-            private void SaveTime(Item item)
+            private void SaveTime(Item item, float foodSpoilingMultiplier)
             {
+                // When food spoiling is completely disabled (multiplier == 0), simply don't save the `Time` field in
+                // the data file. This makes it so that when the backpack is reloaded/reopened, even if the player no
+                // longer has the same food spoiling permissions, the time between save and restore won't be counted,
+                // since we can't know exactly when the permission changed.
+                if (foodSpoilingMultiplier == 0)
+                {
+                    Time = 0;
+                    return;
+                }
+
                 if (ItemModFoodSpoiling.foodSpoilItems.Contains(item))
                 {
                     Time = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                 }
             }
 
-            private void RestoreTime(Item item)
+            private void RestoreTime(Item item, float foodSpoilingMultiplier)
             {
-                if (Time == 0)
+                // When food spoiling is completely disabled (multiplier == 0), simply don't count the time that has
+                // passed since the item was saved, since we don't know exactly when the player's food spoiling
+                // permission changed.
+                if (Time == 0 || foodSpoilingMultiplier == 0)
                     return;
 
                 if (ItemModFoodSpoiling.foodSpoilItems.Contains(item))
                 {
-                    var deltaTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() - Time;
+                    var deltaTime = (DateTimeOffset.UtcNow.ToUnixTimeSeconds() - Time) * foodSpoilingMultiplier;
                     ItemModFoodSpoiling.foodSpoilItems.lastUpdated[item.uid] = deltaTime;
                 }
             }
