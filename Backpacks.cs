@@ -4144,6 +4144,7 @@ namespace Oxide.Plugins
             private static string DetermineBackpackPath(ulong userId) => $"{nameof(Backpacks)}/{userId.ToString()}";
 
             private readonly Backpacks _plugin;
+            private CapacityManager _capacityManager => _plugin._capacityManager;
 
             private readonly Dictionary<ulong, Backpack> _cachedBackpacks = new();
             private readonly Dictionary<ulong, string> _backpackPathCache = new();
@@ -4164,7 +4165,7 @@ namespace Oxide.Plugins
                     if (!_plugin.permission.UserHasGroup(backpack.OwnerIdString, groupName))
                         continue;
 
-                    _plugin._capacityManager.ForgetCachedCapacity(backpack.OwnerId);
+                    _capacityManager.ForgetCachedCapacity(backpack.OwnerId);
                     backpack.SetFlag(Backpack.Flag.CapacityCached, false);
                 }
             }
@@ -4175,19 +4176,13 @@ namespace Oxide.Plugins
                 if (backpack == null)
                     return;
 
-                _plugin._capacityManager.ForgetCachedCapacity(backpack.OwnerId);
+                _capacityManager.ForgetCachedCapacity(backpack.OwnerId);
                 backpack.SetFlag(Backpack.Flag.CapacityCached, false);
             }
 
             public void HandleRestrictionPermissionChangedForGroup(string groupName)
             {
-                foreach (var backpack in _cachedBackpacks.Values)
-                {
-                    if (!_plugin.permission.UserHasGroup(backpack.OwnerIdString, groupName))
-                        continue;
-
-                    backpack.SetFlag(Backpack.Flag.RestrictionsCached, false);
-                }
+                SetFlagForGroup(groupName, Backpack.Flag.RestrictionsCached, false);
             }
 
             public void HandleRestrictionPermissionChangedForUser(string userIdString)
@@ -4197,13 +4192,7 @@ namespace Oxide.Plugins
 
             public void HandleGatherPermissionChangedForGroup(string groupName)
             {
-                foreach (var backpack in _cachedBackpacks.Values)
-                {
-                    if (!_plugin.permission.UserHasGroup(backpack.OwnerIdString, groupName))
-                        continue;
-
-                    backpack.SetFlag(Backpack.Flag.GatherCached, false);
-                }
+                SetFlagForGroup(groupName, Backpack.Flag.GatherCached, false);
             }
 
             public void HandleGatherPermissionChangedForUser(string userIdString)
@@ -4213,13 +4202,7 @@ namespace Oxide.Plugins
 
             public void HandleRetrievePermissionChangedForGroup(string groupName)
             {
-                foreach (var backpack in _cachedBackpacks.Values)
-                {
-                    if (!_plugin.permission.UserHasGroup(backpack.OwnerIdString, groupName))
-                        continue;
-
-                    backpack.SetFlag(Backpack.Flag.RetrieveCached, false);
-                }
+                SetFlagForGroup(groupName, Backpack.Flag.RetrieveCached, false);
             }
 
             public void HandleRetrievePermissionChangedForUser(string userIdString)
@@ -4233,7 +4216,7 @@ namespace Oxide.Plugins
                 if (backpack == null)
                     return;
 
-                _plugin._capacityManager.ForgetCachedCapacity(backpack.OwnerId);
+                _capacityManager.ForgetCachedCapacity(backpack.OwnerId);
                 backpack.SetFlag(Backpack.Flag.CapacityCached, false);
                 backpack.SetFlag(Backpack.Flag.RestrictionsCached, false);
                 backpack.SetFlag(Backpack.Flag.GatherCached, false);
@@ -4270,9 +4253,7 @@ namespace Oxide.Plugins
 
             public Backpack GetBackpackIfCached(ulong userId)
             {
-                return _cachedBackpacks.TryGetValue(userId, out var backpack)
-                    ? backpack
-                    : null;
+                return _cachedBackpacks.GetValueOrDefault(userId);
             }
 
             public Backpack GetBackpack(ulong userId)
@@ -4299,9 +4280,7 @@ namespace Oxide.Plugins
 
             public Backpack GetCachedBackpackForContainer(ItemContainer container)
             {
-                return _backpackContainers.TryGetValue(container, out var backpack)
-                    ? backpack
-                    : null;
+                return _backpackContainers.GetValueOrDefault(container);
             }
 
             public Dictionary<ulong, ItemContainer> GetAllCachedContainers()
@@ -4501,6 +4480,17 @@ namespace Oxide.Plugins
                     return null;
 
                 return GetBackpackIfCached(userId);
+            }
+
+            private void SetFlagForGroup(string groupName, Backpack.Flag flag, bool value)
+            {
+                foreach (var backpack in _cachedBackpacks.Values)
+                {
+                    if (!_plugin.permission.UserHasGroup(backpack.OwnerIdString, groupName))
+                        continue;
+
+                    backpack.SetFlag(flag, value);
+                }
             }
         }
 
@@ -6293,9 +6283,7 @@ namespace Oxide.Plugins
 
             public GatherMode GetGatherModeForPage(int pageIndex)
             {
-                return GatherModeByPage.TryGetValue(pageIndex, out var gatherMode)
-                    ? gatherMode
-                    : GatherMode.None;
+                return GatherModeByPage.GetValueOrDefault(pageIndex, GatherMode.None);
             }
 
             public void ToggleGatherMode(BasePlayer player, int pageIndex)
