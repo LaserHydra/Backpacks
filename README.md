@@ -107,7 +107,7 @@ The following permissions come with the plugin's **default configuration**. Addi
 
 **Important notes:**
 
-- If a player is granted multiple `backpacks.size.profile.*` permissions, ~~the last will apply, according to the profile order in the config.~~ the initial size and max size will be the highest of all profiles they have access to (Changed in v3.14.0).
+- If a player is granted multiple `backpacks.size.profile.*` permissions, the initial size and max size will be the highest of all profiles they have access to (Changed in v3.14.0).
 - If a player is granted any `backpacks.size.profile.*` permissions, it will override the default backpack size from the config, as well as any `backpacks.size.<number>` permissions they have been granted because **size profiles take priority over all other configuration/permissions**.
 - The plugin keeps track of the bonus size the player has received, not the exact size. This means that you can generally switch a player from one profile to another without losing earned capacity. For example, if the player starts with a profile of 6-48 and upgrades the capacity to 24 (6+18) and then receives permission to a profile of 48-96, they will have a capacity of 66 (48+18).
 - This plugin does not currently offer built-in features to upgrade backpack capacity, so other plugins must be used for such use cases. Plugin developers can reference the API documentation below for details on how to query and modify backpack capacity. The notable API method names are below.
