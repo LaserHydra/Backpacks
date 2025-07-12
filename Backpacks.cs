@@ -1263,6 +1263,58 @@ namespace Oxide.Plugins
             backpack.ToggleRetrieve(basePlayer, pageIndex);
         }
 
+        // Note: The outputs of this command are not localized as they are intended only for debugging purposes and need
+        // to be readable by the developer.
+        [Command("backpack.debug.size", "backpack.debug.capacity")]
+        private void DebugSizeCommand(IPlayer player, string cmd, string[] args)
+        {
+            if (!VerifyHasPermission(player, AdminPermission))
+                return;
+
+            if (args.Length < 1)
+            {
+                player.Reply($"Syntax: {cmd} [player]");
+                return;
+            }
+
+            if (!VerifyTargetPlayer(player, args[0], out var targetPlayerId, out var targetPlayerIdString))
+                return;
+
+            var matchingPermissionsForDebug = new List<string>();
+            var capacityInfo = _capacityManager.GetCapacityInfoForDebug(targetPlayerId, targetPlayerIdString, matchingPermissionsForDebug);
+
+            var sb = new StringBuilder();
+            sb.AppendLine("Config:");
+            sb.Append("  Default size: ").Append(_config.BackpackSize.DefaultSize).AppendLine();
+            sb.Append("  Dynamic capacity enabled in config?: ").AppendLine(_config.BackpackSize.DynamicSize.Enabled.ToString());
+
+            sb.Append("Player: ").AppendLine(targetPlayerIdString);
+            sb.Append("  Expected initial size: ").Append(capacityInfo.Initial).AppendLine();
+            sb.Append("  Expected current size: ").Append(capacityInfo.Current).AppendLine();
+            sb.Append("  Expected max size: ").Append(capacityInfo.Max).AppendLine();
+
+            var targetBackpack = _backpackManager.GetBackpack(targetPlayerId);
+            if (targetBackpack != null)
+            {
+                sb.Append("  Actual current capacity: ").Append(targetBackpack.Capacity).AppendLine();
+            }
+
+            sb.Append("  Size permissions: ");
+            if (matchingPermissionsForDebug.Count == 0)
+            {
+                sb.AppendLine("None");
+            }
+            else
+            {
+                sb.AppendLine().Append("   - ");
+                sb.AppendJoin("\n   - ", matchingPermissionsForDebug).AppendLine();
+            }
+
+            player.Reply(sb.ToString());
+        }
+
+        // Note: The outputs of this command are not localized as they are intended only for debugging purposes and need
+        // to be readable by the developer.
         [Command("backpack.debug.gather")]
         private void DebugGatherCommand(IPlayer player, string cmd, string[] args)
         {
@@ -4044,6 +4096,11 @@ namespace Oxide.Plugins
                 return GetCapacityInfo(userId, userIdString).Max;
             }
 
+            public CapacityInfo GetCapacityInfoForDebug(ulong userId, string userIdString, List<string> matchingPermissions)
+            {
+                return GetCapacityInfo(userId, userIdString, matchingPermissions);
+            }
+
             public int SetCapacity(ulong userId, string userIdString, int amount)
             {
                 if (!_config.BackpackSize.DynamicSize.Enabled)
@@ -4084,11 +4141,11 @@ namespace Oxide.Plugins
                 _capacityData.RemovePlayerExactCapacity(userId);
             }
 
-            private CapacityInfo GetCapacityInfo(ulong userId, string userIdString)
+            private CapacityInfo GetCapacityInfo(ulong userId, string userIdString, List<string> matchingPermissionsForDebug = null)
             {
-                if (!_cachedPlayerCapacityInfo.TryGetValue(userId, out var capacityInfo))
+                if (!_cachedPlayerCapacityInfo.TryGetValue(userId, out var capacityInfo) || matchingPermissionsForDebug != null)
                 {
-                    capacityInfo = DetermineCapacityInfo(userId, userIdString);
+                    capacityInfo = DetermineCapacityInfo(userId, userIdString, matchingPermissionsForDebug);
                     _cachedPlayerCapacityInfo[userId] = capacityInfo;
                     // Set bonus capacity to migrate from exact capacity.
                     SetBonusCapacity(userId, capacityInfo);
@@ -4097,25 +4154,28 @@ namespace Oxide.Plugins
                 return capacityInfo;
             }
 
-            private int DetermineCapacityFromPermission(string userIdString)
+            private int DetermineCapacityFromPermission(string userIdString, List<string> matchingPermissionsForDebug = null)
             {
                 for (var i = _sortedBackpackSizes.Length - 1; i >= 0; i--)
                 {
                     var backpackSize = _sortedBackpackSizes[i];
                     if (_plugin.permission.UserHasPermission(userIdString, backpackSize.Permission))
+                    {
+                        matchingPermissionsForDebug?.Add(backpackSize.Permission);
                         return backpackSize.Capacity;
+                    }
                 }
 
                 return _config.BackpackSize.DefaultSize;
             }
 
-            private CapacityInfo DetermineCapacityInfo(ulong userId, string userIdString)
+            private CapacityInfo DetermineCapacityInfo(ulong userId, string userIdString, List<string> matchingPermissionsForDebug = null)
             {
                 if (!_plugin.permission.UserHasPermission(userIdString, UsagePermission))
                     return new CapacityInfo(0);
 
                 if (_config.BackpackSize.DynamicSize.Enabled
-                    && _config.BackpackSize.DynamicSize.GetPlayerProfile(userIdString) is var (initial, max))
+                    && _config.BackpackSize.DynamicSize.GetPlayerProfile(userIdString, matchingPermissionsForDebug) is var (initial, max))
                 {
                     initial = Math.Min(initial, max);
 
@@ -4127,7 +4187,7 @@ namespace Oxide.Plugins
                     };
                 }
 
-                return new CapacityInfo(DetermineCapacityFromPermission(userIdString));
+                return new CapacityInfo(DetermineCapacityFromPermission(userIdString, matchingPermissionsForDebug));
             }
 
             private int DetermineCurrentCapacity(ulong userId, int initialCapacity)
@@ -8857,23 +8917,28 @@ namespace Oxide.Plugins
                 }
             }
 
-            public (int, int)? GetPlayerProfile(string userIdString)
+            public (int, int)? GetPlayerProfile(string userIdString, List<string> matchingPermissionsForDebug = null)
             {
                 if (!Enabled || CapacityProfiles is not { Length: > 0 })
                     return null;
 
-                var initialCapacity = CapacityProfiles[0].InitialCapacity;
-                var maxCapacity = CapacityProfiles[0].MaxCapacity;
+                var foundMatchingPermission = false;
+                var initialCapacity = 0;
+                var maxCapacity = 0;
 
-                for (var i = 1; i < CapacityProfiles.Length; i++)
+                foreach (var profile in CapacityProfiles)
                 {
-                    var profile = CapacityProfiles[i];
                     if (profile.Permission == null || !_permission.UserHasPermission(userIdString, profile.Permission))
                         continue;
 
+                    foundMatchingPermission = true;
+                    matchingPermissionsForDebug?.Add(profile.Permission);
                     initialCapacity = Math.Max(initialCapacity, profile.InitialCapacity);
                     maxCapacity = Math.Max(maxCapacity, profile.MaxCapacity);
                 }
+
+                if (!foundMatchingPermission)
+                    return null;
 
                 return (initialCapacity, maxCapacity);
             }
